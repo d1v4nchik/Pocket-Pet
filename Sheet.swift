@@ -100,11 +100,14 @@ func renderSheet(_ path: String, only: String? = nil) {
     w.ui.world = w
     w.ui.tab = tab >= 10 ? 3 : tab          // 11-13: Settings with a calendar way open
     if tab >= 10 && tab < 20 { w.ui.calWay = tab - 10 }
-    if tab == 2 || tab == 20 { w.ui.tab = 2; w.spotify.preview(connected: tab == 20) }
+    if tab == 2 || tab == 20 { w.ui.tab = 2; w.player.preview(connected: tab == 20) }
     w.hidden = false                // windows were never shown; this just keeps the menu's header normal
     w.pet.mode = .idle
     w.pet.renderCanvas()
-    let r = ImageRenderer(content: RootView(m: w.ui))
+    // on a white panel over the same backdrop as the cards, so it reads on light and dark pages alike
+    let r = ImageRenderer(content: RootView(m: w.ui)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(nsColor: .windowBackgroundColor)))
+        .padding(20).background(Color.gray.opacity(0.4)))
     r.scale = 2
     guard let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return }
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
@@ -151,16 +154,18 @@ func renderSheet(_ path: String, only: String? = nil) {
     }
     let now = d.addingTimeInterval(9.75 * 3600)
     func at(_ e: CalEvent, _ place: String) -> CalEvent { var e = e; e.location = place; return e }
-    let events = [ev(0, 0, "Project due", all: true), ev(0, 0, "Mom's birthday", all: true), at(ev(9, 15, "Team standup"), "Room 3"), ev(10, 45, "Coffee with Alex"),
-                  at(ev(11, 5, "Design review"), "https://meet.google.com/abc"), at(ev(12, 10, "Yoga"), "Studio, 2nd floor, 12 Main Street"), ev(13, 10, "Lunch"), ev(13, 55, "Study session"),
+    // made-up sample day for the README
+    let events = [ev(0, 0, "Mom's birthday", all: true), ev(0, 0, "Project due", all: true), at(ev(9, 15, "Team standup"), "Room 3"),
+                  ev(10, 45, "Coffee with Alex"), at(ev(11, 30, "Design review"), "https://meet.google.com/abc"),
+                  at(ev(12, 30, "Yoga"), "Studio, 2nd floor, 12 Main Street"), ev(13, 30, "Lunch"), ev(15, 0, "Study session"),
                   ev(18, 0, "Dentist"), ev(19, 30, "Movie night"), ev(9, 30, "Piano lesson", day: 1)]
     let late = d.addingTimeInterval(20.6 * 3600)
-    let sp = Spotify()
+    let sp = MusicPlayer()
     sp.preview(connected: false)
     let view = VStack(spacing: 20) {
         AgendaView(agenda: Agenda.build(events, now: now))
         AgendaView(agenda: Agenda.build(events, now: late))
-        MusicCardView(spotify: sp, model: MusicCardModel())
+        MusicCardView(player: sp, model: MusicCardModel())
     }.padding(20).background(Color.gray.opacity(0.4))
     let r = ImageRenderer(content: view)
     r.scale = 2

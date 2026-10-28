@@ -2,7 +2,8 @@
 //
 // Two ways to notice, because macOS doesn't let one app see another's notifications directly:
 // - Browser tabs: web apps put an unread count in their title ("(2) Discord"), read every few seconds
-//   through the browser's scripting (Chrome, Brave, Edge, Vivaldi, Opera, Arc and Safari). Clicking opens that tab.
+//   through the browser's scripting (Safari and every Chrome-based browser: Chrome, Brave, Edge, Arc, Dia, Comet, Vivaldi,
+//   Opera...). Clicking opens that tab.
 //   Firefox can't be scripted, so it's covered by the banners below.
 // - Notification banners from any app, through Accessibility (only if you allow it). Clicking the bell
 //   clicks the banner for you, or opens the app if the banner is gone.
@@ -173,8 +174,14 @@ final class TabWatcher {
 }
 
 enum DocBrowsers {
-    static let chromium: Set<String> = ["com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary", "com.brave.Browser",
-                                        "com.microsoft.edgemac", "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "company.thebrowser.Browser"]
+    /// Browsers built on Chrome all share Chrome's scripting. Firefox and Zen have none: their notifications come in as banners.
+    static let chromium: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary", "org.chromium.Chromium",
+        "com.brave.Browser", "com.brave.Browser.beta", "com.brave.Browser.nightly",
+        "com.microsoft.edgemac", "com.microsoft.edgemac.Beta", "com.microsoft.edgemac.Dev", "com.microsoft.edgemac.Canary",
+        "com.vivaldi.Vivaldi", "com.vivaldi.Vivaldi.snapshot", "com.operasoftware.Opera", "com.operasoftware.OperaGX",
+        "company.thebrowser.Browser", "company.thebrowser.dia", "ai.perplexity.comet", "ru.yandex.desktop.yandex-browser",
+        "com.pushplaylabs.sidekick", "org.chromium.Thorium"]
     static let safari: Set<String> = ["com.apple.Safari", "com.apple.SafariTechnologyPreview"]
     static var all: Set<String> { chromium.union(safari) }
 }

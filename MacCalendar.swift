@@ -1,5 +1,5 @@
-// The easy way to Google Calendar: sign in to Google once in System Settings → Internet Accounts,
-// and read those calendars here through macOS (EventKit). No Google Cloud setup needed.
+// Every calendar this Mac already has (iCloud, Outlook/Exchange, Google and any account added in System Settings →
+// Internet Accounts), read through macOS (EventKit). No setup beyond allowing access once.
 
 import Cocoa
 import EventKit
@@ -13,10 +13,11 @@ final class MacCalendar {
         return EKEventStore.authorizationStatus(for: .event) == .authorized
     }
 
-    /// Google accounts added to macOS show up as CalDAV sources named after the email address.
-    var googleAccounts: [String] {
+    /// Where this Mac's calendars come from (iCloud, an Exchange or Google account...), for the menu.
+    var accounts: [String] {
         guard authorized else { return [] }
-        return store.sources.filter { $0.sourceType == .calDAV && $0.title.contains("@") }.map { $0.title }
+        var seen = Set<String>()
+        return store.calendars(for: .event).map { $0.source.title }.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     init() {

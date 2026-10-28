@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 APP="Pocket Pet.app"
 SOURCES=(main.swift Art.swift Pets.swift Pet.swift ItemArt.swift World.swift Google.swift MacCalendar.swift ICSCalendar.swift
-         Cards.swift AppleEvents.swift Spotify.swift Notifications.swift Updater.swift UI.swift Sound.swift Sheet.swift)
+         Cards.swift AppleEvents.swift Music.swift Notifications.swift Updater.swift UI.swift Sound.swift Sheet.swift)
 
 # Version and update settings live in small files next to this script (release.sh sets VERSION).
 VERSION="$(cat VERSION 2>/dev/null || echo 3.0)"

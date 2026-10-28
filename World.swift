@@ -269,7 +269,7 @@ final class World: NSObject, NSPopoverDelegate {
     private var paused = false          // display asleep or screen locked: no frames at all
     private var lastSense = -1.0
     private var agendaShownAt = -10.0
-    let spotify = Spotify()
+    let player = MusicPlayer()
     let tabWatcher = TabWatcher()
     let bannerWatcher = BannerWatcher()
     let bellCard = FloatingCard()
@@ -345,7 +345,7 @@ final class World: NSObject, NSPopoverDelegate {
         bannerWatcher.onNotice = { [weak self] n in self?.ring(n) }
         tabWatcher.onRead = { [weak self] id in if self?.notice?.tabID == id { self?.dismissBell() } }   // read it in the browser already
         updater.onChange = { [weak self] in if self?.popover.isShown == true { self?.ui.refresh() } }
-        spotify.onChange = { [weak self] in
+        player.onChange = { [weak self] in
             guard let self else { return }
             if self.popover.isShown { self.ui.refresh() }
             if self.musicCard.visible { self.musicModel.tick &+= 1 }
@@ -355,7 +355,7 @@ final class World: NSObject, NSPopoverDelegate {
             Keychain.load()
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.google.loadSecrets(); self.ics.loadSecrets(); self.spotify.loadSecrets()
+                self.google.loadSecrets(); self.ics.loadSecrets(); self.player.loadSecrets()
                 self.nextCalendar = self.t        // fetch the calendar now that we can sign in
                 self.ui.refresh()
             }
@@ -657,34 +657,50 @@ final class World: NSObject, NSPopoverDelegate {
 
     // MARK: Music
 
+    /// Music players. Browsers count too while they play sound without a video (YouTube Music, SoundCloud...).
     static let musicApps = ["com.spotify.client", "com.apple.Music", "com.apple.podcasts", "com.tidal.desktop",
-                            "com.deezer.deezer-desktop", "com.amazon.music"]
+                            "com.deezer.deezer-desktop", "com.amazon.music", "com.github.th-ch.youtube-music", "sh.cider",
+                            "com.plexamp.Plexamp", "com.pandora.desktop", "com.soundcloud.desktop", "org.videolan.vlc",
+                            "com.colliderli.iina", "com.audirvana", "com.roon.Roon", "com.qobuz.QobuzDesktop"]
+    static let otherBrowsers = ["org.mozilla.firefox", "app.zen-browser.zen", "com.kagi.kagimacOS"]
+    private var heard: String?            // the app Core Audio last heard playing music
 
     /// Headphones stay on for as long as Spotify/Music say they're playing. Until one of them has
     /// told us anything (right after launch), Core Audio is asked who's playing sound, now and then.
     func checkMusic() {
+        let players = Self.musicApps + Array(DocBrowsers.all) + Self.otherBrowsers
         if musicAppRunning == nil {       // only re-checked when an app opens or quits
             musicAppRunning = NSWorkspace.shared.runningApplications.contains { app in
-                Self.musicApps.contains { (app.bundleIdentifier ?? "").hasPrefix($0) }
+                players.contains { (app.bundleIdentifier ?? "").hasPrefix($0) }
             }
         }
-        guard musicAppRunning == true else { musicPlaying = false; notifiedPlaying = nil; return }
-        if let n = notifiedPlaying { musicPlaying = n; return }
-        guard t > nextAudioScan else { return }
-        nextAudioScan = t + 30
-        musicPlaying = musicAppIsPlaying()
+        guard musicAppRunning == true else { musicPlaying = false; notifiedPlaying = nil; heard = nil; tellPlayer(); return }
+        if t > nextAudioScan { nextAudioScan = t + 6; heard = musicAppIsPlaying() }
+        let notified = notifiedPlaying == true          // Spotify and Apple Music say so themselves, instantly
+        musicPlaying = notified || heard != nil
+        if !notified, let h = heard { musicApp = h }
+        tellPlayer()
     }
 
-    /// Core Audio's list of processes playing sound (no permission needed), including app helpers.
-    private func musicAppIsPlaying() -> Bool {
-        guard #available(macOS 14.2, *) else { return false }
+    /// Lets the music player know when something it can't ask directly (another app, a browser) is playing.
+    private func tellPlayer() {
+        let other = heard.map { $0 != "Spotify" && $0 != "Music" } ?? false
+        player.otherPlaying = other && notifiedPlaying != true
+        player.otherName = other ? heard! : ""
+    }
+
+    /// Core Audio's list of processes playing sound (no permission needed), including app helpers: the name of the
+    /// music app (or browser without a video) that's playing, if any.
+    private func musicAppIsPlaying() -> String? {
+        guard #available(macOS 14.2, *) else { return nil }
         var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                               mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr, size > 0 else { return false }
+        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr, size > 0 else { return nil }
         var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return false }
+        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return nil }
+        let browsers = Array(DocBrowsers.all) + Self.otherBrowsers
         for id in ids {
             var running: UInt32 = 0
             var rsize = UInt32(MemoryLayout<UInt32>.size)
@@ -697,12 +713,14 @@ final class World: NSObject, NSPopoverDelegate {
                                                    mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
             guard AudioObjectGetPropertyData(id, &baddr, 0, nil, &bsize, &bundle) == noErr,
                   let b = bundle?.takeRetainedValue() as String? else { continue }
-            if Self.musicApps.contains(where: { b.hasPrefix($0) }) {
-                musicApp = b.contains("spotify") ? "Spotify" : "Music"
-                return true
+            let match = Self.musicApps.first { b.hasPrefix($0) } ?? (videoPlaying ? nil : browsers.first { b.hasPrefix($0) })
+            if let id = match {
+                if id == MusicPlayer.spotifyID { return "Spotify" }
+                if id == MusicPlayer.musicID { return "Music" }
+                return NSWorkspace.shared.runningApplications.first { ($0.bundleIdentifier ?? "").hasPrefix(id) }?.localizedName ?? "your player"
             }
         }
-        return false
+        return nil
     }
 
     func musicNotification(_ info: [AnyHashable: Any]?, app: String) {
@@ -714,9 +732,9 @@ final class World: NSObject, NSPopoverDelegate {
             let shown = sanitize(title)
             if !shown.isEmpty { pet.say(["♪ " + String(shown.prefix(22))], 3) }
         }
-        if app == "Spotify" && popover.isShown {
-            spotify.refresh()
-            if title != musicTitle { spotify.refreshUpNext() }
+        if popover.isShown || musicCard.visible {
+            player.refresh()
+            if title != musicTitle { player.refreshUpNext() }
         }
         musicPlaying = playing
         musicTitle = title
@@ -727,7 +745,7 @@ final class World: NSObject, NSPopoverDelegate {
 
     /// A single click on the pet while Spotify plays shows the mini player (after a beat, so a double-click can still open the agenda).
     func petClicked() {
-        guard musicPlaying && spotify.running else { return }
+        guard musicPlaying && player.running else { return }
         if musicCard.visible { musicCard.hide() } else { showMusicCard() }
     }
 
@@ -738,10 +756,10 @@ final class World: NSObject, NSPopoverDelegate {
 
     private func showMusicCard() {
         guard !hidden else { return }
-        spotify.refresh()
+        player.refresh()
         agendaCard.hide()
         let (tip, below) = pet.bubbleTip()
-        musicCard.show(MusicCardView(spotify: spotify, model: musicModel), tip: tip, below: below, until: t + 8)
+        musicCard.show(MusicCardView(player: player, model: musicModel), tip: tip, below: below, until: t + 8)
     }
 
     // MARK: Notification bell
@@ -1120,8 +1138,8 @@ final class World: NSObject, NSPopoverDelegate {
     }
 
     private func open(from view: NSView, rect: NSRect, edge: NSRectEdge) {
-        spotify.refresh()
-        spotify.refreshUpNext()
+        player.refresh()
+        player.refreshUpNext()
         NSApp.activate(ignoringOtherApps: true)
         ui.refresh()
         popover.show(relativeTo: rect, of: view, preferredEdge: edge)
@@ -1132,7 +1150,7 @@ final class World: NSObject, NSPopoverDelegate {
         let tm = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
             n += 1
-            if n % 5 == 0 || (self.spotify.playing && self.spotify.song != nil) { self.ui.refresh() }
+            if n % 5 == 0 || (self.player.playing && self.player.song != nil) { self.ui.refresh() }
         }
         tm.tolerance = 0.3
         RunLoop.main.add(tm, forMode: .common)

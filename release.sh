@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="${1:?usage: ./release.sh <version> \"what's new\"}"
+VERSION="${1:?usage: ./release.sh <version> <notes>}"
 NOTES="${2:-}"
 REPO="$(cat update-repo.txt)"
 KEY="$HOME/.pocketpet/update-key"

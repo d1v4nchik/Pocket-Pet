@@ -14,9 +14,9 @@
 - **Plays.** Feed it a fish, a bone or a cookie, throw it a toy, let a butterfly out, stroke it with the cursor, or pick it up and throw it.
 - **Seven pets** (a goose, four cats, a dalmatian and a bat) **and a closet** of hats, glasses and neckwear.
 - **Gravity on or off.** It walks the floor, or every edge of the screen. In fullscreen apps it climbs up and hangs out upside down along the top, out of your way (for fullscreen videos it sits in the black bar instead).
-- **Your day.** Double-click it for today's calendar, with rooms, plus a nudge before each event.
-- **Your music.** Click it while Spotify plays for controls; the Music tab shows what's up next and lets you queue songs.
-- **A notification bell.** It rings when something new arrives; click the bell to go straight there.
+- **Your day.** Double-click it for today's calendar, with rooms, plus a nudge before each event. Works with Google, Outlook, iCloud or any calendar on your Mac.
+- **Your music.** Click it while music plays for controls: song, artwork, shuffle and repeat for Spotify and Apple Music; play, pause and skip for any other player (YouTube Music, Tidal, VLC...). With Spotify you can also see what's up next and queue songs.
+- **A notification bell.** It rings when something new arrives, from any browser tab (Safari and every Chrome-based browser) or, with Accessibility, any app; click the bell to go straight there.
 - **Easy on your battery:** about half a percent of CPU while it rests.
 - **Updates itself.** New versions show up in the app; one click installs them.
 
@@ -57,11 +57,11 @@ All optional. macOS asks the first time a feature needs one.
 | Permission | What it's for |
 |---|---|
 | Control your browser | The bell reads tab titles like "(2) Discord" and opens that tab for you |
-| Control Spotify | Showing and controlling what's playing |
-| Accessibility | The bell ringing for every app's notifications (it only reads who a notification is from) |
+| Control Spotify or Music | Showing and controlling what's playing |
+| Accessibility | The bell ringing for every app's notifications (it only reads who a notification is from), and the play/pause and skip keys for other players |
 | Calendars | Reading your Mac's calendars, if you connect them that way |
 
-Nothing is collected or sent anywhere. The only things that go over the internet are your calendar and Spotify (to Google and Spotify, when you connect them) and the check for new versions here on GitHub.
+Nothing is collected or sent anywhere. The only things that go over the internet are your calendar (to Google or wherever its link points), Spotify (when you connect it), looking up album covers for Apple Music songs, and the check for new versions here on GitHub.
 
 ## Building it yourself
 

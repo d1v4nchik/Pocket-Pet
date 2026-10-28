@@ -186,30 +186,33 @@ struct RootView: View {
 
     // MARK: Music
 
-    /// What's playing in Spotify, with the three buttons everyone needs.
+    /// What's playing (Spotify, Apple Music, or any other player), with the three buttons everyone needs.
     @ViewBuilder
     func nowPlaying(_ world: World) -> some View {
-        let sp = world.spotify
-        if sp.running && sp.permission == AE.notAllowed {
+        let sp = world.player
+        if sp.running && sp.full && sp.permission == AE.notAllowed {
             HStack {
-                hint("Let Pocket Pet control Spotify to show what's playing")
+                hint("Let Pocket Pet control \(sp.appName) to show what's playing")
                 Spacer()
                 Button("Allow") { openAutomation() }.buttonStyle(Pill(strong: true))
             }
-        } else if sp.running, let s = sp.song {
+        } else if sp.running && (sp.song != nil || sp.app == .other) {
             HStack(spacing: 10) {
-                Art(url: s.art, size: 40)
+                Art(url: sp.song?.art, size: 40)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(s.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                    Text(s.artist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.12))
-                            Capsule().fill(Color.accentColor)
-                                .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
+                    Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(sp.song?.artist ?? (AXIsProcessTrusted() ? "Controlled with your media keys" : "Allow Accessibility in Settings to control it"))
+                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    if let s = sp.song {
+                        GeometryReader { g in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.12))
+                                Capsule().fill(Color.accentColor)
+                                    .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
+                            }
                         }
+                        .frame(height: 3)
                     }
-                    .frame(height: 3)
                 }
                 HStack(spacing: 0) {
                     control("backward.fill", 12) { sp.previous() }
@@ -235,18 +238,20 @@ struct RootView: View {
 
     @ViewBuilder
     func musicTab(_ world: World) -> some View {
-        let sp = world.spotify
+        let sp = world.player
         VStack(alignment: .leading, spacing: 10) {
             if !sp.running {
-                row("Spotify isn't open") {
-                    Button("Open Spotify") {
-                        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Spotify.bid) {
-                            NSWorkspace.shared.openApplication(at: url, configuration: .init())
+                row("Nothing's playing") {
+                    HStack(spacing: 5) {
+                        ForEach([("Spotify", MusicPlayer.spotifyID), ("Music", MusicPlayer.musicID)], id: \.1) { name, id in
+                            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+                                Button("Open \(name)") { NSWorkspace.shared.openApplication(at: url, configuration: .init()) }.buttonStyle(Pill())
+                            }
                         }
                     }
-                    .buttonStyle(Pill())
                 }
-            } else {
+                hint("Works with Spotify and Apple Music, and with any other player (YouTube Music, Tidal, VLC...) through your media keys.")
+            } else if sp.full {
                 HStack(spacing: 6) {
                     Button { sp.setShuffle(!sp.shuffle); m.refresh() } label: { Label("Shuffle", systemImage: "shuffle") }
                         .buttonStyle(Pill(strong: sp.shuffle))
@@ -254,13 +259,24 @@ struct RootView: View {
                         .buttonStyle(Pill(strong: sp.repeating))
                 }
             }
-            if sp.connected { queue(world) } else { spotifySteps(world) }
+            if sp.running && !sp.full && !AXIsProcessTrusted() {
+                HStack(alignment: .firstTextBaseline) {
+                    hint("To control \(sp.appName), allow Accessibility (it presses your media keys for you).")
+                    Spacer()
+                    Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill())
+                }
+            }
+            if sp.spotifyInstalled {
+                Divider().opacity(0.5)
+                Text("Spotify queue").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                if sp.connected { queue(world) } else { spotifySteps(world) }
+            }
         }
     }
 
     @ViewBuilder
     func queue(_ world: World) -> some View {
-        let sp = world.spotify
+        let sp = world.player
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Find a song to add", text: $m.songQuery, onCommit: { sp.search(m.songQuery) })
@@ -305,7 +321,7 @@ struct RootView: View {
 
     /// Connecting a Spotify account: a free developer app and its client ID (no secret).
     func spotifySteps(_ world: World) -> some View {
-        let sp = world.spotify
+        let sp = world.player
         return VStack(alignment: .leading, spacing: 6) {
             Text("See what's up next and add songs to your queue. Connect your Spotify account once, about 2 minutes:")
             HStack(alignment: .firstTextBaseline) {
@@ -315,11 +331,11 @@ struct RootView: View {
             }
             Text("2. Add this Redirect URI, tick Web API, save:")
             HStack {
-                Text(Spotify.redirect).font(.system(size: 10.5).monospaced()).foregroundStyle(.primary).textSelection(.enabled)
+                Text(MusicPlayer.redirect).font(.system(size: 10.5).monospaced()).foregroundStyle(.primary).textSelection(.enabled)
                 Spacer()
                 Button("Copy") {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(Spotify.redirect, forType: .string)
+                    NSPasteboard.general.setString(MusicPlayer.redirect, forType: .string)
                 }
                 .buttonStyle(Pill())
             }
@@ -426,8 +442,10 @@ struct RootView: View {
         ["none": "Nothing", "scarf": "Scarf", "bowtie": "Bow tie", "bell": "Bell collar", "bandana": "Bandana"][n.rawValue] ?? n.rawValue
     }
 
+    /// Three groups: the pet itself, what it connects to (each with a status and one button), and the app.
     func settingsTab(_ world: World) -> some View {
         VStack(alignment: .leading, spacing: 9) {
+            section("Pet")
             row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0) })) }
             row("Size") {
                 Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
@@ -446,21 +464,29 @@ struct RootView: View {
                           onCommit: { world.rename(m.draft); m.editing = false })
                     .textFieldStyle(.roundedBorder).frame(width: 130)
             }
-            row("Notification bell") { toggle(Binding(get: { world.bellOn }, set: { world.setBell($0); m.refresh() })) }
-            if world.bellOn && !AXIsProcessTrusted() {
-                HStack(alignment: .firstTextBaseline) {
-                    hint("Rings for new messages in browser tabs. To ring for any app's notifications, allow Accessibility.")
-                    Spacer()
-                    Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill())
+            row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
+
+            section("Connections")
+            calendar(world)
+            connection("music.note", "Music",
+                       world.player.running ? "Playing in \(world.player.appName)" : "Spotify, Apple Music or any player") {
+                if !AXIsProcessTrusted() { Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill()).help("Lets it control players other than Spotify and Apple Music") }
+                else { Text("Ready").foregroundStyle(.secondary) }
+            }
+            connection("bell", "Notification bell",
+                       !world.bellOn ? "Off" : AXIsProcessTrusted() ? "Every app and browser tab" : "Browser tabs only for now") {
+                HStack(spacing: 6) {
+                    if world.bellOn && !AXIsProcessTrusted() {
+                        Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill()).fixedSize().help("Lets the bell ring for every app's notifications")
+                    }
+                    toggle(Binding(get: { world.bellOn }, set: { world.setBell($0); m.refresh() }))
                 }
             }
-            row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
+
+            section("App")
             if #available(macOS 13.0, *) {
                 row("Open at login") { toggle(Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() })) }
             }
-            Divider()
-            calendar(world)
-            Divider()
             if world.updater.enabled { updatesRow(world) }
             HStack {
                 Button(world.hidden ? "Show pet" : "Hide pet") { world.toggleHidden(); m.refresh() }.buttonStyle(Pill())
@@ -486,6 +512,23 @@ struct RootView: View {
         if !u.status.isEmpty { hint(u.status) }
     }
 
+    func section(_ title: String) -> some View {
+        Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+    }
+
+    /// One connection: an icon, its name, where it stands, and one control.
+    func connection<C: View>(_ symbol: String, _ title: String, _ status: String, @ViewBuilder _ control: () -> C) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: symbol).font(.system(size: 13)).frame(width: 18).foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(status).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            control()
+        }
+    }
+
     func hint(_ s: String) -> some View {
         Text(s).font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
@@ -497,20 +540,16 @@ struct RootView: View {
     @ViewBuilder
     func calendar(_ world: World) -> some View {
         let mac = world.macCal, g = world.google, ics = world.ics
-        let linked = g.signedIn || ics.connected || !mac.googleAccounts.isEmpty
+        let linked = g.signedIn || ics.connected || !mac.accounts.isEmpty
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Google Calendar").font(.system(size: 12, weight: .semibold))
-                    Text(calendarStatus(world)).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer()
+            connection("calendar", "Calendar", calendarStatus(world)) {
                 if g.signedIn { Button("Sign out") { g.signOut(); m.refresh() }.buttonStyle(Pill()) }
                 else if ics.connected { Button("Disconnect") { ics.disconnect(); m.refresh() }.buttonStyle(Pill()) }
+                else if !linked { Button(m.calWay == 0 ? "Set up" : "Close") { m.calWay = m.calWay == 0 ? 1 : 0 }.buttonStyle(Pill(strong: m.calWay == 0)) }
             }
-            if !linked {
+            if !linked && m.calWay != 0 {
                 // three ways in, easiest first
-                HStack(spacing: 6) { way("Paste link", 1); way("Mac Calendar", 2); way("Sign in", 3) }
+                HStack(spacing: 6) { way("Paste a link", 1); way("This Mac", 2); way("Google sign-in", 3) }
                 switch m.calWay {
                 case 1: linkSteps(world)
                 case 2: macSteps(world)
@@ -530,18 +569,21 @@ struct RootView: View {
         let g = world.google, mac = world.macCal, ics = world.ics
         if g.signedIn { return g.email.isEmpty ? "Signed in" : g.email }
         if ics.connected { return "Connected with your private link" }
-        if !mac.googleAccounts.isEmpty { return mac.googleAccounts.joined(separator: ", ") }
-        return "Ask me what's coming up, get reminders"
+        if !mac.accounts.isEmpty { return "This Mac: " + mac.accounts.joined(separator: ", ") }
+        return "Google, Outlook, iCloud or Mac"
     }
 
-    /// No sign-in: Google Calendar's private iCal link.
+    /// No sign-in: any calendar's private iCal link (Google, Outlook, iCloud...).
     func linkSteps(_ world: World) -> some View {
         let ics = world.ics
         return VStack(alignment: .leading, spacing: 5) {
-            Text("No sign-in needed. In Google Calendar settings, click your calendar on the left, scroll to Integrate calendar and copy the Secret address in iCal format.")
+            Text("No sign-in needed: paste your calendar's private iCal link. Google: Settings › your calendar › Secret address in iCal format. Outlook: Settings › Shared calendars › Publish › ICS. iCloud: Calendar app › Share Calendar › Public Calendar.")
             HStack(spacing: 6) {
-                Button("Open settings") { NSWorkspace.shared.open(URL(string: "https://calendar.google.com/calendar/r/settings")!) }
-                    .buttonStyle(Pill())
+                Menu("Where?") {
+                    Button("Google Calendar settings") { NSWorkspace.shared.open(URL(string: "https://calendar.google.com/calendar/r/settings")!) }
+                    Button("Outlook calendar settings") { NSWorkspace.shared.open(URL(string: "https://outlook.live.com/calendar/0/options/calendar/SharedCalendars")!) }
+                }
+                .menuStyle(.borderlessButton).fixedSize()
                 TextField("Paste the link", text: $m.link).textFieldStyle(.roundedBorder).foregroundStyle(.primary)
                 Button(m.link.isEmpty ? "Paste" : "Connect") {
                     let link = m.link.isEmpty ? (NSPasteboard.general.string(forType: .string) ?? "") : m.link
@@ -558,14 +600,14 @@ struct RootView: View {
         .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Through macOS: add the Google account once in System Settings, read it with EventKit.
+    /// Through macOS: every calendar the Mac already has, read with EventKit.
     func macSteps(_ world: World) -> some View {
         let mac = world.macCal
         return VStack(alignment: .leading, spacing: 5) {
-            Text("Add your Google account to this Mac once (System Settings › Internet Accounts › Google, keep Calendars on). Your pet reads it from there.")
-            Button(mac.authorized ? "Open Internet Accounts" : "Allow & open settings") {
+            Text("Uses the calendars already on this Mac: iCloud, Outlook, Google and any account in System Settings › Internet Accounts.")
+            Button(mac.authorized ? "Add an account" : "Allow") {
                 if mac.authorized { MacCalendar.openInternetAccounts() }
-                else { mac.connect { ok in if ok && mac.googleAccounts.isEmpty { MacCalendar.openInternetAccounts() }; m.refresh() } }
+                else { mac.connect { ok in if ok && mac.accounts.isEmpty { MacCalendar.openInternetAccounts() }; m.refresh() } }
             }
             .buttonStyle(Pill(strong: true))
         }

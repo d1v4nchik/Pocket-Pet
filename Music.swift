@@ -1,48 +1,78 @@
-// Spotify in the menu. What's playing and the controls come straight from the Spotify app (no setup).
-// Up next and adding songs need your Spotify account, through Spotify's Web API (a free developer app, client ID only).
+// Music in the menu and on the pet. Spotify and Apple Music give the song, artwork and full controls straight from the
+// app (no setup); any other player (YouTube Music in a browser, Tidal, Deezer, VLC...) gets play/pause and skip through
+// the keyboard's media keys, which needs Accessibility. Up next and adding songs are Spotify-only and need your Spotify
+// account (Spotify's Web API, a free developer app, client ID only).
 
 import Cocoa
 import CryptoKit
 
 struct Song: Identifiable, Equatable {
-    let id: String          // spotify:track:…
+    let id: String          // spotify:track:…, or Apple Music's persistent id
     let name: String
     let artist: String
     var art: String?
     var duration = 0.0      // seconds
 }
 
-final class Spotify {
-    static let bid = "com.spotify.client"
+enum PlayerApp { case spotify, music, other }
+
+/// The keyboard's play/pause and skip keys: they control whatever is playing (posting them needs Accessibility).
+enum MediaKey {
+    static let playPause: Int32 = 16, next: Int32 = 17, previous: Int32 = 18
+
+    static func press(_ key: Int32) {
+        for down in [true, false] {
+            let flags = NSEvent.ModifierFlags(rawValue: down ? 0xa00 : 0xb00)
+            let data1 = Int((key << 16) | ((down ? 0xa : 0xb) << 8))
+            NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
+                               context: nil, subtype: 8, data1: data1, data2: -1)?.cgEvent?.post(tap: .cghidEventTap)
+        }
+    }
+}
+
+final class MusicPlayer {
+    static let spotifyID = "com.spotify.client", musicID = "com.apple.Music"
     static let port: UInt16 = 43117
     static let redirect = "http://127.0.0.1:43117/callback"
     static let scopes = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 
-    // MARK: From the app
+    // MARK: What's playing
 
+    private(set) var app: PlayerApp = .spotify
     private(set) var song: Song?
     private(set) var playing = false, shuffle = false, repeating = false
     private(set) var permission: OSStatus = noErr
     private var position = 0.0, positionAt = Date()
-    private var asked = false, pending = false
-    private let q = DispatchQueue(label: "honk.spotify", qos: .userInitiated)
+    private var asked = Set<String>(), pending = false
+    private var artCache: [String: String] = [:]
+    private let q = DispatchQueue(label: "pocketpet.music", qos: .userInitiated)
     var onChange: (() -> Void)?
 
-    /// Is Spotify open? Looked up at most once a second (the menu asks on every redraw).
-    var running: Bool {
-        if previewing { return true }
-        if Date().timeIntervalSince(runningAt) > 1 {
-            runningCache = !NSRunningApplication.runningApplications(withBundleIdentifier: Self.bid).isEmpty
-            runningAt = Date()
-        }
-        return runningCache
+    /// Set by World from what's actually making sound, for players that can't be asked directly.
+    var otherName = "", otherPlaying = false
+
+    var appName: String { app == .spotify ? "Spotify" : app == .music ? "Music" : (otherName.isEmpty ? "your player" : otherName) }
+    /// Song info, shuffle and repeat (Spotify and Apple Music); other players only get the three buttons.
+    var full: Bool { app != .other }
+    var bid: String { app == .music ? Self.musicID : Self.spotifyID }
+
+    var running: Bool { previewing || isRunning(Self.spotifyID) || isRunning(Self.musicID) || otherPlaying }
+    var spotifyInstalled: Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.spotifyID) != nil }
+
+    /// Looked up at most once a second per app (the menu asks on every redraw).
+    private func isRunning(_ id: String) -> Bool {
+        if let c = runningCache[id], Date().timeIntervalSince(c.at) < 1 { return c.on }
+        let on = !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty
+        runningCache[id] = (on, Date())
+        return on
     }
-    private var runningCache = false, runningAt = Date.distantPast
+    private var runningCache: [String: (on: Bool, at: Date)] = [:]
     private var previewing = false, previewConnected = false
 
     /// Sample data for the offscreen menu render (`PocketPet --panel out.png 2|20`).
     func preview(connected: Bool) {
         previewing = true; previewConnected = connected
+        app = .spotify
         song = Song(id: "spotify:track:x", name: "Espresso", artist: "Sabrina Carpenter", duration: 175)
         playing = true; shuffle = true; position = 70; positionAt = Date()
         upNext = [Song(id: "a", name: "Birds of a Feather", artist: "Billie Eilish"), Song(id: "b", name: "Good Luck, Babe!", artist: "Chappell Roan"),
@@ -50,72 +80,134 @@ final class Spotify {
     }
     var elapsed: Double { min(song?.duration ?? 0, playing ? position + Date().timeIntervalSince(positionAt) : position) }
 
-    /// Reads the player (track, state, position, shuffle, repeat). The first call asks macOS for permission.
+    private struct Reading {
+        var app: PlayerApp, permission: OSStatus, song: Song?, playing: Bool, position: Double, shuffle: Bool, repeating: Bool
+    }
+
+    /// Asks Spotify and Apple Music (whichever are open) what's playing; the one that's playing wins.
+    /// The first time per app, macOS asks you once whether Pocket Pet may control it.
     func refresh() {
-        guard running else {
-            if song != nil { song = nil; playing = false; changed() }
+        guard !previewing else { return }
+        let s = isRunning(Self.spotifyID), m = isRunning(Self.musicID)
+        guard s || m else {
+            if song != nil || app != .other || playing != otherPlaying { song = nil; app = .other; playing = otherPlaying; changed() }
             return
         }
         guard !pending else { return }
         pending = true
-        let ask = !asked
-        asked = true
+        let askS = s && !asked.contains(Self.spotifyID), askM = m && !asked.contains(Self.musicID)
+        if s { asked.insert(Self.spotifyID) }
+        if m { asked.insert(Self.musicID) }
         q.async { [self] in
-            let perm = AE.permission(Self.bid, ask: ask)
-            guard perm == noErr else {
-                DispatchQueue.main.async { self.pending = false; self.permission = perm; self.changed() }
-                return
-            }
-            let bid = Self.bid, trk = AE.prop("pTrk")
-            func get(_ c: String, track: Bool = true) -> NSAppleEventDescriptor? { AE.get(bid, AE.prop(c, of: track ? trk : .null())).0 }
-            let state = get("pPlS", track: false)?.enumCodeValue
-            let pos = get("pPos", track: false)?.doubleValue ?? 0
-            let shu = get("pShu", track: false)?.booleanValue ?? false
-            let rep = get("pRep", track: false)?.booleanValue ?? false
-            let id = get("ID  ")?.stringValue ?? ""
-            let s = id.isEmpty ? nil : Song(id: id, name: get("pnam")?.stringValue ?? "", artist: get("pArt")?.stringValue ?? "",
-                                           art: get("aUrl")?.stringValue, duration: Double(get("pDur")?.int32Value ?? 0) / 1000)
+            let rs = s ? Self.read(.spotify, ask: askS) : nil
+            let rm = m ? Self.read(.music, ask: askM) : nil
+            let pick = [rs, rm].compactMap { $0 }.first { $0.playing } ?? rs ?? rm
             DispatchQueue.main.async {
                 self.pending = false
-                self.permission = noErr
-                self.song = s
-                self.playing = state == AE.code("kPSP")
-                self.position = pos
+                guard let r = pick else { return }
+                if !r.playing && self.otherPlaying {          // something else is the one actually playing
+                    self.app = .other; self.song = nil; self.playing = true; self.changed(); return
+                }
+                self.app = r.app
+                self.permission = r.permission
+                var song = r.song
+                if let id = song?.id, song?.art == nil { song?.art = self.artCache[id] }
+                self.song = song
+                self.playing = r.playing
+                self.position = r.position
                 self.positionAt = Date()
-                self.shuffle = shu
-                self.repeating = rep
+                self.shuffle = r.shuffle
+                self.repeating = r.repeating
                 self.changed()
+                if r.app == .music, let s = song, s.art == nil { self.findArtwork(s) }
             }
         }
+    }
+
+    private static func read(_ app: PlayerApp, ask: Bool) -> Reading {
+        let bid = app == .music ? musicID : spotifyID
+        var r = Reading(app: app, permission: AE.permission(bid, ask: ask), song: nil, playing: false, position: 0, shuffle: false, repeating: false)
+        guard r.permission == noErr else { return r }
+        let trk = AE.prop("pTrk")
+        func get(_ c: String, track: Bool = true) -> NSAppleEventDescriptor? { AE.get(bid, AE.prop(c, of: track ? trk : .null())).0 }
+        r.playing = get("pPlS", track: false)?.enumCodeValue == AE.code("kPSP")
+        r.position = get("pPos", track: false)?.doubleValue ?? 0
+        if app == .spotify {
+            r.shuffle = get("pShu", track: false)?.booleanValue ?? false
+            r.repeating = get("pRep", track: false)?.booleanValue ?? false
+            let id = get("ID  ")?.stringValue ?? ""
+            if !id.isEmpty {
+                r.song = Song(id: id, name: get("pnam")?.stringValue ?? "", artist: get("pArt")?.stringValue ?? "",
+                              art: get("aUrl")?.stringValue, duration: Double(get("pDur")?.int32Value ?? 0) / 1000)
+            }
+        } else {
+            r.shuffle = get("pShE", track: false)?.booleanValue ?? false
+            r.repeating = (get("pRpt", track: false)?.enumCodeValue).map { $0 != AE.code("kRpO") } ?? false
+            let id = get("pPIS")?.stringValue ?? ""
+            if !id.isEmpty {
+                r.song = Song(id: id, name: get("pnam")?.stringValue ?? "", artist: get("pArt")?.stringValue ?? "",
+                              duration: get("pDur")?.doubleValue ?? 0)
+            }
+        }
+        return r
+    }
+
+    /// Apple Music doesn't hand out artwork links, so ask Apple's public song search for the cover.
+    private func findArtwork(_ s: Song) {
+        var c = URLComponents(string: "https://itunes.apple.com/search")!
+        c.queryItems = [URLQueryItem(name: "term", value: "\(s.artist) \(s.name)"), URLQueryItem(name: "entity", value: "song"),
+                        URLQueryItem(name: "limit", value: "1")]
+        guard let url = c.url else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            guard let art = ((json?["results"] as? [[String: Any]])?.first?["artworkUrl100"] as? String)?
+                .replacingOccurrences(of: "100x100", with: "300x300") else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.artCache[s.id] = art
+                if self.song?.id == s.id { self.song?.art = art; self.changed() }
+            }
+        }.resume()
     }
 
     func playPause() {
         playing.toggle()
         position = elapsed; positionAt = Date()
         changed()
-        command("PlPs")
+        command("PlPs", MediaKey.playPause)
     }
-    func next() { command("Next") }
-    func previous() { command("Prev") }
+    func next() { command("Next", MediaKey.next) }
+    func previous() { command("Prev", MediaKey.previous) }
 
     func setShuffle(_ on: Bool) {
+        guard full else { return }
         shuffle = on; changed()
-        q.async { AE.set(Self.bid, AE.prop("pShu"), NSAppleEventDescriptor(boolean: on)) }
+        let bid = self.bid, music = app == .music
+        q.async { AE.set(bid, AE.prop(music ? "pShE" : "pShu"), NSAppleEventDescriptor(boolean: on)) }
     }
 
     func setRepeat(_ on: Bool) {
+        guard full else { return }
         repeating = on; changed()
-        q.async { AE.set(Self.bid, AE.prop("pRep"), NSAppleEventDescriptor(boolean: on)) }
+        let bid = self.bid, music = app == .music
+        q.async {
+            AE.set(bid, AE.prop(music ? "pRpt" : "pRep"),
+                   music ? NSAppleEventDescriptor(enumCode: AE.code(on ? "kAll" : "kRpO")) : NSAppleEventDescriptor(boolean: on))
+        }
     }
 
     /// Plays a song right away (Spotify's own "play track").
     func play(_ s: Song) {
-        q.async { AE.send(Self.bid, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
+        q.async { AE.send(Self.spotifyID, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
         later(0.6) { self.refresh(); self.refreshUpNext() }
     }
 
-    private func command(_ id: String) {
-        q.async { AE.send(Self.bid, "spfy", id) }
+    private func command(_ id: String, _ key: Int32) {
+        switch app {
+        case .spotify: q.async { AE.send(Self.spotifyID, "spfy", id) }
+        case .music: q.async { AE.send(Self.musicID, "hook", id) }
+        case .other: MediaKey.press(key)
+        }
         later(0.4) { self.refresh(); self.refreshUpNext() }
     }
 

@@ -1,4 +1,4 @@
-// Glass cards that pop up by the pet: the agenda (double-click) and the music controls (click while Spotify plays).
+// Glass cards that pop up by the pet: the agenda (double-click) and the music controls (click while music plays).
 // The pixel speech bubble is too small for a whole school day or a song title, so these use plain readable text.
 
 import SwiftUI
@@ -137,22 +137,22 @@ private final class ClickHostingView<V: View>: NSHostingView<V> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// Mini player shown when you click the pet while Spotify is playing.
+/// Mini player shown when you click the pet while music plays.
 final class MusicCardModel: ObservableObject {
     @Published var tick = 0
 }
 
 struct MusicCardView: View {
-    let spotify: Spotify
+    let player: MusicPlayer
     @ObservedObject var model: MusicCardModel
 
     var body: some View {
-        let sp = spotify
+        let sp = player
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 11) {
                 Art(url: sp.song?.art, size: 46)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(sp.song?.name ?? "Spotify").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     Text(sp.song?.artist ?? "").font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -175,13 +175,13 @@ struct MusicCardView: View {
                 }
             }
             HStack(spacing: 0) {
-                button("shuffle", 12, on: sp.shuffle) { sp.setShuffle(!sp.shuffle) }
+                if sp.full { button("shuffle", 12, on: sp.shuffle) { sp.setShuffle(!sp.shuffle) } }
                 Spacer()
                 button("backward.fill", 14) { sp.previous() }
                 button(sp.playing ? "pause.fill" : "play.fill", 20) { sp.playPause() }
                 button("forward.fill", 14) { sp.next() }
                 Spacer()
-                button("repeat", 12, on: sp.repeating) { sp.setRepeat(!sp.repeating) }
+                if sp.full { button("repeat", 12, on: sp.repeating) { sp.setRepeat(!sp.repeating) } }
             }
         }
         .padding(14)
