@@ -1,0 +1,4 @@
+Pocket Pet.app/
+dist/
+*.iconset
+.DS_Store
