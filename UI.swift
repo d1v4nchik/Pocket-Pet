@@ -1,4 +1,4 @@
-// The control panel: black and white, glassy, minimal. Pet, snacks, a few actions, then Pets / Closet / Settings.
+// The control panel: glassy and minimal, following your Mac's appearance and accent color. Pet, snacks, a few actions, then Pets / Closet / Settings.
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -59,9 +59,9 @@ struct Tile: View {
             .frame(width: size, height: size)
             .foregroundStyle(.primary)
             .contentShape(Rectangle())
-            .background(shape.fill(Color.primary.opacity(on ? 0.16 : 0)))
+            .background(shape.fill(Color.accentColor.opacity(on ? 0.22 : 0)))
             .glass(size * 0.3, interactive: selected == nil)
-            .overlay(shape.strokeBorder(Color.primary.opacity(on ? 0.85 : 0), lineWidth: 1.5))
+            .overlay(shape.strokeBorder(Color.accentColor.opacity(on ? 0.9 : 0), lineWidth: 1.5))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -79,7 +79,8 @@ struct Meter: View {
             Pixel(img: icon).frame(width: 17, height: 17)
             HStack(spacing: 2) {
                 ForEach(0..<6, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.5).fill(Color.primary.opacity(i < lit ? (lit <= 1 ? 0.5 : 0.85) : 0.14))
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(i < lit ? AnyShapeStyle(Color.accentColor.opacity(lit <= 1 ? 0.55 : 1)) : AnyShapeStyle(Color.primary.opacity(0.14)))
                         .frame(width: 8, height: 8)
                 }
             }
@@ -97,9 +98,9 @@ struct Pill: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11.5, weight: .medium))
-            .foregroundStyle(strong ? Color(nsColor: .windowBackgroundColor) : Color.primary)
+            .foregroundStyle(strong ? Color.white : Color.primary)
             .padding(.horizontal, 11).padding(.vertical, 5)
-            .background(Capsule().fill(strong ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.primary.opacity(0.08))))
+            .background(Capsule().fill(strong ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.08))))
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
@@ -204,7 +205,7 @@ struct RootView: View {
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.12))
-                            Capsule().fill(Color.primary.opacity(0.7))
+                            Capsule().fill(Color.accentColor)
                                 .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
                         }
                     }
@@ -345,7 +346,7 @@ struct RootView: View {
                     VStack(spacing: 3) {
                         Text(title).font(.system(size: 12, weight: m.tab == i ? .semibold : .regular))
                             .foregroundStyle(m.tab == i ? .primary : .secondary)
-                        Capsule().fill(m.tab == i ? Color.primary : .clear).frame(height: 1.5)
+                        Capsule().fill(m.tab == i ? Color.accentColor : .clear).frame(height: 2)
                     }
                     .fixedSize()
                 }
@@ -490,7 +491,7 @@ struct RootView: View {
     }
 
     func toggle(_ b: Binding<Bool>) -> some View {
-        Toggle("", isOn: b).toggleStyle(.switch).controlSize(.small).tint(.primary)
+        Toggle("", isOn: b).toggleStyle(.switch).controlSize(.small)        // the system's own accent color
     }
 
     @ViewBuilder

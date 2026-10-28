@@ -164,7 +164,7 @@ struct MusicCardView: View {
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.12))
-                            Capsule().fill(Color.primary.opacity(0.75)).frame(width: dur > 0 ? g.size.width * min(1, at / dur) : 0)
+                            Capsule().fill(Color.accentColor).frame(width: dur > 0 ? g.size.width * min(1, at / dur) : 0)
                         }
                     }
                     .frame(height: 3)
