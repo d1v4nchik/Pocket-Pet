@@ -226,7 +226,9 @@ final class BannerWatcher {
         var obs: AXObserver?
         let callback: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
-            Unmanaged<BannerWatcher>.fromOpaque(refcon).takeUnretainedValue().changed()
+            let me = Unmanaged<BannerWatcher>.fromOpaque(refcon).takeUnretainedValue()
+            me.axWorks = true
+            me.changed()
         }
         guard AXObserverCreate(pid, callback, &obs) == .success, let obs else { return }
         let app = AXUIElementCreateApplication(pid)
@@ -237,10 +239,12 @@ final class BannerWatcher {
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
         observer = obs
         for b in banners() { seen[b.text] = Date() }       // whatever is already showing doesn't ring
-        // Some macOS versions reuse one window for every banner and send no Accessibility events, so the window
-        // server is asked too: a cheap list of Notification Center's on-screen windows, scanned only when it changes.
-        poll = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.checkWindows() }
-        poll?.tolerance = 0.5
+        // Some macOS versions reuse one window for every banner and send no Accessibility events, so until an event
+        // shows up the window server is asked too (Notification Center's on-screen windows, scanned only when they
+        // change). Once Accessibility events arrive, that check stops: nothing runs between notifications.
+        axWorks = false
+        poll = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.checkWindows() }
+        poll?.tolerance = 1
     }
 
     func stop() {
@@ -251,8 +255,10 @@ final class BannerWatcher {
 
     private var poll: Timer?
     private var lastWindows = ""
+    fileprivate var axWorks = false
 
     private func checkWindows() {
+        if axWorks { poll?.invalidate(); poll = nil; return }
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         let mine = list.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }
         let shape = mine.map { w -> String in

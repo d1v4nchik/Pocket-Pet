@@ -787,11 +787,19 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     for (i, w) in widths.enumerated() where top + i <= bb { c.hline(cx + w.0, cx + w.1, top + i, .body) }
     c.paint(.body, .belly) { x, y in x >= cx + 1 && y >= top + 3 && y <= bb - 1 }
 
-    if p.prop == .laptop { drawLaptop(&c, lx: cx + 7, g: g) }
+    if p.prop == .laptop { drawLaptop(&c, lx: cx + 6, g: g) }
     if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 7, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: cx + 6, y: top + 1) }
     if p.prop == .glass { drawGlass(&c, x: cx + 6, y: top + 2) }
-    parrotWing(&c, p.arm, cx: cx, top: top)
+    if p.prop == .laptop && (p.arm == .tap || p.arm == .forward) {
+        // typing: the near wing reaches down to the keys and taps them
+        parrotWing(&c, .rest, cx: cx, top: top)
+        let tip = (cx + 6, g - (p.arm == .tap ? 2 : 3))
+        c.thick(cx, top + 3, tip.0 - 1, tip.1, 2, .wing)
+        c.hline(tip.0 - 1, tip.0 + 1, tip.1 + 1, .wingDark)
+    } else {
+        parrotWing(&c, p.arm, cx: cx, top: top)
+    }
 
     // head, on a short neck; pecking and eating bring it down to the ground in front
     var hx = cx - 1 + max(-3, min(4, p.headDX)), ht = top - 5 + max(-3, min(10, p.headDY))
@@ -799,8 +807,12 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     c.thick(cx - 1, top + 1, hx + 1, ht + 3, 3, .body)
     c.spans(hx, ht, [(1, 4), (0, 5), (0, 5), (0, 5), (1, 4)], .mark)
     c.hline(hx + 1, hx + 2, ht + 3, .accent)                         // yellow cheek
-    for (dx, dy) in [(2, 1), (4, 1), (3, 0), (3, 2)] { c.set(hx + dx, ht + dy, .ring) }
-    profileEye(&c, p.eyes, hx + 3, ht + 1)
+    // a round, shiny eye like the other pets' (a lone dot in a white ring looked like it was staring)
+    switch p.eyes {
+    case .open, .wide, .up: c.rect(hx + 3, ht + 1, 2, 2, .eye); c.set(hx + 3, ht + 1, .eyeHi)
+    case .half: c.hline(hx + 3, hx + 4, ht + 2, .eye)
+    default: profileEye(&c, p.eyes, hx + 3, ht + 1)
+    }
     // hooked beak
     c.hline(hx + 6, hx + 7, ht + 1, .beak)
     c.hline(hx + 6, hx + 8, ht + 2, .beak)
@@ -809,7 +821,7 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     } else {
         c.set(hx + 8, ht + 3, .beak); c.set(hx + 6, ht + 3, .mouth); c.hline(hx + 6, hx + 7, ht + 4, .beakDark)
     }
-    if p.blush { c.set(hx + 2, ht + 3, .blush) }
+    if p.blush { c.hline(hx + 2, hx + 3, ht + 3, .blush) }
     return Anchors(headX: hx + 2, headTop: ht, headW: 6, eyes: [(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5))
 }
 

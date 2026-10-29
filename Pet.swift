@@ -1636,6 +1636,7 @@ final class Pet {
             case .goose: p.headDX = 2; p.headDY = 7 + (tapping ? 1 : 0)
             default: p.headDY = tapping ? 1 : 0; if family == .dog { p.mouth = .closed }
             }
+            if species == .parrot { p.blush = true; p.eyes = tapping ? .happy : .open }        // a happy little typist
             if t < celebrateUntil {
                 p.arm = isBird ? (flapFast ? .raised : .rest) : .raised
                 p.eyes = .happy; p.mouth = .open; p.headDY = 0

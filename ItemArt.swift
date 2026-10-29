@@ -178,7 +178,7 @@ func itemCanvas(_ kind: ItemKind, bites: Int, frame: Int, variant: Int = 0) -> C
 }
 
 /// Pixel icons for the menu's buttons, drawn like the snacks (outlined, shaded).
-enum Icon { case moon, sun, pin, heart, bolt, bell }
+enum Icon { case moon, sun, pin, heart, bolt, bell, roam, anchor, still }
 
 func iconCanvas(_ icon: Icon) -> Canvas {
     var c = Canvas(14, 14)
@@ -209,6 +209,15 @@ func iconCanvas(_ icon: Icon) -> Canvas {
     case .bell:
         c.sprite(2, 1, ["....BB....", "...BBBB...", "..BLBBBB..", "..BLBBBB..", "..BLBBBB..", ".BBLBBBBB.", ".BBBBBBBB.",
                         "BBBBBBBBBB", "DDDDDDDDDD", "....CC...."], ["B": .star, "L": .white, "D": .sunDark, "C": .handle])
+    case .roam:         // stay in place, off: a paw print, free to wander
+        c.sprite(1, 2, ["...XX.XX...", "...XX.XX...", ".XX.....XX.", ".XX.....XX.", "....XXX....", "...XXXXX...",
+                        "..XXXXXXX..", "..XXXXXXX..", "...XX.XX..."], ["X": .cookie])
+    case .anchor:       // stays put: an anchor
+        c.sprite(1, 1, ["....XXX....", "....X.X....", "....XXX....", "..XXXXXXX..", ".....X.....", ".....X.....",
+                        ".X...X...X.", ".XX..X..XX.", "..XXXXXXX..", "....XXX...."], ["X": .lapLight])
+    case .still:        // completely still: frozen, a snowflake
+        c.sprite(1, 1, [".....X.....", "...X.X.X...", "....XXX....", ".X..XXX..X.", "..X..X..X..", "XXXXXXXXXXX",
+                        "..X..X..X..", ".X..XXX..X.", "....XXX....", "...X.X.X...", ".....X....."], ["X": .zzz])
     case .heart:
         c.sprite(3, 4, [".HH.HH.", "HWHHHHH", "HHHHHHH", ".HHHHH.", "..HHH..", "...H..."], ["H": .heart, "W": .white])
     case .bolt:

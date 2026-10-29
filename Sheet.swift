@@ -34,7 +34,8 @@ func renderSheet(_ path: String, only: String? = nil) {
         add(sanitize(sp.title), sp) { _ in }
         add("WALK", sp) { $0.stance = .walk; $0.phase = 1.2 }
         add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }
-        add("TYPE", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .tap; $0.tailUp = false; if sp.isBird { $0.headDX = 2; $0.headDY = 7 } }
+        add("TYPE", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .tap; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 } else { $0.headDY = 1 } }
+        add("TYPE 2", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .forward; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 } }
         add("POPCORN", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.arm = sp.isBird ? .forward : .scoop; $0.eyes = .up; $0.tailUp = false }
         add("MUSIC", sp) { $0.stance = sp.isBird ? .stand : .sit; $0.phones = true; $0.eyes = .happy; $0.tailUp = false }
         add("CALENDAR", sp) { $0.stance = .sit; $0.prop = .calendar; $0.arm = .hold; $0.tailUp = false }
@@ -266,7 +267,7 @@ func renderIcons(_ path: String) {
     let items: [ItemKind] = [.fish, .bone, .cookie, .yarn, .ball, .butterfly]
     var cans = items.map { itemCanvas($0, bites: 0, frame: 0) }
     var pals = items.map { $0 == .butterfly ? makePalette(butterflyPalettes[1]) : basePalette }
-    for ic in [Icon.moon, .sun, .pin] { cans.append(iconCanvas(ic)); pals.append(basePalette) }
+    for ic in [Icon.moon, .sun, .pin, .roam, .anchor, .still] { cans.append(iconCanvas(ic)); pals.append(basePalette) }
     let k = 10, cell = 16 * k
     let W = cell * cans.count, H = cell * 2
     let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0,

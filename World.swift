@@ -494,7 +494,7 @@ final class World: NSObject, NSPopoverDelegate {
 
     func tick() {
         let n = now()
-        let dt = min(n - lastTick, 0.2)
+        let dt = min(n - lastTick, 0.3)        // covers the slowest frame rate (4 a second while asleep), not long pauses
         lastTick = n
         t += dt
         sense()
@@ -1166,6 +1166,13 @@ final class World: NSObject, NSPopoverDelegate {
         volumes[category] = v
         synth.setVolumes(volumes)
         save()
+    }
+
+    /// The menu's stay-in-place button: roams, then stays put, then holds completely still, then roams again.
+    func cycleStillness() {
+        stillness = (stillness + 1) % 3
+        save()
+        pet.say([["FREE TO ROAM!"], ["I'LL STAY HERE"], ["FREEZE!"]][stillness], 1.8)
     }
 
     // MARK: Advanced settings window

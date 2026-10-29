@@ -154,10 +154,16 @@ struct RootView: View {
     var body: some View {
         if let world = m.world, let pet = world.pet {
             VStack(alignment: .leading, spacing: 14) {
-                header(world, pet)
-                actions(world, pet)
-                nowPlaying(world)
-                tabs
+                // the Music tab is all music: no needs, snacks or toys, so the queue gets the room
+                if m.tab != 2 {
+                    header(world, pet)
+                    actions(world, pet)
+                    nowPlaying(world)
+                    tabs
+                } else {
+                    tabs
+                    nowPlaying(world)
+                }
                 Group {
                     switch m.tab {
                     case 0: petsTab(world, pet)
@@ -218,13 +224,19 @@ struct RootView: View {
         // Petting, the calendar and gravity live on the pet itself (click, double-click) and in Settings.
         // These buttons close the menu so you see the pet act on them right away.
         let foods: [(ItemKind, String)] = [(.fish, "Fish"), (.bone, "Bone"), (.cookie, "Cookie")]
-        return GlassGroup { HStack(spacing: 7) {
-            ForEach(foods, id: \.1) { f in Tile(img: world.itemImage(f.0), help: "Feed: \(f.1)") { world.fromMenu { world.feed(f.0) } } }
-            Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy") { world.fromMenu { world.throwBall() } }
-            Tile(img: world.itemImage(.butterfly), help: "Let a butterfly out") { world.fromMenu { world.releaseButterfly() } }
-            Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap") { world.fromMenu { pet.toggleNap() } }
+        // eight buttons, sized to fit the menu's width
+        return GlassGroup { HStack(spacing: 5) {
+            ForEach(foods, id: \.1) { f in Tile(img: world.itemImage(f.0), help: "Feed: \(f.1)", size: 31) { world.fromMenu { world.feed(f.0) } } }
+            Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy", size: 31) { world.fromMenu { world.throwBall() } }
+            Tile(img: world.itemImage(.butterfly), help: "Let a butterfly out", size: 31) { world.fromMenu { world.releaseButterfly() } }
+            Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap", size: 31) { world.fromMenu { pet.toggleNap() } }
             Tile(img: world.iconImage(.pin), help: pet.following ? "Stop following" : "Come here: follows your cursor (press again to stop)",
-                 selected: pet.following ? true : nil) { world.fromMenu { pet.comeHere() } }
+                 selected: pet.following ? true : nil, size: 31) { world.fromMenu { pet.comeHere() } }
+            // stay in place, in three steps: roams, stays put (still grooms), completely still
+            Tile(img: world.iconImage([Icon.roam, .anchor, .still][world.stillness]),
+                 help: ["Roams around. Click: stay put", "Stays put but still grooms. Click: hold completely still",
+                        "Holds completely still. Click: roam again"][world.stillness],
+                 selected: world.stillness > 0 ? true : nil, size: 31) { world.cycleStillness(); m.refresh() }
         } }
     }
 
@@ -353,7 +365,7 @@ struct RootView: View {
             if sp.upNext.isEmpty {
                 hint(sp.running ? "Nothing queued" : "Play something in Spotify to see what's next")
             }
-            // a short box, so the menu stays small: scroll for the rest of the queue
+            // a box that scrolls, so the menu keeps its size however long the queue is
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(Array(sp.upNext.enumerated()), id: \.offset) { i, s in
@@ -361,7 +373,7 @@ struct RootView: View {
                     }
                 }
             }
-            .frame(maxHeight: 112)
+            .frame(maxHeight: 210)
         }
         Button("Disconnect Spotify account") { sp.disconnect(); m.refresh() }
             .buttonStyle(.plain).font(.system(size: 10.5)).foregroundStyle(.secondary)

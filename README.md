@@ -24,9 +24,11 @@ screen with you and reacts to what you do.
 - It **keeps you company**: types along when you type, grabs popcorn when a video plays and puts on headphones when
   music is on.
 - It **stays out of the way**: in fullscreen apps it climbs to the top edge and hangs out upside down; for fullscreen
-  videos it sits in the black bar instead. Share your screen in a call and it asks whether to hide.
-- It **looks after you**: it holds up a glass of water every so often (tap "I drank some" and it sips along and fills
-  your glass for the day), nudges you before every calendar event, and rings a little bell when a message arrives.
+  videos it sits in the black bar instead. Share your screen in a call and it asks whether to hide. Want it to stay in one
+  spot? One button makes it stay put (still grooming) or hold completely still.
+- It **looks after you**: it holds up a glass of water every so often and keeps a chart of your glasses, reminds you of
+  your own habits (stretching, vitamins, a walk...), nudges you before every calendar event, and rings a little bell
+  when a message arrives.
 
 ## The Pets
 
@@ -61,7 +63,9 @@ Dress any of them up from the **Closet**: hats (including a Santa hat), glasses 
 | Music controls and search | Click the pet while music plays |
 | Pet it | Stroke it with the cursor |
 | Throw it | Drag it and let go |
-| Follow your cursor for a minute | The map pin in the menu |
+| Follow your cursor | The map pin in the menu (press it again to stop) |
+| Stay in one spot | The paw button in the menu: roams, stays put, completely still |
+| Everything else | Menu › Settings › **Advanced Settings…** |
 
 ## Installing
 
@@ -78,7 +82,7 @@ Dress any of them up from the **Closet**: hats (including a Santa hat), glasses 
 
 ## Connections
 
-All optional, all in the menu's **Settings › Connections**.
+All optional, all in **Advanced Settings › Connections** (menu › Settings).
 
 | | Works with | Needs |
 |---|---|---|
