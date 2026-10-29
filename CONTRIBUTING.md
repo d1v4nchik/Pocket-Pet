@@ -46,7 +46,7 @@ B="Pocket Pet.app/Contents/MacOS/PocketPet"
 "$B" --sheet out.png bat     # every pose of one pet
 "$B" --icons out.png         # snacks, toys and menu icons
 "$B" --panel out.png 1       # the menu (0 Pets, 1 Closet, 2 Music, 3 Settings)
-"$B" --card out.png          # the calendar and music cards
+"$B" --screens out.png       # the menu and cards, as in the README
 ```
 
 ## Making changes

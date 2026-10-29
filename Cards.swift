@@ -192,7 +192,11 @@ struct MusicCardView: View {
             // search and play, right here
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
-                TextField("Search and play", text: $query, onCommit: { sp.quickSearch(query) }).textFieldStyle(.plain).font(.system(size: 12))
+                if plainGlass {         // pictures for the README: a text field can't be drawn offscreen
+                    Text("Search and play").font(.system(size: 12)).foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    TextField("Search and play", text: $query, onCommit: { sp.quickSearch(query) }).textFieldStyle(.plain).font(.system(size: 12))
+                }
                 if !query.isEmpty {
                     Button { query = ""; sp.clearResults() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                         .buttonStyle(.plain)
@@ -237,7 +241,7 @@ struct MusicCardView: View {
             }
         }
         .padding(14)
-        .frame(width: 250)
+        .frame(width: 262)
         .card()
     }
 

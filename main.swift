@@ -52,6 +52,10 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
 }
+if let i = args.firstIndex(of: "--screens"), i + 1 < args.count {
+    MainActor.assumeIsolated { renderScreens(args[i + 1]) }
+    exit(0)
+}
 if let i = args.firstIndex(of: "--card"), i + 1 < args.count {
     MainActor.assumeIsolated { renderCard(args[i + 1]) }
     exit(0)

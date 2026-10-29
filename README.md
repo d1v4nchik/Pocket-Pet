@@ -49,10 +49,7 @@ Dress any of them up from the **Closet**: hats (including a Santa hat), glasses 
 4. Pick it up and throw it. With gravity on, cats float down on a little umbrella; the bat just flies back up.
 5. Leave it alone for a while and it settles down for a nap.
 
-<p>
-  <img src="docs/menu-panel.png" width="300" alt="The menu: needs, snacks, toys and every pet">
-  <img src="docs/cards-panel.png" width="300" alt="The calendar, music and water cards">
-</p>
+![The menu with every pet, today's calendar, the music card and a water break](docs/screens.png)
 
 ## Controls
 

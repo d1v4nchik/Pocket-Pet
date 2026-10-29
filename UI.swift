@@ -783,6 +783,9 @@ final class ArtCache {
         }.resume()
     }
 
+    /// A picture under a made-up address (the README's sample cover).
+    static func put(_ url: String, _ img: NSImage) { cache.setObject(img, forKey: url as NSString) }
+
     static func prefetch(_ urls: [String?]) { for u in urls.compactMap({ $0 }) where cached(u) == nil { load(u) { _ in } } }
 }
 

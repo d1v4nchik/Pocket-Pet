@@ -74,7 +74,7 @@ final class MusicPlayer {
     func preview(connected: Bool) {
         previewing = true; previewConnected = connected
         app = .spotify
-        song = Song(id: "spotify:track:x", name: "Espresso", artist: "Sabrina Carpenter", duration: 175)
+        song = Song(id: "spotify:track:x", name: "Espresso", artist: "Sabrina Carpenter", art: "preview:cover", duration: 175)
         playing = true; shuffle = true; position = 70; positionAt = Date()
         upNext = [Song(id: "a", name: "Birds of a Feather", artist: "Billie Eilish"), Song(id: "b", name: "Good Luck, Babe!", artist: "Chappell Roan"),
                   Song(id: "c", name: "Apple", artist: "Charli xcx")]

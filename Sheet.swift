@@ -190,6 +190,57 @@ func renderSheet(_ path: String, only: String? = nil) {
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
 }
 
+/// The README's screenshots in one picture, on the pets lineup's cream: the menu, today's calendar, the music card and
+/// a water break, side by side. `PocketPet --screens out.png`
+@MainActor func renderScreens(_ path: String) {
+    plainGlass = true
+    let w = World()
+    w.hidden = true
+    w.load()
+    w.ui.world = w
+    w.ui.tab = 0
+    w.hidden = false
+    w.pet.mode = .idle
+    w.pet.renderCanvas()
+    // a made-up cover for the sample song: a warm gradient, nothing real
+    let cover = NSImage(size: NSSize(width: 120, height: 120), flipped: false) { r in
+        let g = NSGradient(colors: [NSColor(red: 1, green: 0.62, blue: 0.45, alpha: 1), NSColor(red: 0.93, green: 0.36, blue: 0.56, alpha: 1)])
+        g?.draw(in: r, angle: -60)
+        return true
+    }
+    ArtCache.put("preview:cover", cover)
+    let d = Calendar.current.startOfDay(for: Date())
+    func ev(_ h: Double, _ m: Double, _ title: String, _ place: String? = nil, all: Bool = false) -> CalEvent {
+        let s = d.addingTimeInterval(h * 3600 + m * 60)
+        var e = CalEvent(id: title, title: title, start: s, end: s.addingTimeInterval(all ? 86400 : 3600), allDay: all)
+        e.location = place
+        return e
+    }
+    // made-up sample day
+    let events = [ev(0, 0, "Mom's birthday", all: true), ev(9, 15, "Team standup", "Room 3"), ev(10, 45, "Coffee with Alex"),
+                  ev(11, 30, "Design review", "https://meet.google.com/abc"), ev(12, 30, "Yoga", "Studio, 2nd floor"),
+                  ev(15, 0, "Study session"), ev(18, 0, "Dentist")]
+    let sp = MusicPlayer()
+    sp.preview(connected: false)
+    let lift = { (v: AnyView) in v.shadow(color: .black.opacity(0.10), radius: 14, y: 5) }
+    let menu = RootView(m: w.ui).background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white))
+    let view = HStack(alignment: .top, spacing: 26) {
+        lift(AnyView(menu))
+        lift(AnyView(AgendaView(agenda: Agenda.build(events, now: d.addingTimeInterval(9.75 * 3600)))))
+        VStack(spacing: 22) {
+            lift(AnyView(MusicCardView(player: sp, model: MusicCardModel())))
+            lift(AnyView(WaterView(title: "Water break?", glasses: 3, goal: 8)))
+        }
+    }
+    .padding(34)
+    .background(Color(red: 0xfd / 255, green: 0xf3 / 255, blue: 0xe3 / 255))
+    .environment(\.colorScheme, .light)
+    let r = ImageRenderer(content: view)
+    r.scale = 2
+    guard let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return }
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+}
+
 /// Every snack, toy and button icon, in color and in the menu's gray: `PocketPet --icons out.png`
 func renderIcons(_ path: String) {
     let items: [ItemKind] = [.fish, .bone, .cookie, .yarn, .ball, .butterfly]
