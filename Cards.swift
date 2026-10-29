@@ -383,12 +383,27 @@ final class FloatingCard {
         let p = panel ?? makePanel()
         panel = p
         p.contentView = host
+        p.setFrame(frame(for: size, tip: tip, below: below), display: true)
+        lastTip = (tip, below)
+        if !p.isVisible { p.alphaValue = 0; p.orderFrontRegardless() }
+        NSAnimationContext.runAnimationGroup { $0.duration = 0.18; p.animator().alphaValue = 1 }
+    }
+
+    /// Keeps the card next to the pet while it moves (or you drag it): only moves the window, nothing is redrawn.
+    func follow(tip: CGPoint, below: Bool) {
+        guard let p = panel, p.isVisible, let last = lastTip,
+              abs(last.tip.x - tip.x) >= 1 || abs(last.tip.y - tip.y) >= 1 || last.below != below else { return }
+        lastTip = (tip, below)
+        p.setFrameOrigin(frame(for: p.frame.size, tip: tip, below: below).origin)
+    }
+
+    private var lastTip: (tip: CGPoint, below: Bool)?
+
+    private func frame(for size: CGSize, tip: CGPoint, below: Bool) -> NSRect {
         let vf = (NSScreen.screens.first { $0.frame.contains(tip) } ?? NSScreen.main)?.visibleFrame ?? .zero
         let x = clamp(tip.x - size.width / 2, vf.minX + 8, max(vf.minX + 8, vf.maxX - size.width - 8))
         let y = clamp(below ? tip.y - size.height - 10 : tip.y + 10, vf.minY + 8, max(vf.minY + 8, vf.maxY - size.height - 8))
-        p.setFrame(NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height), display: true)
-        if !p.isVisible { p.alphaValue = 0; p.orderFrontRegardless() }
-        NSAnimationContext.runAnimationGroup { $0.duration = 0.18; p.animator().alphaValue = 1 }
+        return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 
     func hide() {

@@ -482,6 +482,12 @@ final class World: NSObject, NSPopoverDelegate {
         if waterCard.visible && (t > waterCard.until || hidden) { snoozeWater(quietly: true) }
         if bellCard.visible && (t > bellCard.until || hidden) { dismissBell() }
         if toast.visible && t > toast.until { toast.hide() }
+        // cards stay by the pet when it walks off or you drag it somewhere
+        let cards = [bellCard, agendaCard, musicCard, waterCard, askCard, toast]
+        if cards.contains(where: \.visible) {
+            let (tip, below) = pet.bubbleTip()
+            for c in cards where c.visible { c.follow(tip: tip, below: below) }
+        }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
         if updater.enabled && t > nextUpdateCheck { nextUpdateCheck = t + 6 * 3600; updater.check { [weak self] in self?.announceUpdate() } }
         if fullscreenApp != lastFullscreenApp { lastFullscreenApp = fullscreenApp; pet.environmentChanged() }
