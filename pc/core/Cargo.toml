@@ -1,0 +1,8 @@
+[package]
+name = "pocket-pet-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pocket Pet's pixel art and pet brain, shared by every platform"
+
+[dependencies]

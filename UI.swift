@@ -793,6 +793,7 @@ struct Art: View {
     let url: String?
     let size: CGFloat
     @State private var loaded: (url: String, image: NSImage)?
+    @State private var retried: String?          // a cover that failed to download gets one more go
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
@@ -814,7 +815,11 @@ struct Art: View {
     private func load() {
         guard let url, ArtCache.cached(url) == nil, loaded?.url != url else { return }
         ArtCache.load(url) { img in
-            guard let img, url == self.url else { return }
+            guard let img else {
+                if retried != url { retried = url; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { load() } }
+                return
+            }
+            guard url == self.url else { return }
             withAnimation(.easeOut(duration: 0.2)) { loaded = (url, img) }
         }
     }

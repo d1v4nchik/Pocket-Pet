@@ -44,7 +44,8 @@ final class MusicPlayer {
     private(set) var permission: OSStatus = noErr
     private var position = 0.0, positionAt = Date()
     private var asked = Set<String>(), pending = false
-    private var artCache: [String: String] = [:]
+    private var artCache: [String: String] = [:]     // song id -> cover address, once found
+    private var artTries: [String: Int] = [:]
     private let q = DispatchQueue(label: "pocketpet.music", qos: .userInitiated)
     var onChange: (() -> Void)?
 
@@ -112,6 +113,8 @@ final class MusicPlayer {
                 self.app = r.app
                 self.permission = r.permission
                 var song = r.song
+                let reported = song?.art.flatMap { $0.isEmpty ? nil : Self.https($0) }      // "" is no cover at all
+                song?.art = reported
                 if let id = song?.id, song?.art == nil { song?.art = self.artCache[id] }
                 self.song = song
                 ArtCache.prefetch([song?.art])
@@ -121,7 +124,7 @@ final class MusicPlayer {
                 self.shuffle = r.shuffle
                 self.repeating = r.repeating
                 self.changed()
-                if r.app == .music, let s = song, s.art == nil { self.findArtwork(s) }
+                if let s = song, s.art == nil { self.coverMissing(s) }
             }
         }
     }
@@ -154,21 +157,56 @@ final class MusicPlayer {
         return r
     }
 
-    /// Apple Music doesn't hand out artwork links, so ask Apple's public song search for the cover.
+    private static func https(_ u: String) -> String { u.hasPrefix("http://") ? "https://" + u.dropFirst(7) : u }
+
+    /// No cover yet. Spotify often reports a new song a moment before its cover, so it's asked again shortly; after
+    /// that the cover is looked up: through your Spotify account if it's connected, otherwise Apple's song search
+    /// (Apple Music never hands out cover links, so it goes straight there).
+    private func coverMissing(_ s: Song) {
+        let tries = artTries[s.id, default: 0]
+        guard tries < 4 else { return }
+        artTries[s.id] = tries + 1
+        if artTries.count > 300 { artTries.removeAll() }
+        if s.id.hasPrefix("spotify:") && tries < 2 {
+            later(tries == 0 ? 1.2 : 3) { [weak self] in if self?.song?.id == s.id { self?.refresh() } }
+        } else if s.id.hasPrefix("spotify:track:") && connected {
+            spotifyCover(s)
+        } else {
+            findArtwork(s)
+        }
+    }
+
+    private func spotifyCover(_ s: Song) {
+        let id = String(s.id.dropFirst("spotify:track:".count)).filter { $0.isLetter || $0.isNumber }
+        api("GET", "/v1/tracks/\(id)") { [weak self] json, _ in
+            guard let self else { return }
+            let images = (json?["album"] as? [String: Any])?["images"] as? [[String: Any]] ?? []
+            // largest first: the 300 px one is plenty
+            if let url = (images.dropFirst().first ?? images.first)?["url"] as? String { self.setCover(url, for: s) } else { self.findArtwork(s) }
+        }
+    }
+
+    private func setCover(_ url: String, for s: Song) {
+        artCache[s.id] = url
+        if artCache.count > 300 { artCache.removeAll() }
+        ArtCache.prefetch([url])
+        if song?.id == s.id { song?.art = url; changed() }
+    }
+
+    /// Apple's public song search: title without "(feat. ...)" or trailing dots, and the first artist.
     private func findArtwork(_ s: Song) {
+        let name = s.name.replacingOccurrences(of: #"\s*[\(\[].*?[\)\]]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
+        let artist = s.artist.components(separatedBy: ",").first ?? s.artist
         var c = URLComponents(string: "https://itunes.apple.com/search")!
-        c.queryItems = [URLQueryItem(name: "term", value: "\(s.artist) \(s.name)"), URLQueryItem(name: "entity", value: "song"),
+        c.queryItems = [URLQueryItem(name: "term", value: "\(artist) \(name)"), URLQueryItem(name: "entity", value: "song"),
                         URLQueryItem(name: "limit", value: "1")]
         guard let url = c.url else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             guard let art = ((json?["results"] as? [[String: Any]])?.first?["artworkUrl100"] as? String)?
                 .replacingOccurrences(of: "100x100", with: "300x300") else { return }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.artCache[s.id] = art
-                if self.song?.id == s.id { self.song?.art = art; self.changed() }
-            }
+            DispatchQueue.main.async { self?.setCover(art, for: s) }
         }.resume()
     }
 
