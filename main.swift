@@ -173,6 +173,19 @@ if let i = args.firstIndex(of: "--simfs"), i + 1 < args.count {   // simulates e
     }
     exit(0)
 }
+if let i = args.firstIndex(of: "--bellprobe"), i + 1 < args.count {
+    // runs the real banner watcher for 15 s and writes down what it saw
+    var out = "trusted=\(AXIsProcessTrusted())\n"
+    let w = BannerWatcher()
+    let t0 = Date()
+    w.log = { out += String(format: "%5.1f ", Date().timeIntervalSince(t0)) + $0 + "\n" }
+    w.onNotice = { n in out += "NOTICE \(n.title) | \(n.detail) | app \(n.appBundle ?? "-")\n" }
+    w.start()
+    out += "running=\(w.running)\n"
+    RunLoop.main.run(until: Date().addingTimeInterval(15))
+    try? out.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+    exit(0)
+}
 if let i = args.firstIndex(of: "--ncprobe"), i + 1 < args.count {   // what Notification Center looks like through Accessibility
     var out = "trusted=\(AXIsProcessTrusted())\n"
     func attr(_ e: AXUIElement, _ a: String) -> CFTypeRef? { var v: CFTypeRef?; return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil }

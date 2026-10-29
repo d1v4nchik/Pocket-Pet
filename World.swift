@@ -356,8 +356,10 @@ final class World: NSObject, NSPopoverDelegate {
     func start() {
         load()
         agendaCard.onClose = { [weak self] in self?.pet.agendaUntil = 0 }   // tapping the card ends the calendar pose too
+        bellCard.onClose = { [weak self] in self?.bellLog("card hidden: \(Thread.callStackSymbols.dropFirst().prefix(4).map { $0.split(separator: " ").dropFirst(3).prefix(1).joined() }.joined(separator: " <- "))") }
         tabWatcher.onNotice = { [weak self] n in self?.ring(n) }
         bannerWatcher.onNotice = { [weak self] n in self?.ring(n) }
+        if defaults.bool(forKey: "bellLog") { bannerWatcher.log = { [weak self] in self?.bellLog($0) } }
         tabWatcher.onRead = { [weak self] id in if self?.notice?.tabID == id { self?.dismissBell() } }   // read it in the browser already
         updater.onChange = { [weak self] in if self?.popover.isShown == true { self?.ui.refresh() } }
         player.onChange = { [weak self] in
@@ -814,7 +816,18 @@ final class World: NSObject, NSPopoverDelegate {
 
     // MARK: Notification bell
 
+    /// Troubleshooting: `defaults write local.honk.desktopgoose bellLog -bool true` writes what the bell sees
+    /// to ~/Library/Logs/Pocket Pet bell.log (only who sent what, never the messages).
+    func bellLog(_ line: String) {
+        guard defaults.bool(forKey: "bellLog") else { return }
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Pocket Pet bell.log")
+        let text = "\(Date()) t=\(Int(t)) \(line)\n"
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+        else { try? text.write(to: url, atomically: true, encoding: .utf8) }
+    }
+
     func ring(_ n: Notice) {
+        bellLog("ring \(n.title) | \(n.detail) bellOn=\(bellOn) hidden=\(hidden)")
         guard bellOn, !hidden else { return }
         // a browser message can arrive twice (a tab count and a banner): one ring is enough
         if let last = notice, t - lastRing < 6, last.title == n.title || (last.site != nil && last.site == n.site) { return }
@@ -827,6 +840,7 @@ final class World: NSObject, NSPopoverDelegate {
 
     private func showBell() {
         guard let n = notice, !hidden else { return }
+        bellLog("show card \(n.title)")
         let (tip, below) = pet.bubbleTip()
         bellCard.show(BellView(bell: iconImage(.bell), title: n.title, detail: n.detail, open: { [weak self] in self?.openNotice() }),
                       tip: tip, below: below, until: t + 120)
@@ -845,6 +859,7 @@ final class World: NSObject, NSPopoverDelegate {
     }
 
     func dismissBell() {
+        if notice != nil { bellLog("dismiss \(Thread.callStackSymbols.dropFirst().prefix(3).joined(separator: " <- "))") }
         notice = nil
         bellCard.hide()
     }

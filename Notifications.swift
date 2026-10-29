@@ -208,6 +208,7 @@ enum DocBrowsers {
 
 final class BannerWatcher {
     var onNotice: ((Notice) -> Void)?
+    var log: ((String) -> Void)?             // `PocketPet --bellprobe out.txt` shows what it sees
     private var observer: AXObserver?
     private var pid: pid_t = 0
     private var seen: [String: Date] = [:]
@@ -258,10 +259,11 @@ final class BannerWatcher {
             let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
             return "\(w[kCGWindowNumber as String] ?? 0):\(Int(b["Height"] ?? 0))"
         }.joined(separator: ",")
-        if shape != lastWindows { lastWindows = shape; if !mine.isEmpty { changed() } }
+        if shape != lastWindows { log?("windows: \(shape)"); lastWindows = shape; if !mine.isEmpty { changed() } }
     }
 
     private func changed() {
+        log?("changed")
         guard !pending else { return }
         pending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -269,22 +271,28 @@ final class BannerWatcher {
             self.pending = false
             let now = Date()
             self.seen = self.seen.filter { now.timeIntervalSince($0.value) < 180 }
-            for b in self.banners() where self.seen[b.text] == nil {
+            let found = self.banners()
+            self.log?("scan: \(found.map(\.text))")
+            for b in found where self.seen[b.text] == nil {
                 self.seen[b.text] = now
                 self.onNotice?(self.notice(b.text, b.element))
             }
         }
     }
 
-    /// Who sent it: a running app whose name appears in the banner; a website if one is mentioned.
+    /// Who sent it. macOS labels a banner "App, Title, Message", so the app is the first part (matched to a running app
+    /// when there is one, to open it later); a website mentioned in a browser's banner wins as the name.
     private func notice(_ text: String, _ el: AXUIElement) -> Notice {
         let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && $0.localizedName != nil }
-        let app = apps.filter { text.localizedCaseInsensitiveContains($0.localizedName!) }.max { $0.localizedName!.count < $1.localizedName!.count }
+        let sender = text.components(separatedBy: ", ").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        let app = apps.first { $0.localizedName!.caseInsensitiveCompare(sender) == .orderedSame }
+            ?? apps.filter { text.localizedCaseInsensitiveContains($0.localizedName!) }.max { $0.localizedName!.count < $1.localizedName!.count }
         var site: String?
         if let r = text.range(of: #"[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|app|gg|co|me|tv|ai|dev|cy|uk|edu)\b"#, options: [.regularExpression, .caseInsensitive]) {
             site = String(text[r]).lowercased()
         }
-        let name = site.flatMap { s in s.split(separator: ".").dropLast().last.map { $0.prefix(1).uppercased() + $0.dropFirst() } } ?? app?.localizedName ?? "Notification"
+        let fallback = !sender.isEmpty && sender.count <= 24 ? sender : "Notification"
+        let name = site.flatMap { s in s.split(separator: ".").dropLast().last.map { $0.prefix(1).uppercased() + $0.dropFirst() } } ?? app?.localizedName ?? fallback
         return Notice(title: name, detail: site != nil ? "via \(app?.localizedName ?? "your browser")" : "New notification",
                       appBundle: app?.bundleIdentifier, site: site, banner: el)
     }
