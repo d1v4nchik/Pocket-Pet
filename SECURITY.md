@@ -24,7 +24,9 @@ before any public writeup.
 ## How Pocket Pet Handles Your Data
 
 - **Updates** are signed with an Ed25519 key that never leaves the maintainer's Mac. Pocket Pet checks the signature of
-  every download against the public key built into the app, and refuses anything that doesn't match.
+  every download against the public key built into the app, and refuses anything that doesn't match. The app is also
+  code-signed with a certificate that stays on the maintainer's Mac, which is how macOS knows an update is the same app
+  and keeps its permissions.
 - **Sign-ins** (Google Calendar, Spotify) and your private calendar link are stored in a file only your macOS account can
   read (`~/Library/Application Support/Pocket Pet`), encrypted with a key unique to your Mac, so a copied file is useless
   elsewhere. (They used to live in the Keychain, which asked again after every update.) They are only ever sent to

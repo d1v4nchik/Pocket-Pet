@@ -14,9 +14,15 @@ enum Eyes { case open, closed, happy, wide, angry, dizzy, sad, up, half }
 enum Mouth { case closed, open, tongue }
 /// Wing (birds) or front paw (four-legged pets).
 enum Arm { case rest, raised, forward, tap, down, scoop, toMouth, lick, hold }
-enum Prop { case none, laptop, popcorn, calendar }
+enum Prop { case none, laptop, popcorn, calendar, glass }
 
-enum Hat: String, Codable, CaseIterable { case none, bow, flower, crown, topHat, party, beanie, witch, cowboy, santa }
+enum Hat: String, Codable, CaseIterable {
+    case none, bow, flower, crown, topHat, party, witch, cowboy, santa
+    /// Hats that were retired (the beanie) come off instead of losing the whole outfit.
+    init(from decoder: Decoder) throws { self = Hat(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .none }
+    /// Wide hats sit on top of the head, so ears tip out to the sides underneath them.
+    var wide: Bool { [.topHat, .witch, .cowboy, .santa].contains(self) }
+}
 enum Glasses: String, Codable, CaseIterable { case none, shades, hearts, round }
 enum Neckwear: String, Codable, CaseIterable { case none, scarf, bowtie, bell, bandana }
 
@@ -61,8 +67,8 @@ struct Anchors {
 
 enum Family { case bird, cat, dog, bat }
 enum Ears { case cat, flop }
-enum Tail { case cat, fluffy, thin }
-enum Coat { case tabby, points, tuxedo, calico, spots }
+enum Tail { case cat, fluffy, thin, brush }       // brush: a fox's big tail with a white tip
+enum Coat { case tabby, points, tabbyWhite, calico, spots, fox }
 
 struct QuadSpec {
     var ears: Ears
@@ -74,7 +80,7 @@ struct QuadSpec {
 }
 
 enum Species: String, CaseIterable, Identifiable, Codable {
-    case goose, ginger, siamese, tuxedo, calico, dalmatian, bat
+    case goose, parrot, ginger, siamese, tuxedo, calico, dalmatian, fox, bat
     var id: String { rawValue }
 
     init(from decoder: Decoder) throws {
@@ -91,8 +97,8 @@ enum Species: String, CaseIterable, Identifiable, Codable {
 
     var family: Family {
         switch self {
-        case .goose: return .bird
-        case .dalmatian: return .dog
+        case .goose, .parrot: return .bird
+        case .dalmatian, .fox: return .dog
         case .bat: return .bat
         default: return .cat
         }
@@ -102,11 +108,13 @@ enum Species: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .goose: return "Goose"
+        case .parrot: return "Parrot"
         case .ginger: return "Ginger cat"
         case .siamese: return "Siamese"
-        case .tuxedo: return "Tuxedo cat"
+        case .tuxedo: return "Tabby cat"        // the case keeps its old name so saved pets carry over
         case .calico: return "Calico"
         case .dalmatian: return "Dalmatian"
+        case .fox: return "Fox"
         case .bat: return "Bat"
         }
     }
@@ -114,16 +122,20 @@ enum Species: String, CaseIterable, Identifiable, Codable {
     var defaultName: String {
         switch self {
         case .goose: return "Honk"
+        case .parrot: return "Kiwi"
         case .ginger: return "Mango"
         case .siamese: return "Mochi"
-        case .tuxedo: return "Oreo"
+        case .tuxedo: return "Pebble"
         case .calico: return "Patches"
         case .dalmatian: return "Domino"
+        case .fox: return "Ember"
         case .bat: return "Luna"
         }
     }
 
     var vocal: (word: String, sound: String) {
+        if self == .parrot { return (["HELLO!", "SQUAWK!", "HI THERE", "PRETTY BIRD"].randomElement()!, "squawk") }
+        if self == .fox { return ("YIP", "woof") }
         switch family {
         case .bird: return ("HONK", "honk")
         case .dog: return ("WOOF", "woof")
@@ -134,6 +146,8 @@ enum Species: String, CaseIterable, Identifiable, Codable {
 
     /// Snacks this pet loves the most.
     var favorites: Set<ItemKind> {
+        if self == .parrot { return [.berry, .cookie] }
+        if self == .fox { return [.berry, .sausage, .bone] }
         switch family {
         case .bird: return [.bread, .cookie, .berry]
         case .cat: return [.fish]
@@ -145,7 +159,8 @@ enum Species: String, CaseIterable, Identifiable, Codable {
     var quad: QuadSpec {
         switch self {
         case .siamese: return QuadSpec(ears: .cat, tail: .fluffy, coat: .points)
-        case .tuxedo: return QuadSpec(ears: .cat, tail: .cat, coat: .tuxedo)
+        case .tuxedo: return QuadSpec(ears: .cat, tail: .cat, coat: .tabbyWhite)
+        case .fox: return QuadSpec(ears: .cat, tail: .brush, coat: .fox, half: 9, legH: 4, bodyH: 6)
         case .calico: return QuadSpec(ears: .cat, tail: .cat, coat: .calico)
         case .dalmatian: return QuadSpec(ears: .flop, tail: .thin, coat: .spots, half: 9, legH: 5, bodyH: 6)
         default: return QuadSpec(ears: .cat, tail: .cat, coat: .tabby)
@@ -161,9 +176,16 @@ enum Species: String, CaseIterable, Identifiable, Codable {
         case .siamese:
             return [.body: 0xf6eee2, .bodyShade: 0xe0d4c4, .mark: 0x6f5c58, .belly: 0xfffaf2, .eye: 0x5fa0e6,
                     .nose: 0x5a4846, .inner: 0x8f7a76]
-        case .tuxedo:
-            return [.body: 0x3f3a4a, .bodyShade: 0x2f2b38, .mark: 0x3f3a4a, .belly: 0xfbf8f3, .eye: 0xf5d35a,
-                    .nose: 0xff9db4, .inner: 0xd28c9a, .outline: 0x1c1922]
+        case .tuxedo:       // a grey tabby with a cream blaze, chest and toes
+            return [.body: 0x7e7168, .bodyShade: 0x6c6058, .mark: 0x5d5047, .belly: 0xd8d1b5, .eye: 0x392c24,
+                    .nose: 0xe0889a, .inner: 0xd8d1b5, .mouth: 0xc9677a, .tongue: 0xe0889a, .outline: 0x392c24, .whisker: 0x392c24]
+        case .fox:
+            return [.body: 0xfd921e, .bodyShade: 0xe27c12, .mark: 0xfd921e, .mark2: 0x5b5257, .belly: 0xffffff,
+                    .eye: 0x2b2738, .nose: 0x2b2738, .inner: 0xffffff]
+        case .parrot:       // green, with a red head, yellow cheeks and blue flight feathers
+            return [.body: 0x5cc24c, .bodyShade: 0x46a33c, .belly: 0xa9df63, .mark: 0xea4a3f, .accent: 0xffd447,
+                    .wing: 0x4cb047, .wingDark: 0x2f6fd6, .beak: 0xf2e6cc, .beakDark: 0x3a3340, .feet: 0x8d929c,
+                    .ring: 0xffffff, .speculum: 0xea4a3f]
         case .calico:
             return [.body: 0xffffff, .bodyShade: 0xdfe0e8, .mark: 0xf4a24a, .mark2: 0x3b3645, .belly: 0xffffff]
         case .dalmatian:
@@ -203,6 +225,11 @@ func drawCalendar(_ c: inout Canvas, x: Int, y: Int) {
     c.set(x + 1, y - 1, .lapDark); c.set(x + 5, y - 1, .lapDark)
     c.hline(x + 1, x + 5, y + 3, .lapLight)
     c.hline(x + 1, x + 4, y + 5, .lapLight)
+}
+
+/// A glass of water, held up for the water reminder.
+func drawGlass(_ c: inout Canvas, x: Int, y: Int) {
+    c.sprite(x, y, ["G...G", "GLLLG", "GWwWG", "GWwWG", "GWWWG", ".GGG."], ["G": .glassEdge, "L": .waterLight, "W": .water, "w": .white])
 }
 
 func drawUmbrella(_ c: inout Canvas, ux: Int, top: Int, handleTo: (Int, Int)) {
@@ -285,6 +312,7 @@ private func drawGoose(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .laptop { drawLaptop(&c, lx: cx + 9, g: g) }
     if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 9, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: cx + 8, y: r0 + 1) }
+    if p.prop == .glass { drawGlass(&c, x: cx + 9, y: r0 + 2) }
     birdWing(&c, p.arm, cx: cx, r0: r0)
 
     let hx = cx + 3 + p.headDX
@@ -308,8 +336,9 @@ private func drawGoose(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
 
 private func sock(_ q: QuadSpec) -> Col {
     switch q.coat {
-    case .tuxedo: return .belly
+    case .tabbyWhite: return .belly
     case .points: return .mark
+    case .fox: return .mark2
     default: return .body
     }
 }
@@ -322,13 +351,22 @@ private func quadHead(_ c: inout Canvas, _ sp: Species, _ hx: Int, _ ht: Int, _ 
     let leftEar: Col = q.coat == .calico ? .mark2 : earCol
     let rightEar: Col = q.coat == .calico ? .mark : earCol
     if q.ears == .cat {
-        if p.earsFlat {
+        if p.outfit.hat.wide && !p.earsFlat {
+            // under a wide hat the ears tip out to the sides, so the hat sits on the head instead of on the ears
+            c.hline(hx - 1, hx, ht, leftEar); c.set(hx - 2, ht - 1, leftEar); c.set(hx - 1, ht - 1, leftEar)
+            c.hline(hx + 8, hx + 9, ht, rightEar); c.set(hx + 10, ht - 1, rightEar); c.set(hx + 9, ht - 1, rightEar)
+            c.set(hx - 1, ht, .inner); c.set(hx + 9, ht, .inner)
+        } else if p.earsFlat {
             c.hline(hx - 2, hx + 1, ht + 1, leftEar); c.set(hx - 2, ht + 2, leftEar)
             c.hline(hx + 7, hx + 10, ht + 1, rightEar); c.set(hx + 10, ht + 2, rightEar)
         } else {
             c.set(hx + 1, ht - 3, leftEar); c.hline(hx + 1, hx + 2, ht - 2, leftEar); c.hline(hx + 1, hx + 3, ht - 1, leftEar)
             c.set(hx + 7, ht - 3, rightEar); c.hline(hx + 6, hx + 7, ht - 2, rightEar); c.hline(hx + 5, hx + 7, ht - 1, rightEar)
             c.set(hx + 2, ht - 1, .inner); c.set(hx + 6, ht - 1, .inner)
+            if q.coat == .fox {        // dark ear tips
+                c.set(hx + 1, ht - 3, .mark2); c.hline(hx + 1, hx + 2, ht - 2, .mark2)
+                c.set(hx + 7, ht - 3, .mark2); c.hline(hx + 6, hx + 7, ht - 2, .mark2)
+            }
         }
     }
     let shape: [(Int, Int)] = dog
@@ -342,8 +380,14 @@ private func quadHead(_ c: inout Canvas, _ sp: Species, _ hx: Int, _ ht: Int, _ 
         c.set(hx, ht + 3, .mark); c.set(hx + 8, ht + 3, .mark)
     case .points:
         c.ellipse(Double(hx) + 4, Double(ht) + 3.6, 3.2, 2.4, .mark)
-    case .tuxedo:
-        c.rect(hx + 2, ht + 4, 5, 3, .belly); c.set(hx + 4, ht + 3, .belly); c.hline(hx + 3, hx + 5, ht + 6, .belly)
+    case .tabbyWhite:
+        // like the reference cat: forehead stripes, a cream blaze down the nose, whiskers out to the sides
+        for x in [hx + 3, hx + 5] { c.set(x, ht, .mark); c.set(x, ht + 1, .mark) }
+        c.set(hx, ht + 3, .mark); c.set(hx + 8, ht + 3, .mark)
+        c.set(hx + 4, ht + 2, .belly); c.set(hx + 4, ht + 3, .belly)
+        for y in [ht + 2, ht + 4] { c.hline(hx - 2, hx - 1, y, .whisker); c.hline(hx + 9, hx + 10, y, .whisker) }
+    case .fox:
+        break
     case .calico:
         c.rect(hx, ht, 3, 2, .mark2); c.set(hx, ht + 2, .mark2)
         c.hline(hx + 6, hx + 8, ht, .mark)
@@ -359,6 +403,8 @@ private func quadHead(_ c: inout Canvas, _ sp: Species, _ hx: Int, _ ht: Int, _ 
     // face
     let L = hx + 1, R = hx + 6, ey = ht + 2
     switch p.eyes {
+    case .open where q.coat == .tabbyWhite:
+        c.rect(L + 1, ey, 1, 2, .eye); c.rect(R, ey, 1, 2, .eye)       // narrow, like the reference
     case .open:
         c.rect(L, ey, 2, 2, .eye); c.rect(R, ey, 2, 2, .eye)
         c.set(L, ey, .eyeHi); c.set(R, ey, .eyeHi)
@@ -384,13 +430,14 @@ private func quadHead(_ c: inout Canvas, _ sp: Species, _ hx: Int, _ ht: Int, _ 
     case .dizzy:
         for (dx, dy) in [(0, 0), (2, 0), (1, 1), (0, 2), (2, 2)] { c.set(L - 1 + dx, ey - 1 + dy, .eye); c.set(R - 1 + dx, ey - 1 + dy, .eye) }
     }
-    if q.coat != .tuxedo && q.coat != .points { c.rect(hx + 2, ht + 4, 5, 2, .belly) }
+    let fox = q.coat == .fox
+    if q.coat != .points { c.rect(hx + 2, ht + 4, 5, fox ? 3 : 2, .belly) }
     c.set(hx + 4, ht + 4, .nose)
-    if dog { c.set(hx + 3, ht + 4, .nose); c.set(hx + 5, ht + 4, .nose) }
+    if dog && !fox { c.set(hx + 3, ht + 4, .nose); c.set(hx + 5, ht + 4, .nose) }
     let my = ht + 5
     switch p.mouth {
     case .closed:
-        c.set(hx + 3, my, .bodyShade); c.set(hx + 5, my, .bodyShade)
+        if !fox { c.set(hx + 3, my, .bodyShade); c.set(hx + 5, my, .bodyShade) }
     case .open:
         c.hline(hx + 3, hx + 5, my, .mouth); c.set(hx + 4, my + 1, .mouth)
     case .tongue:
@@ -420,8 +467,10 @@ private func sideCoat(_ c: inout Canvas, _ q: QuadSpec, _ x0: Int, _ x1: Int, _ 
     default:
         break
     }
-    if q.coat == .tuxedo {
-        c.patch(.belly) { x, y in inBody(x, y) && (y >= rb - 1 || (x >= x1 - 3 && y >= r0 + 2)) }
+    if q.coat == .tabbyWhite || q.coat == .fox {
+        if q.coat == .tabbyWhite { for x in stride(from: x0 + 3, through: x1 - 4, by: 3) { c.paint(.body, .mark) { xx, y in xx == x && y >= r0 && y <= r0 + 2 } } }
+        // white chest and belly
+        c.patch(.belly) { x, y in inBody(x, y) && ((y == rb && x >= x0 + 2 && x <= x1 - 1) || (x >= x1 - 2 && y >= r0 + 2)) }
     } else {
         c.paint(.body, .belly) { x, y in (y == rb && x >= x0 + 3 && x <= x1 - 3) || (y == rb - 1 && x >= x0 + 5 && x <= x1 - 5) }
     }
@@ -438,7 +487,17 @@ private func sideTail(_ c: inout Canvas, _ q: QuadSpec, bx: Int, by: Int, _ p: P
         c.polyline([(bx, by), (bx - 3, by - 3), (bx - 3 + sw2, by - 7), (bx - 2 + sw, by - 10)], 3, .mark)
     case .thin:
         c.polyline([(bx, by), (bx - 3, by - 2), (bx - 5 + sw, by - 5)], 2, .body)
+    case .brush:
+        let pts = p.tailUp ? [(bx, by), (bx - 4, by - 2), (bx - 6 + sw2, by - 6), (bx - 5 + sw, by - 9)]
+                           : [(bx, by + 1), (bx - 4, by + 3), (bx - 8 + sw2, by + 4)]
+        c.polyline(pts, 3, .body)
+        whiteTip(&c, pts.last!)
     }
+}
+
+/// The white tip of a fox's tail, around the last point of its line (drawn 3 cells thick to the right and down).
+private func whiteTip(_ c: inout Canvas, _ end: (Int, Int)) {
+    c.paint(.body, .belly) { x, y in x >= end.0 - 1 && x <= end.0 + 3 && y >= end.1 - 1 && y <= end.1 + 2 }
 }
 
 private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
@@ -465,6 +524,7 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
             let far = i == 1 || i == 2
             c.rect(lx, rb, 2, g - lift - rb + 1, far ? .bodyShade : .body)
             c.hline(lx, lx + 1, g - lift, far && sk == .body ? .bodyShade : sk)
+            if q.coat == .fox { c.rect(lx, g - lift - 2, 2, 2, .mark2) }
         }
         var rows: [(Int, Int)] = [(2, -3), (1, -1)]
         for _ in 0..<(q.bodyH - 3) { rows.append((0, 0)) }
@@ -478,11 +538,15 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
 
     case .sit:
         let top = g - 13 + p.bob
-        let wrap = (q.tail == .cat || q.tail == .fluffy) && !p.tailUp
+        let wrap = (q.tail == .cat || q.tail == .fluffy || q.tail == .brush) && !p.tailUp
         if !wrap {
             switch q.tail {
             case .cat, .fluffy:
                 c.polyline([(cx - 7, g - 3), (cx - 10, g - 7), (cx - 10 + Int(sin(p.tail - 0.8) * 1.4), g - 11), (cx - 9 + Int(sin(p.tail) * 2), g - 14)], q.tail == .fluffy ? 3 : 2, q.tail == .fluffy ? .mark : .body)
+            case .brush:
+                let end = (cx - 10 + Int(sin(p.tail) * 2), g - 13)
+                c.polyline([(cx - 7, g - 3), (cx - 11, g - 6), (cx - 12 + Int(sin(p.tail - 0.8) * 1.4), g - 10), end], 3, .body)
+                whiteTip(&c, end)
             case .thin:
                 c.polyline([(cx - 6, g - 1), (cx - 10, g), (cx - 13 + Int(sin(p.tail) * 2), g)], 2, .body)
             }
@@ -496,8 +560,8 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         c.hline(cx + 1, cx + 4, g, sk)
         c.hline(cx - 8, cx - 5, g, sk)
         switch q.coat {
-        case .tuxedo: c.rect(cx + 1, top + 2, 3, 6, .belly)
-        case .tabby: c.rect(cx + 1, top + 3, 2, 4, .belly)
+        case .fox: c.rect(cx + 1, top + 2, 3, 6, .belly)
+        case .tabby, .tabbyWhite: c.rect(cx + 1, top + 3, 2, q.coat == .tabbyWhite ? 6 : 4, .belly)
         case .calico:
             c.patch(.mark) { x, y in x <= cx - 4 && y >= g - 7 && y <= g - 3 }
             c.patch(.mark2) { x, y in x >= cx - 3 && x <= cx && y >= top + 1 && y <= top + 3 }
@@ -506,8 +570,12 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         case .points:
             break
         }
-        if q.coat == .tabby { for y in [top + 4, top + 7] { c.hline(cx - 4, cx - 2, y, .mark) } }
-        if wrap {
+        if q.coat == .tabby || q.coat == .tabbyWhite { for y in [top + 4, top + 7] { c.hline(cx - 4, cx - 2, y, .mark) } }
+        if wrap && q.tail == .brush {
+            // the big tail curls round the front paws, white tip last
+            c.thick(cx - 10, g - 1, cx + 4, g - 1, 2, .body)
+            whiteTip(&c, (cx + 3, g - 1))
+        } else if wrap {
             c.thick(cx - 9, g, cx + 5, g, 1, q.tail == .fluffy ? .mark : .body)
             c.rect(cx + 5, g - (sin(p.tail) > 0 ? 2 : 1), 1, 2, q.tail == .fluffy ? .mark : .body)
         }
@@ -529,7 +597,10 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
 
     case .lie:
         let x0 = cx - q.half, x1 = cx + 5
-        if q.tail == .cat || q.tail == .fluffy {
+        if q.tail == .brush {
+            c.thick(x0 - 6, g - 1, x0 + 3, g - 1, 2, .body)
+            whiteTip(&c, (x0 - 7, g - 1))
+        } else if q.tail == .cat || q.tail == .fluffy {
             c.hline(x0 - 3, x0 + 4, g, q.tail == .fluffy ? .mark : .body)
             c.rect(x0 - 3, g - 2 + (sin(p.tail) > 0 ? 0 : 1), 1, 2, q.tail == .fluffy ? .mark : .body)
         } else {
@@ -546,6 +617,9 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
             c.set(cx + 6, g - 1, .bodyShade)
             hx = cx + p.headDX; ht = g - 12 + p.headDY
         }
+
+    case .curl where q.coat == .fox:
+        return drawSleepingFox(&c, p, cx: cx)
 
     case .curl:
         c.spans(cx, g - 6, [(-6, 4), (-8, 6), (-9, 7), (-9, 7), (-9, 7), (-9, 7), (-8, 6)], .body)
@@ -600,6 +674,7 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         default: break
         }
         if p.prop == .calendar { drawCalendar(&c, x: cx + 3, y: g - 14) }
+        if p.prop == .glass { drawGlass(&c, x: p.arm == .toMouth ? hx + 5 : cx + 4, y: p.arm == .toMouth ? ht + 4 : g - 13) }
         if let to {
             c.thick(sh.0, sh.1, to.0, to.1, 2, .body)
             c.set(to.0, to.1, sk == .body ? .belly : sk)
@@ -622,6 +697,9 @@ private func drawQuadFront(_ c: inout Canvas, _ sp: Species, _ q: QuadSpec, _ p:
     case .cat: c.polyline([(cx + 2, bb - 2), (cx + 6, bb - 4), (cx + 7 + sw, bb - 9)], 2, .body)
     case .fluffy: c.polyline([(cx + 2, bb - 2), (cx + 6, bb - 4), (cx + 7 + sw, bb - 9)], 3, .mark)
     case .thin: c.polyline([(cx + 2, bb - 1), (cx + 6, bb + 1), (cx + 8 + sw, bb - 1)], 2, .body)
+    case .brush:
+        c.polyline([(cx + 2, bb - 2), (cx + 6, bb - 4), (cx + 7 + sw, bb - 9)], 3, .body)
+        whiteTip(&c, (cx + 7 + sw, bb - 9))
     }
     let k = s > 0 ? 1 : 0
     c.rect(cx - 3, bb, 2, 2 + k, .body); c.hline(cx - 3, cx - 2, bb + 1 + k, sk)
@@ -646,13 +724,101 @@ private func drawQuadFront(_ c: inout Canvas, _ sp: Species, _ q: QuadSpec, _ p:
     return quadAnchors(hx, ht)
 }
 
+// MARK: - Fox asleep
+
+/// The fox asleep, drawn from its reference picture at the pets' pixel size: head down on the left with closed
+/// eyes and a white muzzle, body behind it, the big tail curled round with its white tip, grey paws tucked under.
+/// O fur, W white, G grey, K the lines inside the outline (the outline itself is added like every pet's).
+private let foxAsleep = [
+    "..G.....G...OOOO.....",
+    ".WG.....GWKOOOOOOOKO.",
+    ".WOOOOOOOWKOOOOOOOKO.",
+    ".OOOOOOOOOKOOOOOOOKOO",
+    ".OKKOWOKKOKOOOOOOOKOW",
+    "OOOOWKWOOOKOOOOOOGKWW",
+    "OOOOWWWOOOKOOG.......",
+]
+
+private func drawSleepingFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let ox = cx - 10, oy = c.h - 2 - (foxAsleep.count - 1)
+    c.sprite(ox, oy, foxAsleep, ["O": .body, "W": .belly, "G": .mark2, "K": .outline])
+    if ![.closed, .half, .happy].contains(p.eyes) {          // waking up: eyes open
+        for ex in [ox + 2, ox + 7] { c.rect(ex, oy + 3, 2, 2, .eye); c.set(ex, oy + 3, .eyeHi) }
+    }
+    if p.blush { c.set(ox + 1, oy + 5, .blush); c.set(ox + 9, oy + 5, .blush) }
+    return Anchors(headX: ox + 5, headTop: oy + 2, headW: 9, eyes: [(ox + 2, oy + 4), (ox + 7, oy + 4)], profile: false, neck: (ox + 5, oy + 6))
+}
+
+// MARK: - Parrot
+
+private func parrotWing(_ c: inout Canvas, _ arm: Arm, cx: Int, top: Int) {
+    switch arm {
+    case .raised:
+        c.region(cx - 1, top - 7, [(-6, -4), (-7, -2), (-7, -1), (-6, 0), (-5, 1), (-4, 1), (-3, 1), (-2, 1), (-1, 1)], fill: .wing, edge: .wingDark)
+    case .down:
+        c.region(cx - 1, top + 3, [(-1, 1), (-2, 1), (-3, 1), (-4, 0), (-5, -1), (-6, -2), (-7, -3), (-7, -5)], fill: .wing, edge: .wingDark)
+    case .forward, .scoop, .toMouth, .hold, .tap:
+        c.region(cx, top + 3, [(-2, 1), (-2, 2), (-2, 3), (-1, 4), (0, 4)], fill: .wing, edge: .wingDark)
+    default:        // folded along its side, the tips over the tail
+        c.region(cx, top + 2, [(-3, 0), (-4, 1), (-4, 1), (-4, 1), (-4, 1), (-5, 0), (-5, -1), (-6, -2), (-6, -3)], fill: .wing, edge: .wingDark)
+    }
+}
+
+/// A parrot, side view facing right: upright, green with a red head and yellow cheek, blue-edged wings,
+/// a long blue and red tail and a hooked beak.
+private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let g = c.h - 2
+    let st = p.stance
+    let sitting = st == .sit || st == .lie || st == .curl
+    let airborne = st == .fly || st == .held || st == .umbrella || st == .leap
+    let bb = sitting ? g : (airborne ? g - 4 : g - 2)            // bottom row of the body
+    let top = bb - 11 + (st == .squash ? 2 : 0) + p.bob
+
+    // tail first, out behind and down to the ground (or trailing, in the air)
+    let tip = airborne ? (cx - 12, bb + 4) : (cx - 11, g)
+    c.thick(cx - 3, bb - 3, tip.0, tip.1 - 1, 2, .wingDark)
+    c.thick(cx - 3, bb - 4, tip.0 + 1, tip.1 - 2, 1, .speculum)
+    if !sitting {
+        if airborne { c.set(cx - 1, bb + 1, .feet); c.set(cx + 1, bb + 1, .feet) }
+        else { for fx in [cx - 1, cx + 2] { c.set(fx, g - 1, .feet); c.hline(fx - 1, fx + 1, g, .feet) } }
+    }
+    // body: an upright oval, lighter breast
+    let widths: [(Int, Int)] = [(-2, 2), (-3, 3), (-4, 3), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 3), (-3, 3), (-3, 2), (-2, 1)]
+    for (i, w) in widths.enumerated() where top + i <= bb { c.hline(cx + w.0, cx + w.1, top + i, .body) }
+    c.paint(.body, .belly) { x, y in x >= cx + 1 && y >= top + 3 && y <= bb - 1 }
+
+    if p.prop == .laptop { drawLaptop(&c, lx: cx + 7, g: g) }
+    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 7, g: g) }
+    if p.prop == .calendar { drawCalendar(&c, x: cx + 6, y: top + 1) }
+    if p.prop == .glass { drawGlass(&c, x: cx + 6, y: top + 2) }
+    parrotWing(&c, p.arm, cx: cx, top: top)
+
+    // head, on a short neck; pecking and eating bring it down to the ground in front
+    var hx = cx - 1 + max(-3, min(4, p.headDX)), ht = top - 5 + max(-3, min(10, p.headDY))
+    if st == .eat { hx = cx + 3 + max(0, p.headDX); ht = g - 6 }
+    c.thick(cx - 1, top + 1, hx + 1, ht + 3, 3, .body)
+    c.spans(hx, ht, [(1, 4), (0, 5), (0, 5), (0, 5), (1, 4)], .mark)
+    c.hline(hx + 1, hx + 2, ht + 3, .accent)                         // yellow cheek
+    for (dx, dy) in [(2, 1), (4, 1), (3, 0), (3, 2)] { c.set(hx + dx, ht + dy, .ring) }
+    profileEye(&c, p.eyes, hx + 3, ht + 1)
+    // hooked beak
+    c.hline(hx + 6, hx + 7, ht + 1, .beak)
+    c.hline(hx + 6, hx + 8, ht + 2, .beak)
+    if p.mouth == .closed {
+        c.set(hx + 8, ht + 3, .beak); c.hline(hx + 6, hx + 7, ht + 3, .beakDark)
+    } else {
+        c.set(hx + 8, ht + 3, .beak); c.set(hx + 6, ht + 3, .mouth); c.hline(hx + 6, hx + 7, ht + 4, .beakDark)
+    }
+    if p.blush { c.set(hx + 2, ht + 3, .blush) }
+    return Anchors(headX: hx + 2, headTop: ht, headW: 6, eyes: [(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5))
+}
+
 // MARK: - Outfits & extras
 
 private let hatArt: [Hat: ([String], [Character: Col])] = [
-    .topHat: (["..KKK..", "..KKK..", "..KKK..", "..RRR..", "KKKKKKK"], ["K": .hatBlack, "R": .hatBand]),
+    .topHat: ([".KKKKH.", ".KKKKH.", ".KKKKH.", ".RRRRR.", "HKKKKKH"], ["K": .hatBlack, "H": .hatShine, "R": .hatBand]),
     .crown: (["Y.Y.Y", "YYRYY", "YYYYY"], ["Y": .gold, "R": .ruby]),
     .party: (["..S..", ".SSS.", "..P..", ".PBP.", ".BPB.", "PBPBP"], ["S": .star, "P": .partyPink, "B": .partyBlue]),
-    .beanie: (["..W...", ".BBBB.", "BBBBBB", "DDDDDD"], ["W": .white, "B": .beanie, "D": .beanieDark]),
     .witch: (["K.......", "KK......", ".KK.....", ".KKK....", ".KKKK...", ".PPPP...", "KKKKKKKK"], ["K": .witch, "P": .witchBand]),
     .cowboy: (["...CCC...", "..CCCCC..", "..DDDDD..", "C.CCCCC.C", ".CCCCCCC."], ["C": .cowboy, "D": .cowboyDark]),
     .bow: (["PP.PP", "PPDPP", "PP.PP"], ["P": .bowPink, "D": .bowDark]),
@@ -665,7 +831,7 @@ private let hatArtProfile: [Hat: ([String], [Character: Col])] = [
     .santa: (["WW....", "WRR...", ".RRRR.", ".RRRRR", "WWWWWW"], ["R": .hatBand, "W": .white]),
     .witch: (["K.....", "KK....", ".KK...", ".KKK..", ".PPPP.", "KKKKKK"], ["K": .witch, "P": .witchBand]),
     .cowboy: (["..CCC..", ".CCCCC.", ".DDDDD.", "CCCCCCC"], ["C": .cowboy, "D": .cowboyDark]),
-    .topHat: ([".KKK.", ".KKK.", ".KKK.", ".RRR.", "KKKKK"], ["K": .hatBlack, "R": .hatBand]),
+    .topHat: ([".KKH.", ".KKH.", ".KKH.", ".RRR.", "HKKKH"], ["K": .hatBlack, "H": .hatShine, "R": .hatBand]),
 ]
 
 private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
@@ -826,7 +992,13 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
 /// Draws any pet with its extras.
 @discardableResult
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
-    let a = sp == .goose ? drawGoose(&c, p, cx: cx) : sp == .bat ? drawBat(&c, p, cx: cx) : drawQuad(&c, sp, p, cx: cx)
+    let a: Anchors
+    switch sp {
+    case .goose: a = drawGoose(&c, p, cx: cx)
+    case .parrot: a = drawParrot(&c, p, cx: cx)
+    case .bat: a = drawBat(&c, p, cx: cx)
+    default: a = drawQuad(&c, sp, p, cx: cx)
+    }
     drawExtras(&c, p, a)
     return a
 }

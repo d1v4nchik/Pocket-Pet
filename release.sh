@@ -3,7 +3,8 @@
 # Their Pocket Pets notice within a few hours and offer the update; new friends just download the DMG from the release page.
 #
 # Needs: GitHub's gh tool, signed in; update-repo.txt (yourname/pocket-pet); your signing key in ~/.pocketpet/update-key.
-# Back that key up: without it you can't sign updates, and friends would have to reinstall by hand.
+# Back that folder up (~/.pocketpet: the update key and the code signing certificate): without it you can't sign updates,
+# and friends would have to reinstall by hand.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -12,6 +13,8 @@ NOTES="${2:-}"
 REPO="$(cat update-repo.txt)"
 KEY="$HOME/.pocketpet/update-key"
 [[ -f "$KEY" ]] || { echo "No signing key at $KEY"; exit 1; }
+# without the certificate an update would look like a different app to macOS, and friends would lose Accessibility
+[[ -f "$HOME/.pocketpet/signing.keychain-db" ]] || { echo "No code signing identity: run ./build.sh --new-signing-identity once"; exit 1; }
 
 echo "$VERSION" > VERSION
 ./build.sh --universal

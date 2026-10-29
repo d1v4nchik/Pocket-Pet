@@ -173,6 +173,32 @@ if let i = args.firstIndex(of: "--simfs"), i + 1 < args.count {   // simulates e
     }
     exit(0)
 }
+if let i = args.firstIndex(of: "--ncprobe"), i + 1 < args.count {   // what Notification Center looks like through Accessibility
+    var out = "trusted=\(AXIsProcessTrusted())\n"
+    func attr(_ e: AXUIElement, _ a: String) -> CFTypeRef? { var v: CFTypeRef?; return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil }
+    func dump(_ e: AXUIElement, _ depth: Int, _ budget: inout Int) {
+        guard depth < 14, budget > 0 else { return }
+        budget -= 1
+        var names: CFArray?; AXUIElementCopyActionNames(e, &names)
+        var size = CGSize.zero
+        if let v = attr(e, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() { AXValueGetValue(v as! AXValue, .cgSize, &size) }
+        let text = [kAXDescriptionAttribute, kAXTitleAttribute, kAXValueAttribute, kAXIdentifierAttribute]
+            .compactMap { attr(e, $0) as? String }.filter { !$0.isEmpty }.map { String($0.prefix(28)) }.joined(separator: " | ")
+        out += String(repeating: "  ", count: depth) + "\(attr(e, kAXRoleAttribute) as? String ?? "?") \(attr(e, kAXSubroleAttribute) as? String ?? "") \(Int(size.width))x\(Int(size.height)) [\((names as? [String] ?? []).joined(separator: ","))] \(text)\n"
+        for c in (attr(e, kAXChildrenAttribute) as? [AXUIElement] ?? []) { dump(c, depth + 1, &budget) }
+    }
+    if let nc = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui").first {
+        let app = AXUIElementCreateApplication(nc.processIdentifier)
+        for pass in 1...3 {
+            var budget = 400
+            out += "=== pass \(pass)\n"
+            dump(app, 0, &budget)
+            RunLoop.main.run(until: Date().addingTimeInterval(2.5))
+        }
+    } else { out += "Notification Center not running\n" }
+    try? out.write(toFile: args[i + 1], atomically: true, encoding: .utf8)
+    exit(0)
+}
 if let i = args.firstIndex(of: "--axcheck"), i + 1 < args.count {   // run with `open` so macOS judges this app, not the shell
     try? "trusted=\(AXIsProcessTrusted())\n".write(toFile: args[i + 1], atomically: true, encoding: .utf8)
     exit(0)

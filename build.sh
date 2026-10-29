@@ -5,6 +5,31 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP="Pocket Pet.app"
+SIGNING="$HOME/.pocketpet/signing"     # .keychain-db, .pass, .id (made once by ./build.sh --new-signing-identity)
+
+# A certificate of your own (it never leaves this Mac), so every build and update is the same app to macOS
+# and Accessibility, Calendar and Automation stay allowed. Without one, builds are ad-hoc signed.
+if [[ "${1:-}" == "--new-signing-identity" ]]; then
+    [[ -f "$SIGNING.keychain-db" ]] && { echo "Already have one at $SIGNING.keychain-db"; exit 1; }
+    mkdir -p "$(dirname "$SIGNING")"; chmod 700 "$(dirname "$SIGNING")"
+    TMP="$(mktemp -d)"
+    /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 7300 -subj "/CN=Pocket Pet Signing" -keyout "$TMP/key" -out "$TMP/crt" \
+        -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning" -addext "basicConstraints=critical,CA:false" 2>/dev/null
+    /usr/bin/openssl pkcs12 -export -inkey "$TMP/key" -in "$TMP/crt" -out "$TMP/id.p12" -passout pass:pocketpet
+    PW="$(/usr/bin/openssl rand -hex 24)"
+    BEFORE=(); while read -r k; do BEFORE+=("$(eval echo "$k")"); done < <(security list-keychains -d user)
+    security create-keychain -p "$PW" "$SIGNING.keychain-db"
+    security list-keychains -d user -s "${BEFORE[@]}"                    # keep it out of Keychain Access
+    security set-keychain-settings "$SIGNING.keychain-db"
+    security import "$TMP/id.p12" -k "$SIGNING.keychain-db" -P pocketpet -T /usr/bin/codesign >/dev/null
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PW" "$SIGNING.keychain-db" >/dev/null
+    printf %s "$PW" > "$SIGNING.pass"; chmod 600 "$SIGNING.pass"
+    /usr/bin/openssl x509 -in "$TMP/crt" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g' > "$SIGNING.id"
+    rm -rf "$TMP"
+    echo "Made $SIGNING.keychain-db. Back up ~/.pocketpet: without it, an update would need Accessibility switched on again."
+    exit 0
+fi
+
 SOURCES=(main.swift Art.swift Pets.swift Pet.swift ItemArt.swift World.swift Google.swift MacCalendar.swift ICSCalendar.swift
          Cards.swift AppleEvents.swift Music.swift Notifications.swift Updater.swift UI.swift Sound.swift Sheet.swift)
 
@@ -58,6 +83,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 # Bundle id kept from the Honk days so your pet, sign-ins and permissions carry over.
-# A fixed identity (instead of the file hash), so macOS keeps Accessibility and browser permissions across rebuilds.
-codesign --force --sign - -r='designated => identifier "local.honk.desktopgoose"' "$APP" >/dev/null 2>&1 || true
+if [[ -f "$SIGNING.keychain-db" ]]; then
+    # codesign only finds certificates on the keychain search list, so it joins the list just for this.
+    BEFORE=(); while read -r k; do BEFORE+=("$(eval echo "$k")"); done < <(security list-keychains -d user)
+    trap 'security list-keychains -d user -s "${BEFORE[@]}"' EXIT
+    security unlock-keychain -p "$(cat "$SIGNING.pass")" "$SIGNING.keychain-db"
+    security list-keychains -d user -s "${BEFORE[@]}" "$SIGNING.keychain-db"
+    codesign --force --sign "$(cat "$SIGNING.id")" "$APP" 2>&1 | grep -v "replacing existing signature" || true
+    security list-keychains -d user -s "${BEFORE[@]}"; trap - EXIT
+else
+    codesign --force --sign - -r='designated => identifier "local.honk.desktopgoose"' "$APP" >/dev/null 2>&1 || true
+fi
 echo "Built $APP"

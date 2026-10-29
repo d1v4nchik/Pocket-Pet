@@ -50,7 +50,7 @@ final class ItemView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext, let it = item, !it.blinkHidden else { return }
         ctx.setShouldAntialias(false)
-        itemCanvas(it.kind, bites: it.bites, frame: it.frame).draw(ctx, 0, 0, it.scale, it.palette)
+        itemCanvas(it.kind, bites: it.bites, frame: it.frame, variant: it.variant).draw(ctx, 0, 0, it.scale, it.palette)
     }
     override func mouseDown(with event: NSEvent) { item?.mouseDown() }
     override func mouseDragged(with event: NSEvent) { item?.mouseDragged() }
@@ -69,6 +69,7 @@ final class Item {
     let born: Double
     var life: Double                       // snacks disappear when nobody eats them
     var spin = 0.0, flap = 0.0
+    let variant = Int.random(in: 0..<4)       // a butterfly's wing pattern
     var target: CGPoint?
     var retarget = 0.0
     var grab = CGPoint.zero
@@ -89,7 +90,7 @@ final class Item {
     init(kind: ItemKind, x: CGFloat, y: CGFloat, scale: CGFloat, t: Double, hidden: Bool) {
         self.kind = kind; self.x = x; self.y = y; self.scale = scale; born = t
         life = kind == .butterfly ? 40 : (kind == .ball || kind == .yarn ? 60 : 45)
-        palette = kind == .butterfly ? makePalette(butterflyPalettes.randomElement()!) : basePalette
+        palette = kind == .butterfly ? makePalette(randomButterflyPalette()) : basePalette
         panel = Panel(size: CGSize(width: 14 * scale, height: 14 * scale))
         view = ItemView(frame: NSRect(x: 0, y: 0, width: 14 * scale, height: 14 * scale))
         view.item = self
@@ -278,12 +279,16 @@ final class World: NSObject, NSPopoverDelegate {
     private var nextUpdateCheck = 30.0
     private var hotKey: EventHotKeyRef?
     var notice: Notice?                 // what the bell is ringing for
-    var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible }
+    var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible || waterCard.visible }
     var bellOn = true
     var bellTabs = true                 // also watch browser tabs (Safari, Chrome-based)
     private var lastRing = -100.0
-    var waterEvery = 3600.0             // water reminders: seconds between them, 0 = off
-    private var nextWater = 1800.0
+    var waterEvery = 3600.0             // water reminders: seconds of time at the computer between them, 0 = off
+    let waterCard = FloatingCard()
+    let waterGoal = 8
+    private var activeSinceDrink = 0.0  // real seconds you've been at the computer since your last glass
+    private var lastWall = Date()
+    private var nextWaterTry = 0.0, waterSnoozes = 0
     private var sharing = false, hiddenForSharing = false
     let askCard = FloatingCard()
     private var nextTabPoll = 2.0
@@ -331,15 +336,19 @@ final class World: NSObject, NSPopoverDelegate {
     var typingNow: Bool { recentKeys.count >= 3 }
     var typingRecently: Bool { t - lastKeyT < 4 }
     var videoPlaying: Bool { videoPID != nil }
-    /// Google Calendar through its private link, through macOS, or through a direct Google sign-in.
-    var calendarConnected: Bool { google.signedIn || ics.connected || macCal.authorized }
+    /// Any mix of a private calendar link, a Google sign-in and the Mac's own calendars, all shown together.
+    var useMacCalendar = true
+    var macCalendarOn: Bool { useMacCalendar && macCal.authorized && !macCal.accounts.isEmpty }
+    var calendarConnected: Bool { google.signedIn || ics.connected || macCalendarOn }
     var calendarEvents: [CalEvent] {
-        if google.signedIn { return google.events }
-        guard ics.connected else { return macCal.events }
-        // the same calendar can come in through both the link and macOS
-        func key(_ e: CalEvent) -> String { "\(e.title)|\(Int(e.start.timeIntervalSince1970))" }
-        let seen = Set(ics.events.map(key))
-        return (ics.events + macCal.events.filter { !seen.contains(key($0)) }).sorted { $0.start < $1.start }
+        var sources: [[CalEvent]] = []
+        if ics.connected { sources.append(ics.events) }
+        if google.signedIn { sources.append(google.events) }
+        if macCalendarOn { sources.append(macCal.events) }
+        // the same calendar often comes in two ways (say, its link and the Mac), so it's shown once
+        func key(_ e: CalEvent) -> String { "\(e.title.lowercased().trimmingCharacters(in: .whitespaces))|\(Int(e.start.timeIntervalSince1970) / 60)" }
+        var seen = Set<String>()
+        return sources.joined().filter { seen.insert(key($0)).inserted }.sorted { $0.start < $1.start }
     }
 
     // MARK: Setup
@@ -459,10 +468,16 @@ final class World: NSObject, NSPopoverDelegate {
         // a menu or card took the bell's spot: bring it back once they're closed
         if notice != nil && !bellCard.visible && !popover.isShown && !agendaCard.visible && !musicCard.visible && t < lastRing + 120 { showBell() }
         if askCard.visible && t > askCard.until { askCard.hide() }
-        if waterEvery > 0 && t > nextWater {
-            nextWater = t + waterEvery
-            if idleSecs < 120 && !hidden { remindWater() }      // only while you're at the Mac
+        // Water: counted in real minutes at the computer (the pet's own clock slows down while it naps), and never
+        // skipped: if now's a bad moment (a menu is open, you're sharing your screen), it waits a minute and asks then.
+        let wall = Date(), real = min(10, max(0, wall.timeIntervalSince(lastWall)))
+        lastWall = wall
+        if waterEvery > 0 && idleSecs < 90 && !hidden { activeSinceDrink += real }
+        if waterEvery > 0 && activeSinceDrink >= waterEvery && t > nextWaterTry && !waterCard.visible {
+            nextWaterTry = t + 60
+            if !menuOpen && !sharing && !askCard.visible && !hidden && pet.mode != .held && idleSecs < 90 { remindWater() }
         }
+        if waterCard.visible && (t > waterCard.until || hidden) { snoozeWater(quietly: true) }
         if bellCard.visible && (t > bellCard.until || hidden) { dismissBell() }
         if toast.visible && t > toast.until { toast.hide() }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
@@ -557,6 +572,7 @@ final class World: NSObject, NSPopoverDelegate {
         recentKeys.removeAll { t - $0 > 3 }
         if t > nextCheck {
             nextCheck = t + 4
+            trusted = AXIsProcessTrusted()
             checkSystem()
         }
     }
@@ -671,25 +687,35 @@ final class World: NSObject, NSPopoverDelegate {
 
     // MARK: Music
 
-    /// Music players. Browsers count too while they play sound without a video (YouTube Music, SoundCloud...).
+    /// Music players. Browsers count too while they play sound without a video, but only with a music site open
+    /// (YouTube Music, SoundCloud...): they also make sound for calls, Discord's pings and ads.
     static let musicApps = ["com.spotify.client", "com.apple.Music", "com.apple.podcasts", "com.tidal.desktop",
                             "com.deezer.deezer-desktop", "com.amazon.music", "com.github.th-ch.youtube-music", "sh.cider",
                             "com.plexamp.Plexamp", "com.pandora.desktop", "com.soundcloud.desktop", "org.videolan.vlc",
                             "com.colliderli.iina", "com.audirvana", "com.roon.Roon", "com.qobuz.QobuzDesktop"]
-    static let otherBrowsers = ["org.mozilla.firefox", "app.zen-browser.zen", "com.kagi.kagimacOS"]
     private var heard: String?            // the app Core Audio last heard playing music
+    /// Accessibility, looked up every few seconds rather than on every redraw of the menu.
+    var trusted = AXIsProcessTrusted()
+    private var pausedPlayers = Set<String>()    // Spotify/Music said they're paused (their sound can linger in Core Audio a while)
+    private var browserSound = false      // a browser is making sound, so its tabs are worth a look
 
     /// Headphones stay on for as long as Spotify/Music say they're playing. Until one of them has
     /// told us anything (right after launch), Core Audio is asked who's playing sound, now and then.
     func checkMusic() {
-        let players = Self.musicApps + Array(DocBrowsers.all) + Self.otherBrowsers
+        let players = Self.musicApps + Array(DocBrowsers.all)
         if musicAppRunning == nil {       // only re-checked when an app opens or quits
             musicAppRunning = NSWorkspace.shared.runningApplications.contains { app in
                 players.contains { (app.bundleIdentifier ?? "").hasPrefix($0) }
             }
         }
         guard musicAppRunning == true else { musicPlaying = false; notifiedPlaying = nil; heard = nil; tellPlayer(); return }
-        if t > nextAudioScan { nextAudioScan = t + 6; heard = musicAppIsPlaying() }
+        if t > nextAudioScan {
+            nextAudioScan = t + 6
+            heard = musicAppIsPlaying()
+            if let h = heard, pausedPlayers.contains(h) { heard = nil }       // the player itself says it's paused
+            // with the bell's tab check off, tabs are only looked at while a browser makes sound (no bell, no questions)
+            if browserSound && !(bellOn && bellTabs) { tabWatcher.poll(ring: false) }
+        }
         let notified = notifiedPlaying == true          // Spotify and Apple Music say so themselves, instantly
         musicPlaying = notified || heard != nil
         if !notified, let h = heard { musicApp = h }
@@ -714,7 +740,7 @@ final class World: NSObject, NSPopoverDelegate {
         guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr, size > 0 else { return nil }
         var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return nil }
-        let browsers = Array(DocBrowsers.all) + Self.otherBrowsers
+        browserSound = false
         for id in ids {
             var running: UInt32 = 0
             var rsize = UInt32(MemoryLayout<UInt32>.size)
@@ -727,11 +753,15 @@ final class World: NSObject, NSPopoverDelegate {
                                                    mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
             guard AudioObjectGetPropertyData(id, &baddr, 0, nil, &bsize, &bundle) == noErr,
                   let b = bundle?.takeRetainedValue() as String? else { continue }
-            let match = Self.musicApps.first { b.hasPrefix($0) } ?? (videoPlaying ? nil : browsers.first { b.hasPrefix($0) })
-            if let id = match {
+            if let id = Self.musicApps.first(where: { b.hasPrefix($0) }) {
                 if id == MusicPlayer.spotifyID { return "Spotify" }
                 if id == MusicPlayer.musicID { return "Music" }
                 return NSWorkspace.shared.runningApplications.first { ($0.bundleIdentifier ?? "").hasPrefix(id) }?.localizedName ?? "your player"
+            }
+            // a browser (its audio runs in a helper, hence the prefix): only with a music site open, and no video
+            if !videoPlaying, let id = DocBrowsers.all.first(where: { b.hasPrefix($0) }) {
+                browserSound = true
+                if let site = tabWatcher.musicSite(in: id) { return site }
             }
         }
         return nil
@@ -742,6 +772,7 @@ final class World: NSObject, NSPopoverDelegate {
         let title = info?["Name"] as? String ?? ""
         let playing = state == "Playing"
         notifiedPlaying = playing
+        if playing { pausedPlayers.remove(app) } else { pausedPlayers.insert(app) }
         if playing && (title != musicTitle || !musicPlaying) && !title.isEmpty {
             let shown = sanitize(title)
             if !shown.isEmpty { pet.say(["♪ " + String(shown.prefix(22))], 3) }
@@ -826,15 +857,48 @@ final class World: NSObject, NSPopoverDelegate {
 
     // MARK: Water and screen sharing
 
+    var glassesToday: Int { defaults.string(forKey: "waterDay") == Self.dayKey() ? defaults.integer(forKey: "glasses") : 0 }
+    private static func dayKey() -> String { let d = Calendar.current.dateComponents([.year, .month, .day], from: Date()); return "\(d.year!)-\(d.month!)-\(d.day!)" }
+
+    /// The pet sits up with a glass of water and a card asks whether you've had some.
     func remindWater() {
-        pet.say(["TIME FOR SOME", "WATER!"], 5)
-        for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.35) { [weak self] in self?.pet.spawnDrop() } }
+        let title = waterSnoozes > 0 ? ["Still thirsty?", "Water time, for real"].randomElement()!
+                                     : ["Water break?", "Time for a sip", "Stay hydrated!", "Thirsty?", "Glug glug?"].randomElement()!
+        pet.offerWater(for: 60)
         synth.play("pop")
+        for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.35) { [weak self] in self?.pet.spawnDrop() } }
+        let (tip, below) = pet.bubbleTip()
+        waterCard.show(WaterView(title: title, glasses: glassesToday, goal: waterGoal, answer: { [weak self] drank in
+            if drank { self?.drankWater() } else { self?.snoozeWater() }
+        }), tip: tip, below: below, until: t + 60)
+    }
+
+    func drankWater() {
+        let n = glassesToday + 1
+        defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "glasses")
+        activeSinceDrink = 0; waterSnoozes = 0
+        pet.drink()
+        synth.play("chomp")
+        guard !popover.isShown else { return }          // counted from the menu: no card on top of it
+        let (tip, below) = pet.bubbleTip()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
+            waterCard.show(WaterView(title: "", glasses: n, goal: waterGoal, done: true), tip: tip, below: below, until: t + 2.2)
+        }
+        if n == waterGoal { DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in self?.pet.celebrate("HYDRATED!") } }
+    }
+
+    /// "Later" (or the card left alone): asks again in 15 minutes.
+    func snoozeWater(quietly: Bool = false) {
+        waterCard.hide()
+        pet.putAway()
+        waterSnoozes += 1
+        activeSinceDrink = max(0, waterEvery - 15 * 60)
+        if !quietly { pet.say(["OKAY, IN A BIT!"], 1.6) }
     }
 
     func setWater(_ every: Double) {
         waterEvery = every
-        nextWater = t + (every > 0 ? every : 0)
+        activeSinceDrink = 0
         save()
     }
 
@@ -905,9 +969,14 @@ final class World: NSObject, NSPopoverDelegate {
             self.agendaCard.show(AgendaView(agenda: agenda, close: { [weak self] in self?.agendaCard.hide() }), tip: tip, below: below, until: self.t + dur)
         }
         macCal.refresh()
-        if google.signedIn && Date().timeIntervalSince(google.lastFetch) > 120 { google.refreshEvents(show) }
-        else if ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120 { ics.refresh(show) }
-        else { show() }
+        // fetch whichever sources are stale, then show once they're all back
+        let stale = [google.signedIn && Date().timeIntervalSince(google.lastFetch) > 120,
+                     ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120]
+        var waiting = stale.filter { $0 }.count
+        guard waiting > 0 else { show(); return }
+        let done = { waiting -= 1; if waiting == 0 { show() } }
+        if stale[0] { google.refreshEvents(done) }
+        if stale[1] { ics.refresh(done) }
     }
 
     /// Up to `n` letters for the pixel bubble, cut between words.
@@ -1061,6 +1130,7 @@ final class World: NSObject, NSPopoverDelegate {
         guard !onPet else { return }
         let m = NSEvent.mouseLocation
         for card in [agendaCard, musicCard] where card.visible && !card.frame.contains(m) { card.hide() }
+        if waterCard.visible && waterCard.until - t > 3 && !waterCard.frame.contains(m) { snoozeWater(quietly: true) }
     }
 
     /// A new version is out: say so once (it stays in Settings after that).
@@ -1135,6 +1205,7 @@ final class World: NSObject, NSPopoverDelegate {
         soundOn = d.object(forKey: "sound") as? Bool ?? true
         bellOn = d.object(forKey: "bell") as? Bool ?? true
         bellTabs = d.object(forKey: "bellTabs") as? Bool ?? true
+        useMacCalendar = d.object(forKey: "useMacCalendar") as? Bool ?? true
         waterEvery = d.object(forKey: "water") as? Double ?? 3600
         let saved = d.double(forKey: "savedAt")
         awaySeconds = saved > 0 ? Date().timeIntervalSince1970 - saved : 0
@@ -1167,6 +1238,7 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(soundOn, forKey: "sound")
         d.set(bellOn, forKey: "bell")
         d.set(bellTabs, forKey: "bellTabs")
+        d.set(useMacCalendar, forKey: "useMacCalendar")
         d.set(waterEvery, forKey: "water")
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
         d.set(Date().timeIntervalSince1970, forKey: "savedAt")
@@ -1223,14 +1295,10 @@ final class World: NSObject, NSPopoverDelegate {
         popover.show(relativeTo: rect, of: view, preferredEdge: edge)
         popover.contentViewController?.view.window?.makeKey()   // so the very first click on a button counts
         uiTimer?.invalidate()
-        // Every second while a song's progress bar moves, otherwise every 5 s (the bars change slowly).
-        var n = 0
-        let tm = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            n += 1
-            if n % 5 == 0 || (self.player.playing && self.player.song != nil) { self.ui.refresh() }
-        }
-        tm.tolerance = 0.3
+        // The needs bars change slowly: every 5 s is plenty (the song's progress bar ticks by itself, and redrawing the
+        // whole menu every second made scrolling the queue stutter).
+        let tm = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.ui.refresh() }
+        tm.tolerance = 1
         RunLoop.main.add(tm, forMode: .common)
         uiTimer = tm
     }
@@ -1289,7 +1357,7 @@ final class World: NSObject, NSPopoverDelegate {
     func itemImage(_ k: ItemKind) -> NSImage {
         let key = "item-\(k)"
         if let i = imageCache[key] { return i }
-        let pal = grayPalette(k == .butterfly ? makePalette(butterflyPalettes[1]) : basePalette)   // the pale one reads best in gray
+        let pal = grayPalette(k == .butterfly ? makePalette(butterflyPalettes[5]) : basePalette)   // the monarch reads best in gray
         let img = itemCanvas(k, bites: 0, frame: 0).trimmed(0).image(pal, scale: 8)
         imageCache[key] = img
         return img

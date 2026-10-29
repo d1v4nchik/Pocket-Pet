@@ -82,29 +82,71 @@ private let sprites: [ItemKind: ([String], [Character: Col])] = [
     ], ["c": .cookie, "L": .bread, "k": .choc, "K": .choc, "D": .cookieDark]),
 ]
 
+/// Butterfly colors: A forewings, D hindwings, B the edges and veins, C spots, E the eyespots on the hindwings.
 let butterflyPalettes: [[Col: UInt32]] = [
-    [.bfA: 0xff8a3d, .bfB: 0x2e4a8a, .bfC: 0xfff1d6],
-    [.bfA: 0xfff8ec, .bfB: 0x4a3f45, .bfC: 0xe2d6c4],
-    [.bfA: 0x3b3540, .bfB: 0x1f1a24, .bfC: 0x8fb0c8],
-    [.bfA: 0xffd04a, .bfB: 0xb07a2a, .bfC: 0xfff1a8],
-    [.bfA: 0xf3e3b8, .bfB: 0x3b3540, .bfC: 0xc9a25a],
-    [.bfA: 0xd98a4a, .bfB: 0x5a4038, .bfC: 0xf3d9b0],
+    [.bfA: 0x2a2632, .bfD: 0x2a2632, .bfB: 0x16131b, .bfC: 0x4f8dff, .bfE: 0x9ccbff],   // black with blue
+    [.bfA: 0xf0452e, .bfD: 0xff7a30, .bfB: 0x5a1a12, .bfC: 0xffd9a0, .bfE: 0x2a1410],   // red
+    [.bfA: 0x5d5a24, .bfD: 0x6e6a2a, .bfB: 0x2a2812, .bfC: 0xd6e85a, .bfE: 0xf3ff9a],   // olive and lime
+    [.bfA: 0x5fe0a8, .bfD: 0x26b2a0, .bfB: 0x174238, .bfC: 0xd8fff0, .bfE: 0x0f6a5c],   // green
+    [.bfA: 0xffd23a, .bfD: 0xffae2a, .bfB: 0x3b2d20, .bfC: 0x221a14, .bfE: 0x4f8dff],   // yellow swallowtail
+    [.bfA: 0xf28a2a, .bfD: 0xf6a23a, .bfB: 0x26180f, .bfC: 0xffffff, .bfE: 0xffffff],   // monarch
+    [.bfA: 0x3fb8ff, .bfD: 0x2f86f0, .bfB: 0x10203a, .bfC: 0xffffff, .bfE: 0xb6f0ff],   // blue morpho
+    [.bfA: 0xb06cff, .bfD: 0xff7ec8, .bfB: 0x3a1f52, .bfC: 0xfff0a8, .bfE: 0xffffff],   // purple and pink
 ]
 
-func itemCanvas(_ kind: ItemKind, bites: Int, frame: Int) -> Canvas {
+/// A butterfly's look: one of the presets, or (half the time) a random bright color scheme.
+func randomButterflyPalette() -> [Col: UInt32] {
+    if Bool.random() { return butterflyPalettes.randomElement()! }
+    let h = Double.random(in: 0..<1)
+    func hsv(_ h: Double, _ s: Double, _ v: Double) -> UInt32 {
+        let hh = (h.truncatingRemainder(dividingBy: 1) + 1).truncatingRemainder(dividingBy: 1) * 6
+        let i = Int(hh), f = hh - Double(i)
+        let p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f))
+        let (r, g, b): (Double, Double, Double) = [(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)][i % 6]
+        return UInt32(r * 255) << 16 | UInt32(g * 255) << 8 | UInt32(b * 255)
+    }
+    let spot = [0xffffff, 0xfff1a0, hsv(h + 0.5, 0.65, 1)].randomElement()!
+    return [.bfA: hsv(h, 0.72, 1), .bfD: hsv(h + Double.random(in: -0.12...0.12), 0.8, 0.92),
+            .bfB: hsv(h, 0.65, 0.22), .bfC: spot, .bfE: hsv(h + 0.5, 0.75, 1)]
+}
+
+/// Wing patterns: spots, veins, two-tone tips, eyespots. Frames: open, half, edge-on, half.
+private let butterflyOpen: [[String]] = [
+    ["BBB.k.k.BBB", "BAABBkBBAAB", "BACAAkAACAB", "BAAAAkAAAAB", ".BBAAkAABB.", "..BDDkDDB..", ".BDEDkDEDB.", ".BBB.k.BBB."],
+    ["BBB.k.k.BBB", "BABBBkBBBAB", "BAABAkABAAB", "BABAAkAABAB", ".BBABkBABB.", "..BDBkBDB..", ".BDDDkDDDB.", ".BBB.k.BBB."],
+    ["BBB.k.k.BBB", "BCCBBkBBCCB", "BCAAAkAAACB", "BAAAAkAAAAB", ".BBAAkAABB.", "..BDDkDDB..", ".BDDDkDDDB.", ".BBB.k.BBB."],
+    ["BBB.k.k.BBB", "BAABBkBBAAB", "BAAAAkAAAAB", "BACAAkAACAB", ".BBAAkAABB.", ".BDDDkDDDB.", ".BECDkDCEB.", ".BBB.k.BBB."],
+]
+private let butterflyHalf = ["....k.k....", "..BABkBAB..", "..BACkCAB..", "..BAAkAAB..", "...BAkAB...", "...BDkDB...", "...BEkEB...", "....BkB...."]
+private let butterflyEdge = ["....k.k....", ".....k.....", "....BAB....", "....BAB....", "....BDB....", "....BDB....", ".....k.....", "..........."]
+
+/// The water card's glass: fills a step for every glass you've had today (an empty glass shows a sip of water).
+func waterGlassImage(_ glasses: Int, of goal: Int) -> NSImage {
+    var c = Canvas(14, 16)
+    let water = 2 + min(10, Int((Double(glasses) / Double(max(1, goal)) * 10).rounded()))   // rows of water, of 12
+    for y in 1...13 {
+        let inset = y >= 12 ? y - 11 : 0
+        let l = 1 + inset, r = 12 - inset
+        if y == 13 { c.hline(l, r, y, .glassEdge); continue }
+        c.set(l, y, .glassEdge); c.set(r, y, .glassEdge)
+        guard l + 1 <= r - 1 else { continue }
+        let wet = y > 13 - water
+        c.hline(l + 1, r - 1, y, wet ? (y == 14 - water ? .waterLight : .water) : .glass)     // empty glass is tinted, so the outline stays outside
+        if wet && y > 14 - water && y < 11 { c.set(l + 2, y, .white) }        // a glint
+    }
+    c.outline()
+    return c.trimmed(0).image(basePalette, scale: 4)
+}
+
+func itemCanvas(_ kind: ItemKind, bites: Int, frame: Int, variant: Int = 0) -> Canvas {
     var c = Canvas(14, 14)
     var rows: [String]
     var map: [Character: Col]
     switch kind {
     case .butterfly:
-        let frames: [[String]] = [
-            ["BB.....BB", "BAAB.BAAB", "BAAAkAAAB", ".BACkCAB.", "..BBkBB..", "...B.B..."],
-            [".B.....B.", ".BAB.BAB.", "..BAkAB..", "..BCkCB..", "...BkB...", "....B...."],
-            ["...B.B...", "...BkB...", "...AkA...", "...BkB...", "....k....", "........."],
-            [".B.....B.", ".BAB.BAB.", "..BAkAB..", "..BCkCB..", "...BkB...", "....B...."],
-        ]
-        rows = frames[((frame % 4) + 4) % 4]
-        map = ["A": .bfA, "B": .bfB, "C": .bfC, "k": .bfBody]
+        let open = butterflyOpen[((variant % butterflyOpen.count) + butterflyOpen.count) % butterflyOpen.count]
+        rows = [open, butterflyHalf, butterflyEdge, butterflyHalf][((frame % 4) + 4) % 4]
+        map = ["A": .bfA, "B": .bfB, "C": .bfC, "D": .bfD, "E": .bfE, "k": .bfBody]
     case .ball, .yarn:
         let spans = [(2, 5), (1, 6), (0, 7), (0, 7), (0, 7), (0, 7), (1, 6), (2, 5)]
         let f = ((frame % 4) + 4) % 4

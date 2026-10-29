@@ -57,7 +57,8 @@ final class MusicPlayer {
     var bid: String { app == .music ? Self.musicID : Self.spotifyID }
 
     var running: Bool { previewing || isRunning(Self.spotifyID) || isRunning(Self.musicID) || otherPlaying }
-    var spotifyInstalled: Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.spotifyID) != nil }
+    /// Asked once: a Launch Services lookup is too slow for every redraw.
+    lazy var spotifyInstalled = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.spotifyID) != nil
 
     /// Looked up at most once a second per app (the menu asks on every redraw).
     private func isRunning(_ id: String) -> Bool {
@@ -197,16 +198,40 @@ final class MusicPlayer {
         }
     }
 
-    /// Plays a song right away (Spotify's own "play track").
-    /// Plays a song right away: Spotify's own "play track", or a song from your Apple Music library.
+    /// Plays just this song, now. Through your Spotify account that's the song on its own (Spotify's "play track"
+    /// would carry on through its whole album); a song from your Apple Music library plays from your library.
     func play(_ s: Song) {
         if s.id.hasPrefix("music:") {
             let id = String(s.id.dropFirst(6)).filter { $0.isHexDigit }        // persistent ids are hex, nothing else gets in
             q.async { Self.runScript("tell application id \"\(Self.musicID)\" to play (some track of library playlist 1 whose persistent ID is \"\(id)\")") }
+        } else if connected {
+            api("PUT", "/v1/me/player/play", body: ["uris": [s.id]]) { [weak self] _, code in
+                guard let self else { return }
+                if code != 200 && code != 204 { self.playTrack(s) }         // no Premium: Spotify's own way
+                self.later(0.6) { self.refresh(); self.refreshUpNext() }
+            }
+            return
         } else {
-            q.async { AE.send(Self.spotifyID, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
+            playTrack(s)
         }
         later(0.6) { self.refresh(); self.refreshUpNext() }
+    }
+
+    private func playTrack(_ s: Song) {
+        q.async { AE.send(Self.spotifyID, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
+    }
+
+    /// Jumps ahead to a song in Up next, keeping the rest of the queue (skips there, like pressing next a few times).
+    func skip(to index: Int) {
+        guard index >= 0, index < upNext.count else { return }
+        let target = upNext[index]
+        upNext.removeFirst(index + 1)
+        song = target; playing = true; position = 0; positionAt = Date()
+        changed()
+        q.async {
+            for _ in 0...index { AE.send(Self.spotifyID, "spfy", "Next"); usleep(120_000) }
+        }
+        later(0.8) { self.refresh(); self.refreshUpNext() }
     }
 
     /// The music card's search: your Spotify account if it's connected, otherwise your Apple Music library.
@@ -417,7 +442,8 @@ final class MusicPlayer {
         }.resume()
     }
 
-    private func api(_ method: String, _ path: String, _ query: [String: String] = [:], _ done: @escaping ([String: Any]?, Int) -> Void) {
+    private func api(_ method: String, _ path: String, _ query: [String: String] = [:], body: [String: Any]? = nil,
+                     _ done: @escaping ([String: Any]?, Int) -> Void) {
         token { token in
             guard let token else { done(nil, 401); return }
             var c = URLComponents(string: "https://api.spotify.com" + path)!
@@ -425,6 +451,10 @@ final class MusicPlayer {
             var req = URLRequest(url: c.url!)
             req.httpMethod = method
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let body {
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            }
             req.timeoutInterval = 8
             URLSession.shared.dataTask(with: req) { data, resp, _ in
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0

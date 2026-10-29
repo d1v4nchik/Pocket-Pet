@@ -204,19 +204,30 @@ struct MusicCardView: View {
                 ScrollView {
                     VStack(spacing: 5) {
                         ForEach(sp.results) { s in
-                            Button { sp.play(s); query = ""; sp.clearResults() } label: {
-                                HStack(spacing: 8) {
-                                    Art(url: s.art, size: 26)
-                                    VStack(alignment: .leading, spacing: 0) {
-                                        Text(s.name).font(.system(size: 11.5)).lineLimit(1)
-                                        Text(s.artist).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                            HStack(spacing: 4) {
+                                // the song itself plays this song now; + puts it in the queue instead
+                                Button { sp.play(s); query = ""; sp.clearResults() } label: {
+                                    HStack(spacing: 8) {
+                                        Art(url: s.art, size: 26)
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            Text(s.name).font(.system(size: 11.5)).lineLimit(1)
+                                            Text(s.artist).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Image(systemName: "play.fill").font(.system(size: 10)).foregroundStyle(.secondary)
                                     }
-                                    Spacer(minLength: 0)
-                                    Image(systemName: "play.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    .contentShape(Rectangle())
                                 }
-                                .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+                                .help("Play this song now")
+                                if sp.connected && !s.id.hasPrefix("music:") {
+                                    Button { sp.addToQueue(s); model.tick &+= 1 } label: {
+                                        Image(systemName: "plus").font(.system(size: 12)).frame(width: 24, height: 24).contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Add to queue")
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -311,6 +322,44 @@ struct AskView: View {
         }
         .padding(.horizontal, 13).padding(.vertical, 11)
         .frame(width: 240, alignment: .leading)
+        .card()
+    }
+}
+
+/// The water reminder: a pixel glass that fills up over the day, and two answers. After "I drank some" it shows
+/// the glass one step fuller for a moment, then closes.
+struct WaterView: View {
+    let title: String
+    let glasses: Int, goal: Int
+    var done = false
+    var answer: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(nsImage: waterGlassImage(glasses, of: goal))
+                .interpolation(.none)
+                .transition(.scale.combined(with: .opacity))
+                .id(glasses)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(done ? (glasses >= goal ? "All \(goal) glasses!" : "Nice, keep it up!") : title).font(.system(size: 12.5, weight: .semibold))
+                Text(glasses == 0 ? "Your first glass today" : "\(glasses) of \(goal) glasses today")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack(spacing: 3) {
+                    ForEach(0..<goal, id: \.self) { i in
+                        Capsule().fill(i < glasses ? Color(red: 0.24, green: 0.61, blue: 0.94) : Color.primary.opacity(0.12)).frame(width: 13, height: 4)
+                    }
+                }
+                if !done {
+                    HStack(spacing: 6) {
+                        Button("Later") { answer(false) }.buttonStyle(Pill())
+                        Button("I drank some") { answer(true) }.buttonStyle(Pill(strong: true))
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 11)
+        .frame(width: 262, alignment: .leading)
         .card()
     }
 }

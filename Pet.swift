@@ -155,6 +155,7 @@ final class Pet {
     var head = (x: 32, y: 10)
     var nextZ = 0.0, nextSweat = 0.0, nextNote = 0.0
     var zoomLeft = 0, huntPhase = 0, huntT = 0.0, agendaUntil = 0.0
+    var agendaProp = Prop.calendar, drinkUntil = 0.0      // what it holds up: the calendar, or a glass of water
     var quickDrop = false
     var noticedUntil = -10.0
     var playUntil = -10.0           // playing with a toy you just gave it: typing waits a moment
@@ -1339,12 +1340,27 @@ final class Pet {
         }
     }
 
-    func showAgenda(_ lines: [String], for dur: Double? = nil) {
+    func showAgenda(_ lines: [String], for dur: Double? = nil, prop: Prop = .calendar) {
+        agendaProp = prop
         agendaUntil = t + (dur ?? max(5, 1.6 * Double(lines.count)))
         if !lines.isEmpty { say(lines, agendaUntil - t) }
         if inAir { return }
         begin(.agenda)
     }
+
+    /// Water reminder: sits and holds up a glass.
+    func offerWater(for dur: Double) { showAgenda([], for: dur, prop: .glass) }
+
+    /// You had some water: it has a sip too, happily.
+    func drink() {
+        drinkUntil = t + 1.6
+        showAgenda([], for: 2.6, prop: .glass)
+        hearts(3)
+        for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 + Double(i) * 0.3) { [weak self] in self?.spawnDrop() } }
+        happiness = min(100, happiness + 4)
+    }
+
+    func putAway() { if mode == .agenda { agendaUntil = t } }
 
     // MARK: Mouse
 
@@ -1601,8 +1617,10 @@ final class Pet {
                 if bar == 3 { p.arm = beat == 0 ? .raised : .rest }
             }
         case .agenda:
-            p.stance = .sit; p.prop = .calendar; p.arm = isBird ? .forward : .hold; p.tailUp = false; p.bob = 0
+            p.stance = .sit; p.prop = agendaProp; p.arm = isBird ? .forward : .hold; p.tailUp = false; p.bob = 0
             if family == .dog { p.mouth = .closed }
+            if agendaProp == .glass && t < drinkUntil { p.arm = isBird ? .forward : .toMouth; p.eyes = .happy; p.headDY = isBird ? 1 : 0 }
+            else if agendaProp == .glass { p.eyes = .open; p.tail = t * 3; p.tailUp = true }
         case .yawning:
             if isBird {
                 if modeT < 1.2 { p.mouth = .open; p.eyes = .closed; p.headDY = -2; p.arm = .raised }

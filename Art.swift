@@ -16,14 +16,16 @@ enum Col: UInt8, CaseIterable {
          umbA, umbB, handle, phones, phonesPad, page, pageRed,
          // outfits
          gold, ruby, hatBlack, hatBand, partyPink, partyBlue, bowPink, bowDark, petal,
-         beanie, beanieDark, witch, witchBand, cowboy, cowboyDark, lens, lensPink, frame,
+         witch, witchBand, cowboy, cowboyDark, lens, lensPink, frame,
          scarf, scarfStripe, collar, bandana, cap,
          // snacks & toys
          fish, fishDark, fishLight, crust, crustDark, bread, cheese, cheeseDark, cheeseLight,
          berry, berryDark, berryLight, leaf, leafDark, seed, sausage, sausageDark, sausageLight,
          cookie, cookieDark, choc, milk, milkShade, milkBlue, ballRed, ballRedDark,
-         yarn, yarnDark, yarnLight, bfA, bfB, bfC, bfBody,
-         bone, boneShade, boneLight, moon, moonShade, pin, pinDark, sun, sunDark
+         yarn, yarnDark, yarnLight, bfA, bfB, bfC, bfD, bfE, bfBody,
+         bone, boneShade, boneLight, moon, moonShade, pin, pinDark, sun, sunDark,
+         hatShine, glass, glassEdge, water, waterLight,
+         whisker                 // drawn like the outline, but gets no outline of its own (thin whiskers)
 }
 
 private let baseHex: [Col: UInt32] = [
@@ -40,8 +42,8 @@ private let baseHex: [Col: UInt32] = [
     .umbA: 0xff7f9b, .umbB: 0xfff0f5, .handle: 0x7a5236, .phones: 0x4a4458, .phonesPad: 0xff7fb2,
     .page: 0xfffaf2, .pageRed: 0xe5504f,
     .gold: 0xffd23f, .ruby: 0xff4566, .hatBlack: 0x3a3340, .hatBand: 0xe5504f, .partyPink: 0xff8fbf,
-    .partyBlue: 0x7ccbff, .bowPink: 0xff9cc6, .bowDark: 0xe0609e, .petal: 0xffd9ea, .beanie: 0x79c9a8,
-    .beanieDark: 0x56a585, .witch: 0x7b52c7, .witchBand: 0xffaa47, .cowboy: 0xb9824e, .cowboyDark: 0x8a5c35,
+    .partyBlue: 0x7ccbff, .bowPink: 0xff9cc6, .bowDark: 0xe0609e, .petal: 0xffd9ea,
+    .witch: 0x7b52c7, .witchBand: 0xffaa47, .cowboy: 0xb9824e, .cowboyDark: 0x8a5c35,
     .lens: 0x2c2632, .lensPink: 0xff6aa8, .frame: 0x3b3346, .scarf: 0xe8565a, .scarfStripe: 0xfff4e0,
     .collar: 0xe8565a, .bandana: 0x6a95ef, .cap: 0x6a84e0,
     .fish: 0x8fb9d9, .fishDark: 0x5f88b0, .fishLight: 0xd3e8f5, .crust: 0xc98a45, .crustDark: 0x9c6532,
@@ -51,9 +53,10 @@ private let baseHex: [Col: UInt32] = [
     .cookie: 0xdca162, .cookieDark: 0xb87b42, .choc: 0x5e3b28, .milk: 0xfbfbf7, .milkShade: 0xdcdcd6,
     .milkBlue: 0x6f9be0, .ballRed: 0xff6b6b, .ballRedDark: 0xd64c55,
     .yarn: 0xff9fca, .yarnDark: 0xd9689f, .yarnLight: 0xffcde3,
-    .bfA: 0xff9a3d, .bfB: 0x3d5ea8, .bfC: 0xfff3e0, .bfBody: 0x3b2d2f,
+    .bfA: 0xff9a3d, .bfB: 0x3d5ea8, .bfC: 0xfff3e0, .bfD: 0xff9a3d, .bfE: 0xfff3e0, .bfBody: 0x3b2d2f,
     .bone: 0xf4ecdc, .boneShade: 0xcfc2a8, .boneLight: 0xffffff, .moon: 0xfff0b0, .moonShade: 0xe2c56a,
     .pin: 0xe5534b, .pinDark: 0xb03a3a, .sun: 0xffd04a, .sunDark: 0xf0a030,
+    .hatShine: 0x6c6378, .whisker: 0x2b2738, .glass: 0xeef7ff, .glassEdge: 0x9cc6ea, .water: 0x3d9bf0, .waterLight: 0x8fd0ff,
 ]
 
 func cgColor(_ h: UInt32) -> CGColor {
@@ -250,12 +253,14 @@ struct Canvas {
         px = out
     }
 
-    /// Adds a 1-cell outline around everything drawn.
+    /// Adds a 1-cell outline around everything drawn (whiskers excepted, so they stay one cell thin).
     mutating func outline(_ c: Col = .outline) {
         var out = px
+        let wh = Col.whisker.rawValue
+        func solid(_ x: Int, _ y: Int) -> Bool { let v = get(x, y); return v != 0 && v != wh }
         for y in 0..<h {
             for x in 0..<w where px[y * w + x] == 0 {
-                if get(x - 1, y) != 0 || get(x + 1, y) != 0 || get(x, y - 1) != 0 || get(x, y + 1) != 0 {
+                if solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1) {
                     out[y * w + x] = c.rawValue
                 }
             }

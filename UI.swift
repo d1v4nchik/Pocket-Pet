@@ -36,6 +36,17 @@ extension View {
     }
 }
 
+/// Tiles in one shared glass layer (a GlassEffectContainer): far cheaper to draw than a separate glass per tile,
+/// which made the menu lag.
+struct GlassGroup<Content: View>: View {
+    var spacing: CGFloat = 6
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        if #available(macOS 26.0, *), !plainGlass { GlassEffectContainer(spacing: spacing) { content() } }
+        else { content() }
+    }
+}
+
 struct Pixel: View {
     let img: NSImage
     var body: some View { Image(nsImage: img).interpolation(.none).resizable().aspectRatio(contentMode: .fit) }
@@ -179,13 +190,13 @@ struct RootView: View {
         // Petting, the calendar and gravity live on the pet itself (click, double-click) and in Settings.
         // These buttons close the menu so you see the pet act on them right away.
         let foods: [(ItemKind, String)] = [(.fish, "Fish"), (.bone, "Bone"), (.cookie, "Cookie")]
-        return HStack(spacing: 7) {
+        return GlassGroup { HStack(spacing: 7) {
             ForEach(foods, id: \.1) { f in Tile(img: world.itemImage(f.0), help: "Feed: \(f.1)") { world.fromMenu { world.feed(f.0) } } }
             Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy") { world.fromMenu { world.throwBall() } }
             Tile(img: world.itemImage(.butterfly), help: "Let a butterfly out") { world.fromMenu { world.releaseButterfly() } }
             Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap") { world.fromMenu { pet.toggleNap() } }
             Tile(img: world.iconImage(.pin), help: "Come here: follows your cursor for a minute") { world.fromMenu { pet.comeHere() } }
-        }
+        } }
     }
 
     // MARK: Music
@@ -205,14 +216,17 @@ struct RootView: View {
                 Art(url: sp.song?.art, size: 40)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                    Text(sp.song?.artist ?? (AXIsProcessTrusted() ? "Controlled with your media keys" : "Allow Accessibility in Settings to control it"))
+                    Text(sp.song?.artist ?? (world.trusted ? "Controlled with your media keys" : "Allow Accessibility in Settings to control it"))
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     if let s = sp.song {
-                        GeometryReader { g in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.primary.opacity(0.12))
-                                Capsule().fill(Color.accentColor)
-                                    .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
+                        // ticks by itself, so the rest of the menu isn't redrawn every second
+                        TimelineView(.periodic(from: .now, by: sp.playing ? 1 : 3600)) { _ in
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.primary.opacity(0.12))
+                                    Capsule().fill(Color.accentColor)
+                                        .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
+                                }
                             }
                         }
                         .frame(height: 3)
@@ -254,7 +268,7 @@ struct RootView: View {
                         }
                     }
                 }
-                hint("Works with Spotify and Apple Music, and with any other player (YouTube Music, Tidal, VLC...) through your media keys.")
+                hint("Spotify and Apple Music work straight away, with nothing to connect. Any other player (YouTube Music, Tidal, VLC...) works through your media keys. Connecting a Spotify account below is optional: it adds the queue and search.")
             } else if sp.full {
                 HStack(spacing: 6) {
                     Button { sp.setShuffle(!sp.shuffle); m.refresh() } label: { Label("Shuffle", systemImage: "shuffle") }
@@ -263,7 +277,7 @@ struct RootView: View {
                         .buttonStyle(Pill(strong: sp.repeating))
                 }
             }
-            if sp.running && !sp.full && !AXIsProcessTrusted() {
+            if sp.running && !sp.full && !world.trusted {
                 HStack(alignment: .firstTextBaseline) {
                     hint("To control \(sp.appName), allow Accessibility (it presses your media keys for you).")
                     Spacer()
@@ -298,7 +312,7 @@ struct RootView: View {
                 VStack(spacing: 6) {
                     ForEach(sp.results) { s in
                         songRow(s) {
-                            control("play.fill", 11) { sp.play(s) }.help("Play now")
+                            control("play.fill", 11) { sp.play(s) }.help("Play this song now")
                             control("plus", 13) { sp.addToQueue(s) }.help("Add to queue")
                         }
                     }
@@ -312,8 +326,8 @@ struct RootView: View {
             }
             ScrollView {
                 VStack(spacing: 6) {
-                    ForEach(Array(sp.upNext.enumerated()), id: \.offset) { _, s in
-                        songRow(s) { control("play.fill", 11) { sp.play(s) }.help("Play now") }
+                    ForEach(Array(sp.upNext.enumerated()), id: \.offset) { i, s in
+                        songRow(s) { control("play.fill", 11) { sp.skip(to: i); m.refresh() }.help("Skip ahead to this song") }
                     }
                 }
             }
@@ -391,9 +405,13 @@ struct RootView: View {
     // MARK: Tabs
 
     func petsTab(_ world: World, _ pet: Pet) -> some View {
-        HStack(spacing: 5) {
-            ForEach(Species.allCases) { sp in
-                Tile(img: world.faceImage(sp), help: sp.title, selected: pet.species == sp, size: 36) { world.changeSpecies(to: sp); m.refresh() }
+        // rows of five, so every pet fits inside the menu however many there are
+        let cols = Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
+        return GlassGroup {
+            LazyVGrid(columns: cols, spacing: 8) {
+                ForEach(Species.allCases) { sp in
+                    Tile(img: world.faceImage(sp), help: sp.title, selected: pet.species == sp, size: 48) { world.changeSpecies(to: sp); m.refresh() }
+                }
             }
         }
     }
@@ -432,7 +450,7 @@ struct RootView: View {
 
     func closetGrid<T: Hashable>(_ world: World, _ pet: Pet, _ all: [T], _ path: WritableKeyPath<Outfit, T>, _ name: @escaping (T) -> String, roomForHat: Bool = false) -> some View {
         let grid = Array(repeating: GridItem(.fixed(40), spacing: 6), count: 4)
-        return LazyVGrid(columns: grid, alignment: .leading, spacing: 6) {
+        return GlassGroup { LazyVGrid(columns: grid, alignment: .leading, spacing: 6) {
             ForEach(all, id: \.self) { item in
                 let o: Outfit = { var o = pet.outfit; o[keyPath: path] = item; return o }()
                 let alone: Outfit = { var a = Outfit(); a[keyPath: path] = item; return a }()
@@ -444,12 +462,12 @@ struct RootView: View {
                     Tile(symbol: "circle.slash", help: name(item), selected: picked, size: 40) { world.setOutfit(o); m.refresh() }
                 }
             }
-        }
+        } }
     }
 
     func title(_ h: Hat) -> String {
         ["none": "No hat", "bow": "Bow", "flower": "Flower", "crown": "Crown", "topHat": "Top hat", "party": "Party hat",
-         "beanie": "Beanie", "witch": "Witch hat", "cowboy": "Cowboy hat", "santa": "Santa hat"][h.rawValue] ?? h.rawValue
+         "witch": "Witch hat", "cowboy": "Cowboy hat", "santa": "Santa hat"][h.rawValue] ?? h.rawValue
     }
     func title(_ g: Glasses) -> String {
         ["none": "No glasses", "shades": "Shades", "hearts": "Heart glasses", "round": "Round glasses"][g.rawValue] ?? g.rawValue
@@ -477,10 +495,18 @@ struct RootView: View {
                     .frame(width: 108)
                 }
                 row("Water reminders") {
-                    Picker("", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
-                        Text("Off").tag(0); Text("30 min").tag(1800); Text("1 hour").tag(3600); Text("2 hours").tag(7200)
+                    HStack(spacing: 6) {
+                        // log a glass any time; the reminder then waits a full interval
+                        Button { world.drankWater(); m.refresh() } label: {
+                            HStack(spacing: 3) { Image(systemName: "drop.fill"); Text("\(world.glassesToday)/\(world.waterGoal)") }
+                        }
+                        .buttonStyle(Pill()).fixedSize().help("Had a glass of water? Count it")
+                        Picker("", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
+                            Text("Off").tag(0); Text("Every 30 min").tag(1800); Text("Every hour").tag(3600); Text("Every 2 hours").tag(7200)
+                        }
+                        .frame(width: 124)
                     }
-                    .frame(width: 108)
+                    .help("Counted in time you're actually at your computer")
                 }
                 row("Name") {
                     TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
@@ -494,20 +520,33 @@ struct RootView: View {
             if m.open.contains("Connections") {
                 calendar(world)
                 connection("music.note", "Music",
-                           world.player.running ? "Playing in \(world.player.appName)" : "Spotify, Apple Music or any player") {
-                    Text(AXIsProcessTrusted() ? "Ready" : "Spotify and Music ready").foregroundStyle(.secondary).font(.system(size: 10.5))
+                           world.player.running ? "Playing in \(world.player.appName)" : "Works with every player, nothing to sign in to") {
+                    EmptyView()
                 }
+                // what each kind of player needs (only Spotify's queue and search need an account)
+                if world.player.spotifyInstalled {
+                    source("dot.radiowaves.left.and.right", "Spotify") {
+                        if world.player.connected { status("Queue and search on") }
+                        else { Button("Add queue") { m.tab = 2 }.buttonStyle(Pill()).help("Optional: connect your Spotify account to see and add to your queue") }
+                    }
+                }
+                source("music.note.list", "Apple Music") { status("Ready") }
+                source("speaker.wave.2", "Any other player") {
+                    if world.trusted { status("Media keys") }
+                    else { Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill()).help("Play and skip in any player need Accessibility") }
+                }
+                .help("YouTube Music, Tidal, VLC, a music site in your browser...")
                 connection("bell", "Notification bell",
-                           !world.bellOn ? "Off" : AXIsProcessTrusted() ? "Every app" + (world.bellTabs ? " and browser tabs" : "") : (world.bellTabs ? "Browser tabs only for now" : "Waiting for Accessibility")) {
+                           !world.bellOn ? "Off" : world.trusted ? "Every app" + (world.bellTabs ? " and browser tabs" : "") : (world.bellTabs ? "Browser tabs only for now" : "Waiting for Accessibility")) {
                     toggle(Binding(get: { world.bellOn }, set: { world.setBell($0); m.refresh() }))
                 }
                 if world.bellOn {
                     row("   Browser tabs") { toggle(Binding(get: { world.bellTabs }, set: { world.setBellTabs($0); m.refresh() })) }
                         .help("Rings when a tab's title shows new messages, like \"(2) Discord\"")
                 }
-                if !AXIsProcessTrusted() {
+                if !world.trusted {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        hint("Every app's notifications, and play/pause for any music player, need Accessibility: switch on Pocket Pet in Privacy & Security › Accessibility. On a Mac you're not an admin of, that switch asks for an admin password.")
+                        hint("Every app's notifications, and play/pause for any music player, need Accessibility: switch on Pocket Pet in Privacy & Security › Accessibility (it asks for an admin password on a Mac you're not an admin of). Already on? That switch belongs to an older copy: select Pocket Pet, click −, then add it again with +.")
                         Button("Open") { world.requestAccessibility() }.buttonStyle(Pill(strong: true)).fixedSize()
                     }
                 }
@@ -584,16 +623,31 @@ struct RootView: View {
     @ViewBuilder
     func calendar(_ world: World) -> some View {
         let mac = world.macCal, g = world.google, ics = world.ics
-        let linked = g.signedIn || ics.connected || !mac.accounts.isEmpty
+        let hasMac = mac.authorized && !mac.accounts.isEmpty
+        let allIn = g.signedIn && ics.connected && hasMac
         VStack(alignment: .leading, spacing: 6) {
             connection("calendar", "Calendar", calendarStatus(world)) {
-                if g.signedIn { Button("Sign out") { g.signOut(); m.refresh() }.buttonStyle(Pill()) }
-                else if ics.connected { Button("Disconnect") { ics.disconnect(); m.refresh() }.buttonStyle(Pill()) }
-                else if !linked { Button(m.calWay == 0 ? "Set up" : "Close") { m.calWay = m.calWay == 0 ? 1 : 0 }.buttonStyle(Pill(strong: m.calWay == 0)) }
+                if !allIn {
+                    let label = m.calWay != 0 ? "Close" : world.calendarConnected ? "Add" : "Set up"
+                    Button(label) { m.calWay = m.calWay != 0 ? 0 : !ics.connected ? 1 : !hasMac ? 2 : 3 }
+                        .buttonStyle(Pill(strong: m.calWay == 0 && !world.calendarConnected))
+                }
             }
-            if !linked && m.calWay != 0 {
-                // three ways in, easiest first
-                HStack(spacing: 6) { way("Paste a link", 1); way("This Mac", 2); way("Google sign-in", 3) }
+            // every connected source, shown together and removable one by one
+            if ics.connected { source("link", "Private calendar link") { Button("Remove") { ics.disconnect(); m.refresh() }.buttonStyle(Pill()) } }
+            if g.signedIn { source("person.crop.circle", g.email.isEmpty ? "Google" : g.email) { Button("Sign out") { g.signOut(); m.refresh() }.buttonStyle(Pill()) } }
+            if hasMac {
+                source("desktopcomputer", "This Mac: " + mac.accounts.joined(separator: ", ")) {
+                    toggle(Binding(get: { world.useMacCalendar }, set: { world.useMacCalendar = $0; world.save(); m.refresh() }))
+                }
+            }
+            if m.calWay != 0 && !allIn {
+                // the ways not used yet, easiest first
+                HStack(spacing: 6) {
+                    if !ics.connected { way("Paste a link", 1) }
+                    if !hasMac { way("This Mac", 2) }
+                    if !g.signedIn { way("Google sign-in", 3) }
+                }
                 switch m.calWay {
                 case 1: linkSteps(world)
                 case 2: macSteps(world)
@@ -610,11 +664,21 @@ struct RootView: View {
     }
 
     func calendarStatus(_ world: World) -> String {
-        let g = world.google, mac = world.macCal, ics = world.ics
-        if g.signedIn { return g.email.isEmpty ? "Signed in" : g.email }
-        if ics.connected { return "Connected with your private link" }
-        if !mac.accounts.isEmpty { return "This Mac: " + mac.accounts.joined(separator: ", ") }
-        return "Google, Outlook, iCloud or Mac"
+        let n = [world.ics.connected, world.google.signedIn, world.macCalendarOn].filter { $0 }.count
+        return n == 0 ? "Google, Outlook, iCloud or Mac" : n == 1 ? "1 calendar source" : "\(n) sources, shown together"
+    }
+
+    func status(_ s: String) -> some View { Text(s).foregroundStyle(.secondary).font(.system(size: 10.5)) }
+
+    /// One connected source (a calendar, a kind of music player), indented under its row.
+    func source<C: View>(_ icon: String, _ title: String, @ViewBuilder _ trailing: () -> C) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 14)
+            Text(title).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 6)
+            trailing()
+        }
+        .padding(.leading, 22)
     }
 
     /// No sign-in: any calendar's private iCal link (Google, Outlook, iCloud...).
@@ -651,7 +715,7 @@ struct RootView: View {
             Text("Uses the calendars already on this Mac: iCloud, Outlook, Google and any account in System Settings › Internet Accounts.")
             Button(mac.authorized ? "Add an account" : "Allow") {
                 if mac.authorized { MacCalendar.openInternetAccounts() }
-                else { mac.connect { ok in if ok && mac.accounts.isEmpty { MacCalendar.openInternetAccounts() }; m.refresh() } }
+                else { mac.connect { ok in if ok && mac.accounts.isEmpty { MacCalendar.openInternetAccounts() } else if ok { m.calWay = 0 }; m.refresh() } }
             }
             .buttonStyle(Pill(strong: true))
         }
@@ -675,7 +739,7 @@ struct RootView: View {
                     if panel.runModal() == .OK, let url = panel.url { _ = g.importClientFile(url); m.refresh() }
                 }
                 .buttonStyle(Pill())
-                if g.hasClient { Button("Sign in") { g.signIn { _ in m.refresh() }; m.refresh() }.buttonStyle(Pill(strong: true)) }
+                if g.hasClient { Button("Sign in") { g.signIn { ok in if ok { m.calWay = 0 }; m.refresh() }; m.refresh() }.buttonStyle(Pill(strong: true)) }
             }
             .padding(.top, 2)
         }

@@ -38,11 +38,15 @@ func renderSheet(_ path: String, only: String? = nil) {
         add("POPCORN", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.arm = sp.isBird ? .forward : .scoop; $0.eyes = .up; $0.tailUp = false }
         add("MUSIC", sp) { $0.stance = sp.isBird ? .stand : .sit; $0.phones = true; $0.eyes = .happy; $0.tailUp = false }
         add("CALENDAR", sp) { $0.stance = .sit; $0.prop = .calendar; $0.arm = .hold; $0.tailUp = false }
-        add("SLEEP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; $0.nightcap = true; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } }
+        add("WATER", sp) { $0.stance = .sit; $0.prop = .glass; $0.arm = sp.isBird ? .forward : .hold; $0.tailUp = false }
+        add("SIP", sp) { $0.stance = .sit; $0.prop = .glass; $0.arm = sp.isBird ? .forward : .toMouth; $0.eyes = .happy; $0.tailUp = false }
+        add("NAP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } else if sp.isBird { $0.headDY = 3 } }
+        add("SLEEP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; $0.nightcap = true; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } else if sp.isBird { $0.headDY = 3 } }
         if sp.isBird {
-            add("PECK", sp) { $0.headDX = 4; $0.headDY = 24; $0.eyes = .closed }
-            add("PREEN", sp) { $0.headDX = -2; $0.headDY = 11; $0.eyes = .closed }
-            add("SNACK", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.headDX = 4; $0.headDY = 13; $0.eyes = .closed }
+            let goose = sp == .goose
+            add("PECK", sp) { $0.headDX = goose ? 4 : 3; $0.headDY = goose ? 24 : 9; $0.eyes = .closed }
+            add("PREEN", sp) { $0.headDX = goose ? -2 : -3; $0.headDY = goose ? 11 : 2; $0.eyes = .closed }
+            add("SNACK", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.headDX = goose ? 4 : 3; $0.headDY = goose ? 13 : 4; $0.eyes = .closed }
             add("GAZE", sp) { $0.eyes = .up; $0.headDY = -2 }
             add("FLY", sp) { $0.stance = .fly; $0.arm = .raised }
             add("FLY 2", sp) { $0.stance = .fly; $0.arm = .down }
@@ -62,7 +66,7 @@ func renderSheet(_ path: String, only: String? = nil) {
     if only == nil {
         let outfits: [Outfit] = [
             Outfit(hat: .topHat, glasses: .none, neck: .bowtie), Outfit(hat: .crown, glasses: .hearts, neck: .none),
-            Outfit(hat: .party, glasses: .none, neck: .scarf), Outfit(hat: .beanie, glasses: .round, neck: .bell),
+            Outfit(hat: .party, glasses: .none, neck: .scarf), Outfit(hat: .crown, glasses: .round, neck: .bell),
             Outfit(hat: .witch, glasses: .none, neck: .bandana), Outfit(hat: .cowboy, glasses: .shades, neck: .none),
             Outfit(hat: .bow, glasses: .none, neck: .bell), Outfit(hat: .flower, glasses: .round, neck: .scarf),
         ]
@@ -73,7 +77,8 @@ func renderSheet(_ path: String, only: String? = nil) {
         for k in [ItemKind.fish, .milk, .bread, .cheese, .berry, .sausage, .cookie, .ball, .yarn] {
             cells.append(("ITEM", itemCanvas(k, bites: 0, frame: 0), basePalette))
         }
-        for (i, bp) in butterflyPalettes.enumerated() { cells.append(("BFLY", itemCanvas(.butterfly, bites: 0, frame: i % 2), makePalette(bp))) }
+        for (i, bp) in butterflyPalettes.enumerated() { cells.append(("BFLY", itemCanvas(.butterfly, bites: 0, frame: 0, variant: i), makePalette(bp))) }
+        for i in 0..<4 { cells.append(("RANDOM", itemCanvas(.butterfly, bites: 0, frame: i == 3 ? 1 : 0, variant: i), makePalette(randomButterflyPalette()))) }
     }
 
     let cols = only == nil ? 10 : (key ? 9 : 6)
@@ -109,6 +114,9 @@ func renderSheet(_ path: String, only: String? = nil) {
     w.ui.tab = tab >= 10 ? 3 : tab          // 11-13: Settings with a calendar way open
     if tab >= 10 && tab < 20 { w.ui.calWay = tab - 10 }
     if tab == 2 || tab == 20 { w.ui.tab = 2; w.player.preview(connected: tab == 20) }
+    let savedOpen = UserDefaults.standard.stringArray(forKey: "openSections")
+    defer { UserDefaults.standard.set(savedOpen, forKey: "openSections") }      // your real menu keeps its sections
+    if w.ui.tab == 3 { w.ui.open = ["Pet", "Connections"] }
     w.hidden = false                // windows were never shown; this just keeps the menu's header normal
     w.pet.mode = .idle
     w.pet.renderCanvas()
@@ -174,6 +182,7 @@ func renderSheet(_ path: String, only: String? = nil) {
         AgendaView(agenda: Agenda.build(events, now: now))
         AgendaView(agenda: Agenda.build(events, now: late))
         MusicCardView(player: sp, model: MusicCardModel())
+        WaterView(title: "Water break?", glasses: 3, goal: 8)
     }.padding(20).background(Color.gray.opacity(0.4))
     let r = ImageRenderer(content: view)
     r.scale = 2
@@ -241,13 +250,13 @@ func renderAppIcon(_ dir: String) {
 
 /// Every pet in a row, in color, for the README: `PocketPet --hero out.png`
 func renderHero(_ path: String) {
-    let looks: [(Species, Outfit)] = [(.goose, Outfit(hat: .party)), (.ginger, Outfit(neck: .bell)), (.siamese, Outfit(hat: .bow)),
-                                      (.tuxedo, Outfit(hat: .topHat, neck: .bowtie)), (.calico, Outfit(hat: .flower)),
-                                      (.dalmatian, Outfit(glasses: .shades, neck: .bandana)), (.bat, Outfit(hat: .witch))]
+    let looks: [(Species, Outfit)] = [(.goose, Outfit(hat: .party)), (.parrot, Outfit(hat: .crown)), (.ginger, Outfit(neck: .bell)),
+                                      (.siamese, Outfit(hat: .bow)), (.tuxedo, Outfit(hat: .topHat, neck: .bowtie)), (.calico, Outfit(hat: .flower)),
+                                      (.dalmatian, Outfit(glasses: .shades, neck: .bandana)), (.fox, Outfit()), (.bat, Outfit(hat: .witch))]
     let pics = looks.map { sp, o -> (Canvas, [CGColor]) in
         var p = Pose(); p.outfit = o
-        if !sp.isBird { p.stance = .sit; p.tailUp = false }
-        if sp.family == .dog { p.mouth = .tongue }
+        if !sp.isBird { p.stance = .sit; p.tailUp = sp == .fox }       // the fox shows off its tail
+        if sp == .dalmatian { p.mouth = .tongue }
         var c = Canvas(canvasW, canvasH)
         drawPet(&c, sp, p, cx: canvasW / 2)
         c.outline()

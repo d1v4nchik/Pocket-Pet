@@ -32,14 +32,18 @@ final class TabWatcher {
     private var primed = Set<String>()           // browsers scanned once (the first look only sets the baseline)
     private var busy = false
     private var asked = Set<String>()            // browsers macOS has been asked about this launch
+    private var sites: [String: (at: Date, hosts: [String])] = [:]   // each browser's open sites, from the last look
+    private var ringing = true
 
-    func poll() {
+    /// `ring: false` just looks (for the music check): no bell, and no permission question.
+    func poll(ring: Bool = true) {
         guard !busy else { return }
         let browsers = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier }.filter { DocBrowsers.all.contains($0) }
         guard !browsers.isEmpty else { return }
         busy = true
-        let ask = browsers.filter { !asked.contains($0) }
-        asked.formUnion(browsers)
+        ringing = ring
+        let ask = ring ? browsers.filter { !asked.contains($0) } : []
+        if ring { asked.formUnion(browsers) }
         q.async { [self] in
             var found: [(bid: String, name: String, tabs: [(id: String, title: String, url: String)])] = []
             // the first time per browser, macOS asks you once whether Pocket Pet may look at its tabs
@@ -54,7 +58,21 @@ final class TabWatcher {
         }
     }
 
+    /// Music sites, for telling a song from the other sounds browsers make (calls, Discord's pings, ads).
+    static let musicSites = [("music.youtube.com", "YouTube Music"), ("open.spotify.com", "Spotify Web Player"),
+                             ("soundcloud.com", "SoundCloud"), ("music.apple.com", "Apple Music"), ("deezer.com", "Deezer"),
+                             ("tidal.com", "Tidal"), ("bandcamp.com", "Bandcamp"), ("pandora.com", "Pandora"),
+                             ("music.amazon.", "Amazon Music"), ("radio.garden", "Radio Garden"), ("lofi", "Lofi")]
+
+    /// The music site open in that browser, if any (nil also when its tabs haven't been looked at lately).
+    func musicSite(in bid: String) -> String? {
+        guard let s = sites[bid], Date().timeIntervalSince(s.at) < 30 else { return nil }
+        return Self.musicSites.first { m in s.hosts.contains { $0.contains(m.0) } }?.1
+    }
+    func sitesStale(_ bid: String) -> Bool { Date().timeIntervalSince(sites[bid]?.at ?? .distantPast) > 12 }
+
     private func update(_ bid: String, _ name: String, _ tabs: [(id: String, title: String, url: String)]) {
+        sites[bid] = (Date(), tabs.compactMap { URL(string: $0.url)?.host?.lowercased() })
         let first = !primed.contains(bid)
         primed.insert(bid)
         var seen = Set<String>()
@@ -65,7 +83,7 @@ final class TabWatcher {
             let before = counts[key]
             counts[key] = n
             if n == 0, (before ?? 0) > 0 { onRead?(t.id) }
-            guard !first, n > (before ?? 0) else { continue }
+            guard ringing, !first, n > (before ?? 0) else { continue }
             let site = URL(string: t.url)?.host?.replacingOccurrences(of: "www.", with: "")
             onNotice?(Notice(title: Self.appName(t.title, site: site), detail: "\(n) new in \(name)",
                              browser: bid, tabID: t.id, site: site))
@@ -218,11 +236,29 @@ final class BannerWatcher {
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
         observer = obs
         for b in banners() { seen[b.text] = Date() }       // whatever is already showing doesn't ring
+        // Some macOS versions reuse one window for every banner and send no Accessibility events, so the window
+        // server is asked too: a cheap list of Notification Center's on-screen windows, scanned only when it changes.
+        poll = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.checkWindows() }
+        poll?.tolerance = 0.5
     }
 
     func stop() {
         if let o = observer { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode) }
         observer = nil
+        poll?.invalidate(); poll = nil
+    }
+
+    private var poll: Timer?
+    private var lastWindows = ""
+
+    private func checkWindows() {
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        let mine = list.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0 }
+        let shape = mine.map { w -> String in
+            let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
+            return "\(w[kCGWindowNumber as String] ?? 0):\(Int(b["Height"] ?? 0))"
+        }.joined(separator: ",")
+        if shape != lastWindows { lastWindows = shape; if !mine.isEmpty { changed() } }
     }
 
     private func changed() {
@@ -262,7 +298,7 @@ final class BannerWatcher {
         func walk(_ e: AXUIElement, _ depth: Int) {
             guard depth < 14, visited < 500 else { return }
             visited += 1
-            if Self.pressable(e), let size = Self.size(e), size.width > 200, size.width < 600, size.height > 36, size.height < 260 {
+            if Self.bannerLike(e), let size = Self.size(e), size.width > 200, size.width < 600, size.height > 36, size.height < 260 {
                 let text = Self.text(e)
                 if text.count > 2 { out.append((text, e)); return }
             }
@@ -272,17 +308,27 @@ final class BannerWatcher {
         return out
     }
 
-    func press(_ el: AXUIElement) -> Bool { AXUIElementPerformAction(el, kAXPressAction as CFString) == .success }
+    /// Clicks the banner (which opens what it's about); falls back to its first action on versions without AXPress.
+    func press(_ el: AXUIElement) -> Bool {
+        if AXUIElementPerformAction(el, kAXPressAction as CFString) == .success { return true }
+        guard let first = Self.actions(el).first(where: { !$0.localizedCaseInsensitiveContains("close") }) else { return false }
+        return AXUIElementPerformAction(el, first as CFString) == .success
+    }
 
     private static func attr(_ e: AXUIElement, _ a: String) -> CFTypeRef? {
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil
     }
     private static func children(_ e: AXUIElement) -> [AXUIElement] { attr(e, kAXChildrenAttribute) as? [AXUIElement] ?? [] }
-    private static func pressable(_ e: AXUIElement) -> Bool {
+    private static func actions(_ e: AXUIElement) -> [String] {
         var names: CFArray?
-        guard AXUIElementCopyActionNames(e, &names) == .success, let list = names as? [String] else { return false }
-        return list.contains(kAXPressAction)
+        guard AXUIElementCopyActionNames(e, &names) == .success else { return [] }
+        return names as? [String] ?? []
+    }
+    /// A banner is clickable, or says it's a notification (macOS names them AXNotificationCenterBanner/Alert).
+    private static func bannerLike(_ e: AXUIElement) -> Bool {
+        if (attr(e, kAXSubroleAttribute) as? String)?.contains("Notification") == true { return true }
+        return actions(e).contains(kAXPressAction)
     }
     private static func size(_ e: AXUIElement) -> CGSize? {
         guard let v = attr(e, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
