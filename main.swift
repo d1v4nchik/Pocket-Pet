@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 let args = CommandLine.arguments
 if let i = args.firstIndex(of: "--sheet"), i + 1 < args.count {
+    if i + 3 < args.count { sheetHat = Hat(rawValue: args[i + 3]) }
     renderSheet(args[i + 1], only: i + 2 < args.count ? args[i + 2] : nil)
     exit(0)
 }
@@ -34,18 +35,19 @@ if let i = args.firstIndex(of: "--ics"), i + 1 < args.count, let text = try? Str
 }
 if args.contains("--agenda") {     // checks the Google sign-in: prints how many events it can see today and tomorrow
     var loaded = false
-    DispatchQueue.global().async { Keychain.load(); DispatchQueue.main.async { loaded = true } }
+    DispatchQueue.global().async { Secrets.load(); DispatchQueue.main.async { loaded = true } }
     while !loaded { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
     let g = Google()
     g.loadSecrets()
     g.refreshEvents {
-        print("signed in: \(g.signedIn), events: \(g.events.count), status: \(g.status)")
+        print("signed in: \(g.signedIn), has client: \(g.hasClient), events: \(g.events.count), status: \(g.status)")
+        g.diagnose { print("google says:", $0) }
         let df = DateFormatter(); df.dateFormat = "EEE HH:mm"
         for e in g.events { print(" ", df.string(from: e.start), "-", df.string(from: e.end), e.allDay ? "allday" : "", "[\(sanitize(e.title))]", e.title.count) }
         let a = Agenda.build(g.events)
         print(a.date, a.allDay, a.empty ?? "", "more:", a.more)
         for r in a.rows + a.tomorrow { print("  ", r.time, "|", r.title, r.until ?? "") }
-        exit(0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
     }
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
@@ -189,12 +191,24 @@ if let i = args.firstIndex(of: "--apply-update"), i + 2 < args.count {
         print("installed into \(app.path)"); exit(0)
     } catch { print("refused: \(error.localizedDescription)"); exit(1) }
 }
+if let i = args.firstIndex(of: "--secrets-test"), i + 1 < args.count {   // round-trips connections through a throwaway file
+    Secrets.fileOverride = URL(fileURLWithPath: args[i + 1])
+    Secrets.set("test-token-123", "refreshToken"); Secrets.set("https://example.com/cal.ics", "icsURL"); Secrets.flush()
+    Secrets.set(nil, "icsURL"); Secrets.set("https://example.com/other.ics", "icsURL"); Secrets.flush()
+    Secrets.load()
+    print("read back:", Secrets.get("refreshToken") ?? "-", Secrets.get("icsURL") ?? "-")
+    exit(0)
+}
 if let i = args.firstIndex(of: "--appicon"), i + 1 < args.count {
     renderAppIcon(args[i + 1])
     exit(0)
 }
 if let i = args.firstIndex(of: "--hero"), i + 1 < args.count {
     renderHero(args[i + 1])
+    exit(0)
+}
+if let i = args.firstIndex(of: "--hatrack"), i + 2 < args.count, let sp = Species(rawValue: args[i + 2]) {
+    renderHatRack(args[i + 1], sp)
     exit(0)
 }
 if let i = args.firstIndex(of: "--icons"), i + 1 < args.count {

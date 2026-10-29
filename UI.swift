@@ -725,12 +725,12 @@ final class ArtCache {
 struct Art: View {
     let url: String?
     let size: CGFloat
-    @State private var image: NSImage?
-    @State private var shown: String?
+    @State private var loaded: (url: String, image: NSImage)?
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
-        let img = image ?? url.flatMap(ArtCache.cached)
+        // only ever this song's own cover: a picture loaded for another address isn't shown
+        let img = url.flatMap { u in loaded?.url == u ? loaded?.image : ArtCache.cached(u) }
         ZStack {
             shape.fill(Color.primary.opacity(0.08))
             Image(systemName: "music.note").foregroundStyle(.secondary)
@@ -745,10 +745,10 @@ struct Art: View {
     }
 
     private func load() {
-        guard let url, shown != url else { return }
-        shown = url
-        if let c = ArtCache.cached(url) { image = c; return }
-        image = nil
-        ArtCache.load(url) { img in withAnimation(.easeOut(duration: 0.2)) { image = img } }
+        guard let url, ArtCache.cached(url) == nil, loaded?.url != url else { return }
+        ArtCache.load(url) { img in
+            guard let img, url == self.url else { return }
+            withAnimation(.easeOut(duration: 0.2)) { loaded = (url, img) }
+        }
     }
 }

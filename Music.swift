@@ -280,8 +280,8 @@ final class MusicPlayer {
 
     var connected: Bool { previewConnected || (refreshToken != nil && !clientID.isEmpty) }
 
-    /// After `Keychain.load()`.
-    func loadSecrets() { refreshToken = Keychain.get("spotifyRefresh") }
+    /// After `Secrets.load()`.
+    func loadSecrets() { refreshToken = Secrets.get("spotifyRefresh") }
 
     func connect(clientID raw: String, _ done: @escaping (Bool) -> Void) {
         let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -337,7 +337,7 @@ final class MusicPlayer {
     func disconnect() {
         refreshToken = nil; accessToken = nil
         upNext = []; results = []
-        Keychain.set(nil, "spotifyRefresh")
+        Secrets.set(nil, "spotifyRefresh")
         changed()
     }
 
@@ -410,7 +410,7 @@ final class MusicPlayer {
                 self.expiry = Date().addingTimeInterval(Double(json["expires_in"] as? Int ?? 3600) - 60)
                 if let rt = json["refresh_token"] as? String {      // Spotify may hand out a new one
                     self.refreshToken = rt
-                    Keychain.set(rt, "spotifyRefresh")
+                    Secrets.set(rt, "spotifyRefresh")
                 }
                 done(true)
             }

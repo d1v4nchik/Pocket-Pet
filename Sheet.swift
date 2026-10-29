@@ -5,6 +5,9 @@ import SwiftUI
 
 let canvasW = 64, canvasH = 52
 
+/// Optional hat for every pose in a sheet: `PocketPet --sheet out.png goose party`
+var sheetHat: Hat?
+
 func renderSheet(_ path: String, only: String? = nil) {
     let key = only == "key"
     let s: CGFloat = only == nil ? 2 : (key ? 3 : 5)
@@ -13,6 +16,7 @@ func renderSheet(_ path: String, only: String? = nil) {
     func add(_ name: String, _ sp: Species, _ edit: (inout Pose) -> Void) {
         var p = Pose()
         edit(&p)
+        if let h = sheetHat, !p.nightcap { p.outfit.hat = h }
         var c = Canvas(canvasW, canvasH)
         drawPet(&c, sp, p, cx: canvasW / 2)
         c.outline()
@@ -36,6 +40,10 @@ func renderSheet(_ path: String, only: String? = nil) {
         add("CALENDAR", sp) { $0.stance = .sit; $0.prop = .calendar; $0.arm = .hold; $0.tailUp = false }
         add("SLEEP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; $0.nightcap = true; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } }
         if sp.isBird {
+            add("PECK", sp) { $0.headDX = 4; $0.headDY = 24; $0.eyes = .closed }
+            add("PREEN", sp) { $0.headDX = -2; $0.headDY = 11; $0.eyes = .closed }
+            add("SNACK", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.headDX = 4; $0.headDY = 13; $0.eyes = .closed }
+            add("GAZE", sp) { $0.eyes = .up; $0.headDY = -2 }
             add("FLY", sp) { $0.stance = .fly; $0.arm = .raised }
             add("FLY 2", sp) { $0.stance = .fly; $0.arm = .down }
             add("HONK", sp) { $0.mouth = .open; $0.arm = .raised; $0.eyes = .wide }
@@ -257,5 +265,27 @@ func renderHero(_ path: String) {
         c.draw(ctx, CGFloat(x * k), CGFloat((H - pad - c.h) * k), CGFloat(k), pal)      // all standing on one line
         x += c.w + gap
     }
+    if let img = ctx.makeImage() { try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path)) }
+}
+
+/// One pet wearing every hat, a few poses each: `PocketPet --hatrack out.png bat`
+func renderHatRack(_ path: String, _ sp: Species) {
+    var cells: [Canvas] = []
+    for h in Hat.allCases where h != .none {
+        for stance in (sp.isBird ? [Stance.stand, .fly] : [.sit, .walk]) {
+            var p = Pose(); p.outfit.hat = h; p.stance = stance; p.tailUp = false
+            var c = Canvas(canvasW, canvasH)
+            drawPet(&c, sp, p, cx: canvasW / 2)
+            c.outline()
+            cells.append(c)
+        }
+    }
+    let k = 4, cols = 6, cw = canvasW * k, ch = canvasH * k
+    let rows = (cells.count + cols - 1) / cols
+    guard let ctx = CGContext(data: nil, width: cols * cw, height: rows * ch, bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+    ctx.setFillColor(cgColor(0xf5efe6)); ctx.fill(CGRect(x: 0, y: 0, width: cols * cw, height: rows * ch))
+    ctx.translateBy(x: 0, y: CGFloat(rows * ch)); ctx.scaleBy(x: 1, y: -1)
+    for (i, c) in cells.enumerated() { c.draw(ctx, CGFloat(i % cols * cw), CGFloat(i / cols * ch), CGFloat(k), makePalette(sp.colors)) }
     if let img = ctx.makeImage() { try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path)) }
 }

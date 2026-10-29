@@ -358,7 +358,7 @@ final class World: NSObject, NSPopoverDelegate {
         }
         synth.enabled = soundOn
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            Keychain.load()
+            Secrets.load()
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.google.loadSecrets(); self.ics.loadSecrets(); self.player.loadSecrets()
@@ -748,7 +748,11 @@ final class World: NSObject, NSPopoverDelegate {
         }
         if popover.isShown || musicCard.visible {
             player.refresh()
-            if title != musicTitle { player.refreshUpNext() }
+            if title != musicTitle {
+                player.refreshUpNext()
+                // Spotify can report the new title a moment before its cover: look again shortly
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.player.refresh() }
+            }
         }
         musicPlaying = playing
         musicTitle = title

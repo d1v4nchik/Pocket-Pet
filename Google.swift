@@ -1,8 +1,9 @@
 // Sign in with Google (OAuth in the browser), then read Calendar events.
-// Uses your own OAuth client (a "Desktop app" client from Google Cloud); the refresh token lives in the Keychain.
+// Uses your own OAuth client (a "Desktop app" client from Google Cloud); the refresh token lives in Pocket Pet's encrypted connections file.
 
 import Cocoa
 import CryptoKit
+import IOKit
 import Security
 
 struct CalEvent {
@@ -14,59 +15,95 @@ struct CalEvent {
     var location: String? = nil
 }
 
-/// Secrets (sign-in tokens, the calendar link) live in one Keychain item, read once in the background.
-/// Pocket Pet is signed on this Mac only, so after an update macOS asks once before letting it read the Keychain again;
-/// reading off the main thread means that question never freezes the pet, and one item means it's asked only once.
-enum Keychain {
-    private static let service = "local.honk.google"
-    private static let q = DispatchQueue(label: "honk.keychain")
+/// Your connections (sign-in tokens, the calendar link), kept in a file only your account can read and encrypted with a
+/// key unique to this Mac, so a copy of the file is useless anywhere else. Unlike the Keychain, the file doesn't mind that
+/// an update is a new build: connections survive updates without asking. Read once in the background at launch.
+enum Secrets {
+    private static let q = DispatchQueue(label: "pocketpet.secrets")
     private static var cache: [String: String] = [:]
+    static var fileOverride: URL?            // for the self-test
 
-    /// Call off the main thread (it can wait on macOS's prompt), then read with `get` on the main thread.
+    private static var file: URL {
+        fileOverride ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Pocket Pet/connections.dat")
+    }
+
+    /// Call off the main thread (moving old Keychain items over can wait on macOS's prompt), then `get` on the main thread.
     static func load() {
-        var all: [String: String] = [:]
-        if let blob = read("secrets"), let j = try? JSONSerialization.jsonObject(with: Data(blob.utf8)) as? [String: String] {
-            all = j
-        } else {
-            // Older versions kept one item per secret: gather them into one.
-            let old = ["clientSecret", "refreshToken", "icsURL", "spotifyRefresh"]
-            for k in old { if let v = read(k) { all[k] = v } }
-            if !all.isEmpty {
-                write(encode(all), "secrets")
-                for k in old { write(nil, k) }
-            }
+        var all = readFile()
+        if all == nil {
+            // first run with the file: bring over what earlier versions kept in the Keychain (macOS may ask one last time)
+            all = Legacy.readAll()
+            if !(all ?? [:]).isEmpty { writeFile(all ?? [:]); Legacy.deleteAll() }
         }
-        if Thread.isMainThread { cache = all } else { DispatchQueue.main.sync { cache = all } }
+        let found = all ?? [:]
+        if Thread.isMainThread { cache = found } else { DispatchQueue.main.sync { cache = found } }
     }
 
     static func get(_ key: String) -> String? { cache[key] }
 
+    /// Waits for pending writes (the self-test).
+    static func flush() { q.sync {} }
+
     static func set(_ value: String?, _ key: String) {
         cache[key] = value
-        let blob = encode(cache)
-        q.async { write(blob, "secrets") }
+        let snapshot = cache
+        q.async { writeFile(snapshot) }
     }
 
-    private static func encode(_ d: [String: String]) -> String {
-        (try? JSONSerialization.data(withJSONObject: d)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    private static var key: SymmetricKey {
+        SymmetricKey(data: SHA256.hash(data: Data("pocket-pet|\(platformUUID() ?? NSUserName())".utf8)))
     }
 
-    private static func read(_ key: String) -> String? {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                kSecAttrAccount as String: key, kSecReturnData as String: true]
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        return String(data: d, encoding: .utf8)
+    private static func platformUUID() -> String? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        return IORegistryEntryCreateCFProperty(service, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String
     }
 
-    private static func write(_ value: String?, _ key: String) {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                kSecAttrAccount as String: key]
-        SecItemDelete(q as CFDictionary)
-        guard let value, let d = value.data(using: .utf8) else { return }
-        var add = q
-        add[kSecValueData as String] = d
-        SecItemAdd(add as CFDictionary, nil)
+    private static func readFile() -> [String: String]? {
+        guard let data = try? Data(contentsOf: file), let box = try? AES.GCM.SealedBox(combined: data),
+              let plain = try? AES.GCM.open(box, using: key) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: plain)) as? [String: String]
+    }
+
+    private static func writeFile(_ all: [String: String]) {
+        let fm = FileManager.default
+        let dir = file.deletingLastPathComponent()
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        guard let plain = try? JSONSerialization.data(withJSONObject: all),
+              let sealed = try? AES.GCM.seal(plain, using: key).combined else { return }
+        try? sealed.write(to: file, options: .atomic)
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+
+    /// Where earlier versions kept connections: one Keychain item (or, before that, one per secret).
+    private enum Legacy {
+        static let service = "local.honk.google"
+        static let keys = ["secrets", "clientSecret", "refreshToken", "icsURL", "spotifyRefresh"]
+
+        static func readAll() -> [String: String] {
+            var all: [String: String] = [:]
+            if let blob = read("secrets"), let j = (try? JSONSerialization.jsonObject(with: Data(blob.utf8))) as? [String: String] { all = j }
+            for k in keys.dropFirst() where all[k] == nil { if let v = read(k) { all[k] = v } }
+            return all
+        }
+
+        static func deleteAll() {
+            for k in keys {
+                SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                               kSecAttrAccount as String: k] as CFDictionary)
+            }
+        }
+
+        private static func read(_ key: String) -> String? {
+            let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecAttrAccount as String: key, kSecReturnData as String: true]
+            var out: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
+            return String(data: d, encoding: .utf8)
+        }
     }
 }
 
@@ -93,10 +130,10 @@ final class Google {
         email = d.string(forKey: "googleEmail") ?? ""
     }
 
-    /// After `Keychain.load()`.
+    /// After `Secrets.load()`.
     func loadSecrets() {
-        clientSecret = Keychain.get("clientSecret") ?? ""
-        refreshToken = Keychain.get("refreshToken")
+        clientSecret = Secrets.get("clientSecret") ?? ""
+        refreshToken = Secrets.get("refreshToken")
     }
 
     /// Reads the client JSON you download from Google Cloud ("Desktop app" OAuth client).
@@ -111,7 +148,7 @@ final class Google {
         clientID = id
         clientSecret = secret
         UserDefaults.standard.set(id, forKey: "googleClientID")
-        Keychain.set(secret, "clientSecret")
+        Secrets.set(secret, "clientSecret")
         status = "Client added. Now sign in!"
         return true
     }
@@ -121,7 +158,7 @@ final class Google {
         accessToken = nil
         email = ""
         events = []
-        Keychain.set(nil, "refreshToken")
+        Secrets.set(nil, "refreshToken")
         UserDefaults.standard.removeObject(forKey: "googleEmail")
         status = ""
     }
@@ -130,7 +167,7 @@ final class Google {
         signOut()
         clientID = ""; clientSecret = ""
         UserDefaults.standard.removeObject(forKey: "googleClientID")
-        Keychain.set(nil, "clientSecret")
+        Secrets.set(nil, "clientSecret")
     }
 
     // MARK: Sign in
@@ -185,7 +222,7 @@ final class Google {
             self.expiry = Date().addingTimeInterval((json["expires_in"] as? Double ?? 3600) - 60)
             if let r = json["refresh_token"] as? String {
                 self.refreshToken = r
-                Keychain.set(r, "refreshToken")
+                Secrets.set(r, "refreshToken")
             }
             if let idt = json["id_token"] as? String, let mail = Self.email(fromIDToken: idt) {
                 self.email = mail
@@ -206,9 +243,25 @@ final class Google {
                 self.expiry = Date().addingTimeInterval((json["expires_in"] as? Double ?? 3600) - 60)
                 done(access)
             } else {
-                if (json?["error"] as? String) == "invalid_grant" { self.signOut(); self.status = "Please sign in again" }
+                switch json?["error"] as? String {
+                case "invalid_grant":       // expired or revoked; Google expires sign-ins weekly for apps left in testing
+                    self.signOut(); self.status = "Google ended this sign-in. Sign in again, or paste a calendar link (it never expires)."
+                case "invalid_client":      // the Google Cloud client's secret was reset or the client deleted
+                    self.status = "Google no longer accepts your Cloud client. Choose its file again, or paste a calendar link instead."
+                default: break
+                }
                 done(nil)
             }
+        }
+    }
+
+    /// What Google says when refreshing the sign-in (only its error code and message, never a token): `--agenda`.
+    func diagnose(_ done: @escaping (String) -> Void) {
+        guard let rt = refreshToken else { done("no refresh token"); return }
+        post(["refresh_token": rt, "client_id": clientID, "client_secret": clientSecret, "grant_type": "refresh_token"]) { json in
+            guard let json else { done("no answer from Google"); return }
+            if json["access_token"] != nil { done("ok"); return }
+            done("\(json["error"] ?? "?"): \(json["error_description"] ?? "")")
         }
     }
 

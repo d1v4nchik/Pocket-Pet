@@ -41,7 +41,7 @@ private let baseHex: [Col: UInt32] = [
     .page: 0xfffaf2, .pageRed: 0xe5504f,
     .gold: 0xffd23f, .ruby: 0xff4566, .hatBlack: 0x3a3340, .hatBand: 0xe5504f, .partyPink: 0xff8fbf,
     .partyBlue: 0x7ccbff, .bowPink: 0xff9cc6, .bowDark: 0xe0609e, .petal: 0xffd9ea, .beanie: 0x79c9a8,
-    .beanieDark: 0x56a585, .witch: 0x60468f, .witchBand: 0xffaa47, .cowboy: 0xb9824e, .cowboyDark: 0x8a5c35,
+    .beanieDark: 0x56a585, .witch: 0x7b52c7, .witchBand: 0xffaa47, .cowboy: 0xb9824e, .cowboyDark: 0x8a5c35,
     .lens: 0x2c2632, .lensPink: 0xff6aa8, .frame: 0x3b3346, .scarf: 0xe8565a, .scarfStripe: 0xfff4e0,
     .collar: 0xe8565a, .bandana: 0x6a95ef, .cap: 0x6a84e0,
     .fish: 0x8fb9d9, .fishDark: 0x5f88b0, .fishLight: 0xd3e8f5, .crust: 0xc98a45, .crustDark: 0x9c6532,

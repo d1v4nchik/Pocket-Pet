@@ -54,6 +54,7 @@ struct Anchors {
     var eyes: [(Int, Int)]     // top-left cell of each eye
     var profile: Bool          // side-view bird head: one eye, beak to the right
     var neck: (Int, Int)
+    var hatDX = 0              // hats sit further forward (the goose's head-down poses)
 }
 
 // MARK: - Species
@@ -169,6 +170,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
             return [.body: 0xffffff, .bodyShade: 0xe6e3ee, .mark: 0x3a3440, .belly: 0xffffff, .nose: 0x3a3440]
         case .bat:
             return [.body: 0x4f4166, .bodyShade: 0x3d3252, .wing: 0x6a5785, .wingDark: 0x392e4e, .belly: 0x6f5f88,
+                    .witch: 0x2a2533,   // a dark witch hat, so it doesn't melt into the purple bat
                     .inner: 0xf08aac, .mark: 0x241f2e, .eye: 0x241f2e, .eyeHi: 0xffffff, .nose: 0x241f2e, .outline: 0x18141f]
         }
     }
@@ -298,7 +300,8 @@ private func drawGoose(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     }
     profileEye(&c, p.eyes, hx + 3, ht + 1)
     if p.blush { c.hline(hx + 3, hx + 4, ht + 3, .blush) }
-    return Anchors(headX: hx + 2, headTop: ht, headW: 6, eyes: [(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5))
+    return Anchors(headX: hx + 2, headTop: ht, headW: 6, eyes: [(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5),
+                   hatDX: p.headDY >= 9 ? 2 : 0)
 }
 
 // MARK: - Cats and the dalmatian
@@ -648,13 +651,21 @@ private func drawQuadFront(_ c: inout Canvas, _ sp: Species, _ q: QuadSpec, _ p:
 private let hatArt: [Hat: ([String], [Character: Col])] = [
     .topHat: (["..KKK..", "..KKK..", "..KKK..", "..RRR..", "KKKKKKK"], ["K": .hatBlack, "R": .hatBand]),
     .crown: (["Y.Y.Y", "YYRYY", "YYYYY"], ["Y": .gold, "R": .ruby]),
-    .party: (["..S..", "..P..", ".PBP.", ".BPB.", "PBPBP"], ["S": .star, "P": .partyPink, "B": .partyBlue]),
+    .party: (["..S..", ".SSS.", "..P..", ".PBP.", ".BPB.", "PBPBP"], ["S": .star, "P": .partyPink, "B": .partyBlue]),
     .beanie: (["..W...", ".BBBB.", "BBBBBB", "DDDDDD"], ["W": .white, "B": .beanie, "D": .beanieDark]),
     .witch: (["K.......", "KK......", ".KK.....", ".KKK....", ".KKKK...", ".PPPP...", "KKKKKKKK"], ["K": .witch, "P": .witchBand]),
     .cowboy: (["...CCC...", "..CCCCC..", "..DDDDD..", "C.CCCCC.C", ".CCCCCCC."], ["C": .cowboy, "D": .cowboyDark]),
     .bow: (["PP.PP", "PPDPP", "PP.PP"], ["P": .bowPink, "D": .bowDark]),
     .flower: ([".W.", "WYW", ".W."], ["W": .petal, "Y": .popYellow]),
     .santa: (["......RWW", ".....RRWW", "....RRR..", "...RRRR..", "..RRRRRR.", "WWWWWWWWW"], ["R": .hatBand, "W": .white]),
+]
+
+/// Narrower side views of the wide hats, for the goose's small profile head (tips flop backwards).
+private let hatArtProfile: [Hat: ([String], [Character: Col])] = [
+    .santa: (["WW....", "WRR...", ".RRRR.", ".RRRRR", "WWWWWW"], ["R": .hatBand, "W": .white]),
+    .witch: (["K.....", "KK....", ".KK...", ".KKK..", ".PPPP.", "KKKKKK"], ["K": .witch, "P": .witchBand]),
+    .cowboy: (["..CCC..", ".CCCCC.", ".DDDDD.", "CCCCCCC"], ["C": .cowboy, "D": .cowboyDark]),
+    .topHat: ([".KKK.", ".KKK.", ".KKK.", ".RRR.", "KKKKK"], ["K": .hatBlack, "R": .hatBand]),
 ]
 
 private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
@@ -702,13 +713,14 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
     }
     if !a.profile && o.glasses != .none, a.eyes.count == 2 { c.hline(a.eyes[0].0 + 2, a.eyes[1].0 - 1, a.eyes[0].1, .frame) }
     if p.phones {
+        let band = o.hat == .none || p.nightcap        // with a hat on, the band goes under it: only the pads show
         if a.profile {
-            c.hline(hx - 2, hx + 2, top - 1, .phones)
+            if band { c.hline(hx - 2, hx + 2, top - 1, .phones) }
             c.rect(hx - 2, top + 1, 2, 3, .phonesPad)
             c.set(hx - 2, top, .phones)
         } else {
-            c.hline(hx - half - 1, hx + half + 1, top - 2, .phones)
-            c.rect(hx - half - 1, top - 1, 1, 2, .phones); c.rect(hx + half + 1, top - 1, 1, 2, .phones)
+            if band { c.hline(hx - half - 1, hx + half + 1, top - 2, .phones) }
+            c.rect(hx - half - 1, top - (band ? 1 : 0), 1, band ? 2 : 1, .phones); c.rect(hx + half + 1, top - (band ? 1 : 0), 1, band ? 2 : 1, .phones)
             c.rect(hx - half - 2, top + 1, 2, 3, .phonesPad); c.rect(hx + half + 1, top + 1, 2, 3, .phonesPad)
         }
     }
@@ -721,7 +733,7 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
         c.rect(l - 4, top - 4, 2, 2, .white)
         return
     }
-    guard o.hat != .none, let (rows, map) = hatArt[o.hat] else { return }
+    guard o.hat != .none, let (rows, map) = (a.profile ? hatArtProfile[o.hat] : nil) ?? hatArt[o.hat] else { return }
     let w = rows.map { $0.count }.max() ?? 0
     var x0: Int, y0: Int
     switch o.hat {
@@ -731,7 +743,7 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
         x0 = (a.profile ? hx - 1 : hx) - w / 2
         y0 = top - rows.count
     }
-    c.sprite(x0, y0, rows, map)
+    c.sprite(x0 + a.hatDX, y0, rows, map)
 }
 
 // MARK: - Bat
@@ -770,14 +782,18 @@ private func drawBat(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         c.spans(cx, bodyTop, [(-2, 1), (-3, 2), (-3, 2), (-2, 1), (-1, 0)], .belly)
         c.set(cx - 2, g, .mark); c.set(cx - 2, g - 1, .mark); c.set(cx + 1, g, .mark); c.set(cx + 1, g - 1, .mark)
     }
-    // head (flowing into the body) and big ears
+    // head (flowing into the body) and big ears; under a hat the ears tip out to the sides so the hat sits on the head
     c.spans(cx, ht, [(-3, 2), (-4, 3), (-5, 4), (-5, 4), (-5, 4), (-5, 4), (-5, 4)], .body)
-    for (i, row) in [(-4, -4), (-5, -4), (-5, -3), (-5, -3), (-5, -2), (-5, -2)].enumerated() {
-        let y = ht - 6 + i
+    let hatted = p.outfit.hat != .none || p.nightcap
+    let ears: [(Int, Int)] = hatted ? [(-8, -7), (-7, -5), (-6, -4), (-5, -4)] : [(-4, -4), (-5, -4), (-5, -3), (-5, -3), (-5, -2), (-5, -2)]
+    let earTop = hatted ? ht - 1 : ht - 6
+    for (i, row) in ears.enumerated() {
+        let y = earTop + i
         c.hline(cx + row.0, cx + row.1, y, .body)
         c.hline(cx - 1 - row.1, cx - 1 - row.0, y, .body)
-        if i >= 2 && i <= 4 { c.set(cx - 4, y, .inner); c.set(cx + 3, y, .inner) }
     }
+    if hatted { for (dx, dy) in [(-6, 0), (-5, 1)] { c.set(cx + dx, ht + dy, .inner); c.set(cx - 1 - dx, ht + dy, .inner) } }
+    else { for y in (ht - 4)...(ht - 2) { c.set(cx - 4, y, .inner); c.set(cx + 3, y, .inner) } }
     // face
     let ey = ht + 2
     // big round eyes, three wide, pupils in the middle

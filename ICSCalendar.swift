@@ -11,9 +11,9 @@ final class ICSCalendar {
 
     var connected: Bool { url != nil }
 
-    /// After `Keychain.load()`.
+    /// After `Secrets.load()`.
     func loadSecrets() {
-        url = Keychain.get("icsURL")
+        url = Secrets.get("icsURL")
     }
 
     /// Accepts the link copied from Google Calendar (https://… or webcal://…, ending in .ics).
@@ -34,7 +34,7 @@ final class ICSCalendar {
                 self.status = "Couldn't read that link. Copy the “Secret address in iCal format”."
                 done(false)
             } else {
-                Keychain.set(link, "icsURL")
+                Secrets.set(link, "icsURL")
                 self.status = ""
                 done(true)
             }
@@ -45,7 +45,7 @@ final class ICSCalendar {
         url = nil
         events = []
         lastFetch = .distantPast
-        Keychain.set(nil, "icsURL")
+        Secrets.set(nil, "icsURL")
     }
 
     func refresh(_ done: (() -> Void)?) {
