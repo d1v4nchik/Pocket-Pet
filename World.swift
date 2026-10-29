@@ -280,6 +280,12 @@ final class World: NSObject, NSPopoverDelegate {
     var notice: Notice?                 // what the bell is ringing for
     var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible }
     var bellOn = true
+    var bellTabs = true                 // also watch browser tabs (Safari, Chrome-based)
+    private var lastRing = -100.0
+    var waterEvery = 3600.0             // water reminders: seconds between them, 0 = off
+    private var nextWater = 1800.0
+    private var sharing = false, hiddenForSharing = false
+    let askCard = FloatingCard()
     private var nextTabPoll = 2.0
     let defaults = UserDefaults.standard
     var t = 0.0
@@ -449,14 +455,21 @@ final class World: NSObject, NSPopoverDelegate {
         }
         if t > nextReminderCheck { nextReminderCheck = t + 20; checkReminders() }
         if agendaCard.visible && (t > agendaCard.until || (typingNow && lastKeyT > agendaShownAt + 0.5) || hidden || pet.mode == .held) { agendaCard.hide() }
-        if bellOn && t > nextTabPoll { nextTabPoll = t + 10; tabWatcher.poll() }
+        if bellOn && bellTabs && t > nextTabPoll { nextTabPoll = t + 5; tabWatcher.poll() }
+        // a menu or card took the bell's spot: bring it back once they're closed
+        if notice != nil && !bellCard.visible && !popover.isShown && !agendaCard.visible && !musicCard.visible && t < lastRing + 120 { showBell() }
+        if askCard.visible && t > askCard.until { askCard.hide() }
+        if waterEvery > 0 && t > nextWater {
+            nextWater = t + waterEvery
+            if idleSecs < 120 && !hidden { remindWater() }      // only while you're at the Mac
+        }
         if bellCard.visible && (t > bellCard.until || hidden) { dismissBell() }
         if toast.visible && t > toast.until { toast.hide() }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
         if updater.enabled && t > nextUpdateCheck { nextUpdateCheck = t + 6 * 3600; updater.check { [weak self] in self?.announceUpdate() } }
         if fullscreenApp != lastFullscreenApp { lastFullscreenApp = fullscreenApp; pet.environmentChanged() }
         if musicCard.visible {
-            if musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
+            if musicCard.isKey || musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
             if t > musicCard.until || hidden || pet.mode == .held { musicCard.hide() }
         }
         if t > nextCalendar { nextCalendar = t + 600; google.refreshEvents(nil); ics.refresh(nil); macCal.refresh() }
@@ -569,6 +582,7 @@ final class World: NSObject, NSPopoverDelegate {
         videoPID = found
         if found != nil { lastVideoSeen = t }
         if bellOn { bannerWatcher.start() } else if bannerWatcher.running { bannerWatcher.stop() }
+        checkSharing()
         checkFullscreen()
         checkMusic()
     }
@@ -756,6 +770,7 @@ final class World: NSObject, NSPopoverDelegate {
 
     private func showMusicCard() {
         guard !hidden else { return }
+        closePopover(); bellCard.hide(); toast.hide()
         player.refresh()
         agendaCard.hide()
         let (tip, below) = pet.bubbleTip()
@@ -766,9 +781,17 @@ final class World: NSObject, NSPopoverDelegate {
 
     func ring(_ n: Notice) {
         guard bellOn, !hidden else { return }
+        // a browser message can arrive twice (a tab count and a banner): one ring is enough
+        if let last = notice, t - lastRing < 6, last.title == n.title || (last.site != nil && last.site == n.site) { return }
         notice = n
+        lastRing = t
         pet.spawnBang()
         synth.play("chime")
+        showBell()
+    }
+
+    private func showBell() {
+        guard let n = notice, !hidden else { return }
         let (tip, below) = pet.bubbleTip()
         bellCard.show(BellView(bell: iconImage(.bell), title: n.title, detail: n.detail, open: { [weak self] in self?.openNotice() }),
                       tip: tip, below: below, until: t + 120)
@@ -789,6 +812,52 @@ final class World: NSObject, NSPopoverDelegate {
     func dismissBell() {
         notice = nil
         bellCard.hide()
+    }
+
+    func setBellTabs(_ on: Bool) {
+        bellTabs = on
+        if !on, notice?.browser != nil { dismissBell() }
+        save()
+    }
+
+    // MARK: Water and screen sharing
+
+    func remindWater() {
+        pet.say(["TIME FOR SOME", "WATER!"], 5)
+        for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.35) { [weak self] in self?.pet.spawnDrop() } }
+        synth.play("pop")
+    }
+
+    func setWater(_ every: Double) {
+        waterEvery = every
+        nextWater = t + (every > 0 ? every : 0)
+        save()
+    }
+
+    /// macOS's window server knows when something is capturing the screen (a call's screen share, a recording).
+    private static let screenWatched: (@convention(c) () -> Bool)? = {
+        guard let h = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY),
+              let f = dlsym(h, "SLSIsScreenWatcherPresent") ?? dlsym(h, "CGSIsScreenWatcherPresent") else { return nil }
+        return unsafeBitCast(f, to: (@convention(c) () -> Bool).self)
+    }()
+
+    /// Sharing your screen in a call: ask whether to hide the pet until it stops (and come back by itself after).
+    private func checkSharing() {
+        let now = Self.screenWatched?() ?? false
+        guard now != sharing else { return }
+        sharing = now
+        if now && !hidden {
+            let (tip, below) = pet.bubbleTip()
+            askCard.show(AskView(title: "Sharing your screen?", detail: "Hide \(pet.name) until you stop sharing?", yes: "Hide", no: "Stay",
+                                 answer: { [weak self] hide in
+                                     guard let self else { return }
+                                     self.askCard.hide()
+                                     if hide && !self.hidden { self.hiddenForSharing = true; self.toggleHidden(quietly: true) }
+                                 }), tip: tip, below: below, until: t + 30)
+        } else if !now {
+            askCard.hide()
+            if hiddenForSharing && hidden { hiddenForSharing = false; toggleHidden(); pet.say(["I'M BACK!"], 1.6) }
+        }
     }
 
     func setBell(_ on: Bool) {
@@ -827,7 +896,7 @@ final class World: NSObject, NSPopoverDelegate {
             let dur = min(16, 7 + Double(agenda.lineCount))
             self.pet.showAgenda([], for: dur)
             let (tip, below) = self.pet.bubbleTip()
-            self.musicCard.hide()
+            self.musicCard.hide(); self.closePopover(); self.bellCard.hide(); self.toast.hide()
             self.agendaShownAt = self.t
             self.agendaCard.show(AgendaView(agenda: agenda, close: { [weak self] in self?.agendaCard.hide() }), tip: tip, below: below, until: self.t + dur)
         }
@@ -958,7 +1027,7 @@ final class World: NSObject, NSPopoverDelegate {
         save()
     }
 
-    func toggleHidden() {
+    func toggleHidden(quietly: Bool = false) {
         hidden.toggle()
         // a gray paw means "hidden, click me to bring it back"
         statusItem?.button?.appearsDisabled = hidden
@@ -968,8 +1037,8 @@ final class World: NSObject, NSPopoverDelegate {
             agendaCard.hide(); musicCard.hide(); bellCard.hide()
             // the paw can be lost among other menu bar icons, so say how to get the pet back
             let (tip, below) = pet.bubbleTip()
-            toast.show(ToastView(title: "\(pet.name) is hidden", detail: "Press ⌃⌥P, or open Pocket Pet again, to bring them back.",
-                                 close: { [weak self] in self?.toast.hide() }), tip: tip, below: below, until: t + 6)
+            if !quietly { toast.show(ToastView(title: "\(pet.name) is hidden", detail: "Press ⌃⌥P, or open Pocket Pet again, to bring them back.",
+                                 close: { [weak self] in self?.toast.hide() }), tip: tip, below: below, until: t + 6) }
             pet.panel.orderOut(nil)
             pet.bubble.hide()
             items.forEach { $0.panel.orderOut(nil) }
@@ -1061,6 +1130,8 @@ final class World: NSObject, NSPopoverDelegate {
         sleepAfter = d.object(forKey: "sleepAfter") as? Double ?? 120
         soundOn = d.object(forKey: "sound") as? Bool ?? true
         bellOn = d.object(forKey: "bell") as? Bool ?? true
+        bellTabs = d.object(forKey: "bellTabs") as? Bool ?? true
+        waterEvery = d.object(forKey: "water") as? Double ?? 3600
         let saved = d.double(forKey: "savedAt")
         awaySeconds = saved > 0 ? Date().timeIntervalSince1970 - saved : 0
         var rec: PetRecord?
@@ -1091,6 +1162,8 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(sleepAfter, forKey: "sleepAfter")
         d.set(soundOn, forKey: "sound")
         d.set(bellOn, forKey: "bell")
+        d.set(bellTabs, forKey: "bellTabs")
+        d.set(waterEvery, forKey: "water")
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
         d.set(Date().timeIntervalSince1970, forKey: "savedAt")
     }
@@ -1138,6 +1211,7 @@ final class World: NSObject, NSPopoverDelegate {
     }
 
     private func open(from view: NSView, rect: NSRect, edge: NSRectEdge) {
+        agendaCard.hide(); musicCard.hide(); bellCard.hide(); toast.hide()      // one menu at a time
         player.refresh()
         player.refreshUpNext()
         NSApp.activate(ignoringOtherApps: true)

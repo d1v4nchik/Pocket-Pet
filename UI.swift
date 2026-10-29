@@ -13,6 +13,10 @@ final class UIModel: ObservableObject {
     @Published var link = ""
     @Published var songQuery = ""
     @Published var closetPart = 0
+    /// Which Settings groups are unfolded.
+    @Published var open: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "openSections") ?? ["Connections"]) {
+        didSet { UserDefaults.standard.set(Array(open), forKey: "openSections") }
+    }
     @Published var spotifyID = ""
 
     func refresh() { tick &+= 1 }
@@ -290,18 +294,30 @@ struct RootView: View {
         .glass(10)
         if !sp.status.isEmpty { hint(sp.status) }
         if !sp.results.isEmpty {
-            ForEach(sp.results) { s in
-                songRow(s) {
-                    control("play.fill", 11) { sp.play(s) }.help("Play now")
-                    control("plus", 13) { sp.addToQueue(s) }.help("Add to queue")
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(sp.results) { s in
+                        songRow(s) {
+                            control("play.fill", 11) { sp.play(s) }.help("Play now")
+                            control("plus", 13) { sp.addToQueue(s) }.help("Add to queue")
+                        }
+                    }
                 }
             }
+            .frame(maxHeight: 200)
         } else {
             Text("Up next").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
             if sp.upNext.isEmpty {
                 hint(sp.running ? "Nothing queued" : "Play something in Spotify to see what's next")
             }
-            ForEach(Array(sp.upNext.prefix(6).enumerated()), id: \.offset) { _, s in songRow(s) { EmptyView() } }
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(Array(sp.upNext.enumerated()), id: \.offset) { _, s in
+                        songRow(s) { control("play.fill", 11) { sp.play(s) }.help("Play now") }
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
         }
         Button("Disconnect Spotify account") { sp.disconnect(); m.refresh() }
             .buttonStyle(.plain).font(.system(size: 10.5)).foregroundStyle(.secondary)
@@ -433,7 +449,7 @@ struct RootView: View {
 
     func title(_ h: Hat) -> String {
         ["none": "No hat", "bow": "Bow", "flower": "Flower", "crown": "Crown", "topHat": "Top hat", "party": "Party hat",
-         "beanie": "Beanie", "witch": "Witch hat", "cowboy": "Cowboy hat"][h.rawValue] ?? h.rawValue
+         "beanie": "Beanie", "witch": "Witch hat", "cowboy": "Cowboy hat", "santa": "Santa hat"][h.rawValue] ?? h.rawValue
     }
     func title(_ g: Glasses) -> String {
         ["none": "No glasses", "shades": "Shades", "hearts": "Heart glasses", "round": "Round glasses"][g.rawValue] ?? g.rawValue
@@ -442,52 +458,68 @@ struct RootView: View {
         ["none": "Nothing", "scarf": "Scarf", "bowtie": "Bow tie", "bell": "Bell collar", "bandana": "Bandana"][n.rawValue] ?? n.rawValue
     }
 
-    /// Three groups: the pet itself, what it connects to (each with a status and one button), and the app.
+    /// Three groups that fold away: the pet itself, what it connects to (each with a status and one control), the app.
     func settingsTab(_ world: World) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             section("Pet")
-            row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0) })) }
-            row("Size") {
-                Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
-                    Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
+            if m.open.contains("Pet") {
+                row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0) })) }
+                row("Size") {
+                    Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
+                        Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
+                    }
+                    .pickerStyle(.segmented).frame(width: 108)
                 }
-                .pickerStyle(.segmented).frame(width: 108)
-            }
-            row("Naps after") {
-                Picker("", selection: Binding(get: { Int(world.sleepAfter) }, set: { world.sleepAfter = Double($0); world.save(); m.refresh() })) {
-                    Text("1 min").tag(60); Text("2 min").tag(120); Text("5 min").tag(300); Text("10 min").tag(600)
+                row("Naps after") {
+                    Picker("", selection: Binding(get: { Int(world.sleepAfter) }, set: { world.sleepAfter = Double($0); world.save(); m.refresh() })) {
+                        Text("1 min").tag(60); Text("2 min").tag(120); Text("5 min").tag(300); Text("10 min").tag(600)
+                    }
+                    .frame(width: 108)
                 }
-                .frame(width: 108)
+                row("Water reminders") {
+                    Picker("", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
+                        Text("Off").tag(0); Text("30 min").tag(1800); Text("1 hour").tag(3600); Text("2 hours").tag(7200)
+                    }
+                    .frame(width: 108)
+                }
+                row("Name") {
+                    TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
+                              onCommit: { world.rename(m.draft); m.editing = false })
+                        .textFieldStyle(.roundedBorder).frame(width: 130)
+                }
+                row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
             }
-            row("Name") {
-                TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
-                          onCommit: { world.rename(m.draft); m.editing = false })
-                    .textFieldStyle(.roundedBorder).frame(width: 130)
-            }
-            row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
 
             section("Connections")
-            calendar(world)
-            connection("music.note", "Music",
-                       world.player.running ? "Playing in \(world.player.appName)" : "Spotify, Apple Music or any player") {
-                if !AXIsProcessTrusted() { Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill()).help("Lets it control players other than Spotify and Apple Music") }
-                else { Text("Ready").foregroundStyle(.secondary) }
-            }
-            connection("bell", "Notification bell",
-                       !world.bellOn ? "Off" : AXIsProcessTrusted() ? "Every app and browser tab" : "Browser tabs only for now") {
-                HStack(spacing: 6) {
-                    if world.bellOn && !AXIsProcessTrusted() {
-                        Button("Allow") { world.requestAccessibility() }.buttonStyle(Pill()).fixedSize().help("Lets the bell ring for every app's notifications")
-                    }
+            if m.open.contains("Connections") {
+                calendar(world)
+                connection("music.note", "Music",
+                           world.player.running ? "Playing in \(world.player.appName)" : "Spotify, Apple Music or any player") {
+                    Text(AXIsProcessTrusted() ? "Ready" : "Spotify and Music ready").foregroundStyle(.secondary).font(.system(size: 10.5))
+                }
+                connection("bell", "Notification bell",
+                           !world.bellOn ? "Off" : AXIsProcessTrusted() ? "Every app" + (world.bellTabs ? " and browser tabs" : "") : (world.bellTabs ? "Browser tabs only for now" : "Waiting for Accessibility")) {
                     toggle(Binding(get: { world.bellOn }, set: { world.setBell($0); m.refresh() }))
+                }
+                if world.bellOn {
+                    row("   Browser tabs") { toggle(Binding(get: { world.bellTabs }, set: { world.setBellTabs($0); m.refresh() })) }
+                        .help("Rings when a tab's title shows new messages, like \"(2) Discord\"")
+                }
+                if !AXIsProcessTrusted() {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        hint("Every app's notifications, and play/pause for any music player, need Accessibility: switch on Pocket Pet in Privacy & Security › Accessibility. On a Mac you're not an admin of, that switch asks for an admin password.")
+                        Button("Open") { world.requestAccessibility() }.buttonStyle(Pill(strong: true)).fixedSize()
+                    }
                 }
             }
 
             section("App")
-            if #available(macOS 13.0, *) {
-                row("Open at login") { toggle(Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() })) }
+            if m.open.contains("App") {
+                if #available(macOS 13.0, *) {
+                    row("Open at login") { toggle(Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() })) }
+                }
+                if world.updater.enabled { updatesRow(world) }
             }
-            if world.updater.enabled { updatesRow(world) }
             HStack {
                 Button(world.hidden ? "Show pet" : "Hide pet") { world.toggleHidden(); m.refresh() }.buttonStyle(Pill())
                     .help("⌃⌥P brings your pet back (or opens this menu)")
@@ -512,8 +544,20 @@ struct RootView: View {
         if !u.status.isEmpty { hint(u.status) }
     }
 
+    /// A group heading that folds its rows away (remembered between launches).
     func section(_ title: String) -> some View {
-        Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+        let isOpen = m.open.contains(title)
+        return Button {
+            if isOpen { m.open.remove(title) } else { m.open.insert(title) }
+        } label: {
+            HStack(spacing: 4) {
+                Text(title.uppercased()).font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).rotationEffect(.degrees(isOpen ? 90 : 0))
+                Spacer()
+            }
+            .foregroundStyle(.secondary).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).padding(.top, 4)
     }
 
     /// One connection: an icon, its name, where it stands, and one control.
@@ -660,18 +704,51 @@ struct RootView: View {
     }
 }
 
-/// Album art, in black and white like the rest of the menu.
+/// Album art, kept in memory once loaded (and fetched ahead of time) so it's there instantly; it fades in otherwise.
+final class ArtCache {
+    private static let cache = NSCache<NSString, NSImage>()
+    static func cached(_ url: String) -> NSImage? { cache.object(forKey: url as NSString) }
+
+    static func load(_ url: String, _ done: @escaping (NSImage?) -> Void) {
+        if let img = cached(url) { done(img); return }
+        guard let u = URL(string: url) else { done(nil); return }
+        URLSession.shared.dataTask(with: u) { data, _, _ in
+            let img = data.flatMap(NSImage.init(data:))
+            if let img { cache.setObject(img, forKey: url as NSString) }
+            DispatchQueue.main.async { done(img) }
+        }.resume()
+    }
+
+    static func prefetch(_ urls: [String?]) { for u in urls.compactMap({ $0 }) where cached(u) == nil { load(u) { _ in } } }
+}
+
 struct Art: View {
     let url: String?
     let size: CGFloat
+    @State private var image: NSImage?
+    @State private var shown: String?
+
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
-        AsyncImage(url: url.flatMap(URL.init(string:))) { img in
-            img.resizable().aspectRatio(contentMode: .fill).grayscale(1)
-        } placeholder: {
-            ZStack { shape.fill(Color.primary.opacity(0.08)); Image(systemName: "music.note").foregroundStyle(.secondary) }
+        let img = image ?? url.flatMap(ArtCache.cached)
+        ZStack {
+            shape.fill(Color.primary.opacity(0.08))
+            Image(systemName: "music.note").foregroundStyle(.secondary)
+            if let img {
+                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).transition(.opacity)
+            }
         }
         .frame(width: size, height: size)
         .clipShape(shape)
+        .onAppear(perform: load)
+        .onChange(of: url) { _ in load() }
+    }
+
+    private func load() {
+        guard let url, shown != url else { return }
+        shown = url
+        if let c = ArtCache.cached(url) { image = c; return }
+        image = nil
+        ArtCache.load(url) { img in withAnimation(.easeOut(duration: 0.2)) { image = img } }
     }
 }

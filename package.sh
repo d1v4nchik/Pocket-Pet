@@ -11,6 +11,7 @@ STAGE="$(mktemp -d)/Pocket Pet"
 mkdir -p "$STAGE"
 cp -R "Pocket Pet.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
+cp LICENSE "$STAGE/License.txt"
 cat > "$STAGE/How to open Pocket Pet.txt" <<'TXT'
 Pocket Pet — a little pixel pet that lives on your desktop.
 

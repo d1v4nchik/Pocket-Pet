@@ -157,6 +157,7 @@ final class Pet {
     var zoomLeft = 0, huntPhase = 0, huntT = 0.0, agendaUntil = 0.0
     var quickDrop = false
     var noticedUntil = -10.0
+    var playUntil = -10.0           // playing with a toy you just gave it: typing waits a moment
     var sliding = false           // dragged along the top edge in fullscreen
     var followUntil = 0.0             // "come here": tags along after the cursor until then
     var following: Bool { t < followUntil }
@@ -585,10 +586,17 @@ final class Pet {
             face(toward: NSEvent.mouseLocation, dead: 10)
             return
         }
+        // food and toys get noticed even mid-typing or mid-movie
+        if !inAir && [.typing, .watching, .listening].contains(mode) {
+            if let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy }) {
+                f.claim = self; food = f; spawnBang(); begin(.eating); return
+            }
+            if world.items.contains(where: { $0.isBall && !$0.gone }) { playUntil = t + 10; spawnBang(); begin(.ball); return }
+        }
         // notice typing and videos whatever it's busy with, except moments it can't stop (held, falling, landing, eating)
         let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking,
                                  .sleeping, .yawning, .catnap, .agenda]
-        if !inAir && !cannot.contains(mode) {
+        if !inAir && !cannot.contains(mode) && !(mode == .ball && t < playUntil) {
             if world.typingNow { begin(.typing); return }
             if world.videoPlaying && mode != .listening { begin(.watching); return }
         }
@@ -911,11 +919,15 @@ final class Pet {
         x += vx * fdt
         y += vy * fdt
         apexY = max(apexY, y)
+        // pushed or thrown off screen: drift back in smoothly instead of snapping to the edge
         let r = world.xRange(margin)
-        if x < r.lowerBound { x = r.lowerBound; vx = abs(vx) * 0.5 }
-        if x > r.upperBound { x = r.upperBound; vx = -abs(vx) * 0.5 }
+        let inX = clamp(x, r.lowerBound, r.upperBound)
+        if inX != x {
+            x += (inX - x) * min(1, fdt * 6)
+            if (x < inX && vx < 0) || (x > inX && vx > 0) { vx *= CGFloat(pow(0.05, dt)) }
+        }
         let top = world.area(near: CGPoint(x: x, y: y)).maxY - CGFloat(chh) * s
-        if y > top { y = top; vy = min(vy, 0) }
+        if y > top { y += (top - y) * min(1, fdt * 6); vy = min(vy, 0) }
         if y <= fl {
             y = fl; vx = 0; vy = 0
             quickDrop = false
@@ -938,6 +950,14 @@ final class Pet {
     func driftThink(_ dt: Double) {
         let fdt = CGFloat(dt)
         let a = area()
+        // let go somewhere off screen: glide back inside first, then head for an edge
+        let inside = CGPoint(x: clamp(x, a.minX, a.maxX), y: clamp(y, a.minY, a.maxY))
+        if hypot(inside.x - x, inside.y - y) > 6 {
+            x += (inside.x - x) * min(1, fdt * 7)
+            y += (inside.y - y) * min(1, fdt * 7)
+            vx *= CGFloat(pow(0.1, dt)); vy *= CGFloat(pow(0.1, dt))
+            return
+        }
         let dB = y - a.minY, dT = a.maxY - y, dL = x - a.minX, dR = a.maxX - x
         let m = min(dB, dT, dL, dR)
         let dir = ceilingMode ? CGVector(dx: 0, dy: 1)
@@ -1185,6 +1205,10 @@ final class Pet {
     func spawn(_ k: PKind, _ px: Double, _ py: Double, vx: Double = 0, vy: Double = 0, life: Double = 1.2, g: Double = 0, size: Int = 0) {
         particles.append(Particle(kind: k, x: px, y: py, vx: vx, vy: vy, life: life, gravity: g, size: size))
         if particles.count > 40 { particles.removeFirst() }
+    }
+
+    func spawnDrop() {
+        spawn(.drop, Double(head.x) + rnd(-4, 4), Double(head.y) - 6, vx: rnd(-1, 1), vy: -rnd(2, 4), life: 1.2)
     }
 
     func spawnBang() {

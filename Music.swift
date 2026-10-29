@@ -113,6 +113,7 @@ final class MusicPlayer {
                 var song = r.song
                 if let id = song?.id, song?.art == nil { song?.art = self.artCache[id] }
                 self.song = song
+                ArtCache.prefetch([song?.art])
                 self.playing = r.playing
                 self.position = r.position
                 self.positionAt = Date()
@@ -197,9 +198,62 @@ final class MusicPlayer {
     }
 
     /// Plays a song right away (Spotify's own "play track").
+    /// Plays a song right away: Spotify's own "play track", or a song from your Apple Music library.
     func play(_ s: Song) {
-        q.async { AE.send(Self.spotifyID, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
+        if s.id.hasPrefix("music:") {
+            let id = String(s.id.dropFirst(6)).filter { $0.isHexDigit }        // persistent ids are hex, nothing else gets in
+            q.async { Self.runScript("tell application id \"\(Self.musicID)\" to play (some track of library playlist 1 whose persistent ID is \"\(id)\")") }
+        } else {
+            q.async { AE.send(Self.spotifyID, "spfy", "PCtx", direct: NSAppleEventDescriptor(string: s.id)) }
+        }
         later(0.6) { self.refresh(); self.refreshUpNext() }
+    }
+
+    /// The music card's search: your Spotify account if it's connected, otherwise your Apple Music library.
+    func quickSearch(_ text: String) {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { clearResults(); return }
+        if connected { search(t); return }
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.musicID) != nil else {
+            status = "Connect Spotify in the Music tab to search"; changed(); return
+        }
+        q.async {
+            let found = Self.searchMusic(t)
+            DispatchQueue.main.async {
+                self.results = found
+                self.status = found.isEmpty ? "Nothing found in your Music library" : ""
+                self.changed()
+            }
+        }
+    }
+
+    func clearResults() { results = []; status = ""; changed() }
+
+    private static func searchMusic(_ text: String) -> [Song] {
+        let q = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let out = runScript("""
+            tell application id "\(musicID)"
+                set out to ""
+                set found to search library playlist 1 for "\(q)"
+                repeat with i from 1 to (count of found)
+                    if i > 8 then exit repeat
+                    set t to item i of found
+                    set out to out & (persistent ID of t) & (character id 31) & (name of t) & (character id 31) & (artist of t) & (character id 30)
+                end repeat
+                return out
+            end tell
+            """) ?? ""
+        return out.components(separatedBy: "\u{1E}").compactMap { row in
+            let f = row.components(separatedBy: "\u{1F}")
+            return f.count == 3 ? Song(id: "music:" + f[0], name: f[1], artist: f[2]) : nil
+        }
+    }
+
+    @discardableResult
+    private static func runScript(_ src: String) -> String? {
+        var err: NSDictionary?
+        let r = NSAppleScript(source: src)?.executeAndReturnError(&err)
+        return err == nil ? r?.stringValue : nil
     }
 
     private func command(_ id: String, _ key: Int32) {
@@ -291,7 +345,8 @@ final class MusicPlayer {
         guard connected else { return }
         api("GET", "/v1/me/player/queue") { [weak self] json, _ in
             guard let self, let json else { return }
-            self.upNext = (json["queue"] as? [[String: Any]] ?? []).prefix(8).compactMap(Self.song)
+            self.upNext = (json["queue"] as? [[String: Any]] ?? []).prefix(20).compactMap(Self.song)
+            ArtCache.prefetch(self.upNext.map(\.art))
             self.changed()
         }
     }
@@ -302,6 +357,7 @@ final class MusicPlayer {
         api("GET", "/v1/search", ["q": t, "type": "track", "limit": "6"]) { [weak self] json, _ in
             guard let self else { return }
             self.results = ((json?["tracks"] as? [String: Any])?["items"] as? [[String: Any]] ?? []).compactMap(Self.song)
+            ArtCache.prefetch(self.results.map(\.art))
             self.changed()
         }
     }

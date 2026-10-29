@@ -16,7 +16,7 @@ enum Mouth { case closed, open, tongue }
 enum Arm { case rest, raised, forward, tap, down, scoop, toMouth, lick, hold }
 enum Prop { case none, laptop, popcorn, calendar }
 
-enum Hat: String, Codable, CaseIterable { case none, bow, flower, crown, topHat, party, beanie, witch, cowboy }
+enum Hat: String, Codable, CaseIterable { case none, bow, flower, crown, topHat, party, beanie, witch, cowboy, santa }
 enum Glasses: String, Codable, CaseIterable { case none, shades, hearts, round }
 enum Neckwear: String, Codable, CaseIterable { case none, scarf, bowtie, bell, bandana }
 
@@ -654,6 +654,7 @@ private let hatArt: [Hat: ([String], [Character: Col])] = [
     .cowboy: (["...CCC...", "..CCCCC..", "..DDDDD..", "C.CCCCC.C", ".CCCCCCC."], ["C": .cowboy, "D": .cowboyDark]),
     .bow: (["PP.PP", "PPDPP", "PP.PP"], ["P": .bowPink, "D": .bowDark]),
     .flower: ([".W.", "WYW", ".W."], ["W": .petal, "Y": .popYellow]),
+    .santa: (["......RWW", ".....RRWW", "....RRR..", "...RRRR..", "..RRRRRR.", "WWWWWWWWW"], ["R": .hatBand, "W": .white]),
 ]
 
 private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {

@@ -132,6 +132,11 @@ extension View {
     }
 }
 
+/// Can take typing (for the search box) without activating the app.
+private final class CardPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 /// Clicks land straight away instead of only focusing the card.
 private final class ClickHostingView<V: View>: NSHostingView<V> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -145,6 +150,7 @@ final class MusicCardModel: ObservableObject {
 struct MusicCardView: View {
     let player: MusicPlayer
     @ObservedObject var model: MusicCardModel
+    @State private var query = ""
 
     var body: some View {
         let sp = player
@@ -182,6 +188,41 @@ struct MusicCardView: View {
                 button("forward.fill", 14) { sp.next() }
                 Spacer()
                 if sp.full { button("repeat", 12, on: sp.repeating) { sp.setRepeat(!sp.repeating) } }
+            }
+            // search and play, right here
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Search and play", text: $query, onCommit: { sp.quickSearch(query) }).textFieldStyle(.plain).font(.system(size: 12))
+                if !query.isEmpty {
+                    Button { query = ""; sp.clearResults() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.07)))
+            if !sp.results.isEmpty {
+                ScrollView {
+                    VStack(spacing: 5) {
+                        ForEach(sp.results) { s in
+                            Button { sp.play(s); query = ""; sp.clearResults() } label: {
+                                HStack(spacing: 8) {
+                                    Art(url: s.art, size: 26)
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(s.name).font(.system(size: 11.5)).lineLimit(1)
+                                        Text(s.artist).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "play.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 160)
+            } else if !sp.status.isEmpty {
+                Text(sp.status).font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
         }
         .padding(14)
@@ -250,6 +291,30 @@ struct ToastView: View {
     }
 }
 
+/// A yes/no question by the pet (e.g. "Sharing your screen? Hide?").
+struct AskView: View {
+    let title: String
+    let detail: String
+    let yes: String, no: String
+    var answer: (Bool) -> Void = { _ in }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12.5, weight: .semibold))
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Spacer()
+                Button(no) { answer(false) }.buttonStyle(Pill())
+                Button(yes) { answer(true) }.buttonStyle(Pill(strong: true))
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 11)
+        .frame(width: 240, alignment: .leading)
+        .card()
+    }
+}
+
 /// A borderless glass window by the pet that takes clicks without stealing focus from your app.
 final class FloatingCard {
     private var panel: NSPanel?
@@ -289,8 +354,11 @@ final class FloatingCard {
         })
     }
 
+    var isKey: Bool { panel?.isKeyWindow ?? false }
+
     private func makePanel() -> NSPanel {
-        let p = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let p = CardPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.becomesKeyOnlyIfNeeded = true        // takes the keyboard only for a text field (the music search), never your app's focus otherwise
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = true
