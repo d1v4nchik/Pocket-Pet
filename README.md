@@ -7,7 +7,7 @@
 A little pixel pet that lives on your Mac's desktop. It wanders around, naps when you're away, types along with you,
 watches videos with popcorn and listens to your music in tiny headphones.
 
-![The goose, the parrot, four cats, the dalmatian, the fox and the bat](docs/pets.png)
+![The goose, the parrot, four cats, the dalmatian, the fox and the bat](docs/lineup.png)
 
 ## ⬇️ Download
 
@@ -50,8 +50,8 @@ Dress any of them up from the **Closet**: hats (including a Santa hat), glasses 
 5. Leave it alone for a while and it settles down for a nap.
 
 <p>
-  <img src="docs/menu.png" width="300" alt="The menu: needs, snacks, toys and the closet">
-  <img src="docs/cards.png" width="300" alt="The calendar card and the music card">
+  <img src="docs/menu-panel.png" width="300" alt="The menu: needs, snacks, toys and every pet">
+  <img src="docs/cards-panel.png" width="300" alt="The calendar, music and water cards">
 </p>
 
 ## Controls
