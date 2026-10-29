@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "sheet", "win"]
+members = ["core", "ui", "sheet", "win"]
 resolver = "2"
 
 [workspace.package]

@@ -1,0 +1,11 @@
+[package]
+name = "pocket-pet-sheet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offscreen renders of Pocket Pet's art, and a cell-for-cell check against the Mac app's drawing"
+publish = false
+
+[dependencies]
+pocket-pet-core = { path = "../core" }
+pocket-pet-ui = { path = "../ui" }

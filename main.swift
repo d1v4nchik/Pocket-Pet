@@ -52,6 +52,15 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
 }
+if let i = args.firstIndex(of: "--sanitize"), i + 1 < args.count {     // what a speech bubble can show of some text
+    print(sanitize(args[i + 1]))
+    exit(0)
+}
+if let i = args.firstIndex(of: "--settings-shot"), i + 1 < args.count {
+    _ = NSApplication.shared
+    MainActor.assumeIsolated { renderSettingsWindow(args[i + 1], pane: i + 2 < args.count ? args[i + 2] : "Behaviour") }
+    exit(0)
+}
 if let i = args.firstIndex(of: "--screens"), i + 1 < args.count {
     MainActor.assumeIsolated { renderScreens(args[i + 1]) }
     exit(0)

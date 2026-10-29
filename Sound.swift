@@ -9,6 +9,20 @@ final class Synth {
     private var bufs: [String: AVAudioPCMBuffer] = [:]
     private var stopWork: DispatchWorkItem?
     var enabled = true
+    private var volumes: [String: Double] = [:]
+
+    /// Each sound belongs to one of these, and each has its own volume in Settings › Advanced.
+    static let categories: [(key: String, name: String)] = [("voice", "Voice"), ("purr", "Purring"), ("chime", "Reminders and bell"),
+                                                            ("eating", "Eating"), ("toys", "Toys and bumps")]
+    private static let category: [String: String] = [
+        "honk": "voice", "squawk": "voice", "quack": "voice", "meow": "voice", "mrrp": "voice", "woof": "voice", "dook": "voice",
+        "chirp": "voice", "hiss": "voice", "yawn": "voice", "purr": "purr", "chime": "chime", "chomp": "eating",
+        "pop": "toys", "boing": "toys", "kick": "toys", "poof": "toys", "whoosh": "toys"]
+
+    func setVolumes(_ v: [String: Double]) {
+        volumes = v
+        engine.mainMixerNode.outputVolume = Float(0.55 * (v["all"] ?? 1))
+    }
 
     init() {
         engine.attach(player)
@@ -143,7 +157,9 @@ final class Synth {
     }
 
     func play(_ name: String) {
-        guard enabled, let b = bufs[name] else { return }
+        let vol = volumes[Self.category[name] ?? "toys"] ?? 1
+        guard enabled, vol > 0.01, let b = bufs[name] else { return }
+        player.volume = Float(vol)
         // The engine only runs while something plays, so it never keeps the Mac awake.
         if !engine.isRunning { do { try engine.start() } catch { return } }
         player.scheduleBuffer(b, at: nil, options: [], completionHandler: nil)

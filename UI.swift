@@ -1,5 +1,6 @@
 // The control panel: glassy and minimal, following your Mac's appearance and accent color. Pet, snacks, a few actions, then Pets / Closet / Settings.
 
+import Charts
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -18,6 +19,10 @@ final class UIModel: ObservableObject {
         didSet { UserDefaults.standard.set(Array(open), forKey: "openSections") }
     }
     @Published var spotifyID = ""
+    @Published var habitText = ""
+    @Published var habitEvery = 0              // 0 = daily at habitTime
+    @Published var habitTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    @Published var waterDays = 7               // the Water chart: a week or a month
 
     func refresh() { tick &+= 1 }
 }
@@ -120,6 +125,29 @@ struct Pill: ButtonStyle {
     }
 }
 
+/// The Advanced Settings window: a standard Mac settings window, with a sidebar of panes and grouped forms.
+struct AdvancedSettingsView: View {
+    @ObservedObject var m: UIModel
+    @State private var pane: String?
+    init(m: UIModel, start: String = "General") { self.m = m; _pane = State(initialValue: start) }
+    static let panes = [("General", "gearshape"), ("Behaviour", "pawprint"), ("Water", "drop"), ("Reminders", "checklist"),
+                        ("Sounds", "speaker.wave.2"), ("Connections", "link")]
+
+    var body: some View {
+        if let world = m.world {
+            NavigationSplitView {
+                List(Self.panes, id: \.0, selection: $pane) { p in Label(p.0, systemImage: p.1).tag(p.0) }
+                    .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 220)
+            } detail: {
+                Form { RootView(m: m).pane(pane ?? "General", world) }
+                    .formStyle(.grouped)
+                    .navigationTitle(pane ?? "General")
+            }
+            .frame(minWidth: 640, minHeight: 460)
+        }
+    }
+}
+
 struct RootView: View {
     @ObservedObject var m: UIModel
 
@@ -195,7 +223,8 @@ struct RootView: View {
             Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy") { world.fromMenu { world.throwBall() } }
             Tile(img: world.itemImage(.butterfly), help: "Let a butterfly out") { world.fromMenu { world.releaseButterfly() } }
             Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap") { world.fromMenu { pet.toggleNap() } }
-            Tile(img: world.iconImage(.pin), help: "Come here: follows your cursor for a minute") { world.fromMenu { pet.comeHere() } }
+            Tile(img: world.iconImage(.pin), help: pet.following ? "Stop following" : "Come here: follows your cursor (press again to stop)",
+                 selected: pet.following ? true : nil) { world.fromMenu { pet.comeHere() } }
         } }
     }
 
@@ -318,12 +347,13 @@ struct RootView: View {
                     }
                 }
             }
-            .frame(maxHeight: 200)
+            .frame(maxHeight: 112)
         } else {
             Text("Up next").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
             if sp.upNext.isEmpty {
                 hint(sp.running ? "Nothing queued" : "Play something in Spotify to see what's next")
             }
+            // a short box, so the menu stays small: scroll for the rest of the queue
             ScrollView {
                 VStack(spacing: 6) {
                     ForEach(Array(sp.upNext.enumerated()), id: \.offset) { i, s in
@@ -331,7 +361,7 @@ struct RootView: View {
                     }
                 }
             }
-            .frame(maxHeight: 220)
+            .frame(maxHeight: 112)
         }
         Button("Disconnect Spotify account") { sp.disconnect(); m.refresh() }
             .buttonStyle(.plain).font(.system(size: 10.5)).foregroundStyle(.secondary)
@@ -477,47 +507,245 @@ struct RootView: View {
     }
 
     /// Three groups that fold away: the pet itself, what it connects to (each with a status and one control), the app.
+    /// The menu's Settings: only the basics. Everything else is in the Advanced Settings window.
     func settingsTab(_ world: World) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            section("Pet")
-            if m.open.contains("Pet") {
-                row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0) })) }
-                row("Size") {
-                    Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
-                        Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
-                    }
-                    .pickerStyle(.segmented).frame(width: 108)
-                }
-                row("Naps after") {
-                    Picker("", selection: Binding(get: { Int(world.sleepAfter) }, set: { world.sleepAfter = Double($0); world.save(); m.refresh() })) {
-                        Text("1 min").tag(60); Text("2 min").tag(120); Text("5 min").tag(300); Text("10 min").tag(600)
-                    }
-                    .frame(width: 108)
-                }
-                row("Water reminders") {
-                    HStack(spacing: 6) {
-                        // log a glass any time; the reminder then waits a full interval
-                        Button { world.drankWater(); m.refresh() } label: {
-                            HStack(spacing: 3) { Image(systemName: "drop.fill"); Text("\(world.glassesToday)/\(world.waterGoal)") }
-                        }
-                        .buttonStyle(Pill()).fixedSize().help("Had a glass of water? Count it")
-                        Picker("", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
-                            Text("Off").tag(0); Text("Every 30 min").tag(1800); Text("Every hour").tag(3600); Text("Every 2 hours").tag(7200)
-                        }
-                        .frame(width: 124)
-                    }
-                    .help("Counted in time you're actually at your computer")
-                }
-                row("Name") {
-                    TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
-                              onCommit: { world.rename(m.draft); m.editing = false })
-                        .textFieldStyle(.roundedBorder).frame(width: 130)
-                }
-                row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
+        VStack(alignment: .leading, spacing: 10) {
+            row("Name") {
+                TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
+                          onCommit: { world.rename(m.draft); m.editing = false })
+                    .textFieldStyle(.roundedBorder).frame(width: 130)
             }
+            row("Size") {
+                Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
+                    Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
+                }
+                .pickerStyle(.segmented).frame(width: 108)
+            }
+            row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
+            row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() })) }
+                .help("Off: your pet walks on every edge of the screen, and birds fly about")
+            Button { world.openAdvanced() } label: { Label("Advanced Settings…", systemImage: "gearshape") }
+                .buttonStyle(Pill()).fixedSize().padding(.top, 4)
+                .help("Water, reminders, sleep, staying in place, following, sounds, calendar, music and the bell")
+            HStack {
+                Button(world.hidden ? "Show pet" : "Hide pet") { world.toggleHidden(); m.refresh() }.buttonStyle(Pill())
+                    .help("⌃⌥P brings your pet back (or opens this menu)")
+                Spacer()
+                Button("Quit") { world.quit() }.buttonStyle(Pill())
+            }
+        }
+    }
 
-            section("Connections")
-            if m.open.contains("Connections") {
+    // MARK: Advanced Settings panes (a standard settings window: a sidebar, and grouped forms)
+
+    @ViewBuilder
+    func pane(_ name: String, _ world: World) -> some View {
+        switch name {
+        case "Water": waterPane(world)
+        case "Reminders": remindersPane(world)
+        case "Sounds": soundsPane(world)
+        case "Connections": connectionsPane(world)
+        case "Behaviour": behaviourPane(world)
+        default: generalPane(world)
+        }
+    }
+
+    func caption(_ s: String) -> some View { Text(s).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+
+    func save(_ world: World) { world.save(); m.refresh() }
+
+    @ViewBuilder
+    func behaviourPane(_ world: World) -> some View {
+        Section("Sleep") {
+            Picker("Naps by itself after", selection: Binding(get: { Int(world.sleepAfter) }, set: { world.sleepAfter = Double($0); save(world) })) {
+                Text("1 minute").tag(60); Text("2 minutes").tag(120); Text("5 minutes").tag(300); Text("10 minutes").tag(600); Text("Never").tag(0)
+            }
+            Picker("Nap button sleeps", selection: Binding(get: { Int(world.napLength) }, set: { world.napLength = Double($0); save(world) })) {
+                Text("Until I wake it").tag(0); Text("5 minutes").tag(300); Text("15 minutes").tag(900); Text("30 minutes").tag(1800); Text("1 hour").tag(3600)
+            }
+            caption("Until I wake it: it sleeps through typing and music. A timed nap ends by itself, and music starting startles it awake.")
+        }
+        Section("Moving around") {
+            Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
+            Picker("Stay in place", selection: Binding(get: { world.stillness }, set: { world.stillness = $0; save(world) })) {
+                Text("Off").tag(0); Text("Stays put, still grooms").tag(1); Text("Completely still").tag(2)
+            }
+            if world.stillness > 0 {
+                Toggle("Types along with you", isOn: Binding(get: { world.stillTyping }, set: { world.stillTyping = $0; save(world) }))
+                Toggle("Watches videos with you", isOn: Binding(get: { world.stillWatching }, set: { world.stillWatching = $0; save(world) }))
+                Toggle("Listens to music", isOn: Binding(get: { world.stillMusic }, set: { world.stillMusic = $0; save(world) }))
+            }
+        }
+        Section("Come here (the map pin)") {
+            Picker("Speed", selection: Binding(get: { world.followSpeed }, set: { world.followSpeed = $0; save(world) })) {
+                Text("Slow").tag(0); Text("Normal").tag(1); Text("Fast").tag(2)
+            }
+            .pickerStyle(.segmented)
+            Picker("Follows for", selection: Binding(get: { Int(world.followFor) }, set: { world.followFor = Double($0); save(world) })) {
+                Text("30 seconds").tag(30); Text("1 minute").tag(60); Text("5 minutes").tag(300); Text("Until I stop it").tag(0)
+            }
+            caption("Press the map pin again to stop it any time.")
+        }
+        Section("Extras") {
+            Toggle("Name tag above the pet", isOn: Binding(get: { world.showName }, set: { world.showName = $0; save(world) }))
+            Toggle("Double-click a snack or toy to put it away", isOn: Binding(get: { Item.doubleClickRemoves }, set: { Item.doubleClickRemoves = $0; save(world) }))
+        }
+    }
+
+    @ViewBuilder
+    func waterPane(_ world: World) -> some View {
+        let n = world.glassesToday, goal = world.waterGoal
+        Section("Today") {
+        HStack(spacing: 10) {
+            Image(nsImage: waterGlassImage(n, of: goal)).interpolation(.none).resizable().aspectRatio(contentMode: .fit).frame(height: 32)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(n >= goal ? "Goal reached today!" : "\(n) of \(goal) glasses today").font(.system(size: 12, weight: .medium))
+                    .lineLimit(1).fixedSize()
+                HStack(spacing: 3) {
+                    ForEach(0..<goal, id: \.self) { i in
+                        Capsule().fill(i < n ? Color(red: 0.24, green: 0.61, blue: 0.94) : Color.primary.opacity(0.12))
+                            .frame(width: max(5, 120 / CGFloat(goal) - 3), height: 4)
+                    }
+                }
+            }
+            Spacer(minLength: 4)
+            // + counts a glass; − takes one back if you pressed + by mistake
+            control("minus", 12) { world.undoWater(); m.refresh() }.disabled(n == 0).help("Take one off")
+            control("plus", 12) { world.drankWater(); m.refresh() }.help("Had a glass")
+        }
+        }
+        waterHistorySection(world)
+        Section {
+            Stepper("Daily goal: \(goal) glasses", value: Binding(get: { world.waterGoal }, set: { world.waterGoal = $0; save(world) }), in: 2...16)
+            Picker("Remind me", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
+                Text("Off").tag(0); Text("Every 30 minutes").tag(1800); Text("Every hour").tag(3600); Text("Every 2 hours").tag(7200)
+            }
+        } footer: {
+            caption("Starts from zero every morning. Reminders count the time you're at your computer and stop once you reach your goal. Pressed + by mistake? − takes it back.")
+        }
+    }
+
+    /// Glasses per day over the last week or month, the goal as a line, and a few numbers.
+    @ViewBuilder
+    func waterHistorySection(_ world: World) -> some View {
+        let goal = world.waterGoal, h = world.waterHistory, cal = Calendar.current
+        let days = (0..<m.waterDays).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: Date())) }
+        let counts = days.map { h[World.isoDay($0)] ?? 0 }
+        let blue = Color(red: 0.24, green: 0.61, blue: 0.94)
+        // days in a row at the goal, up to today (today doesn't break it while it's still going)
+        let streak: Int = {
+            var n = 0
+            for (i, c) in counts.enumerated().reversed() {
+                if c >= goal { n += 1 } else if i == counts.count - 1 { continue } else { break }
+            }
+            return n
+        }()
+        let logged = counts.filter { $0 > 0 }
+        Section("History") {
+            Picker("", selection: $m.waterDays) { Text("Week").tag(7); Text("Month").tag(30) }
+                .pickerStyle(.segmented).labelsHidden()
+            Chart {
+                ForEach(Array(zip(days, counts)), id: \.0) { d, c in
+                    BarMark(x: .value("Day", d, unit: .day), y: .value("Glasses", c))
+                        .foregroundStyle(c >= goal ? blue : blue.opacity(0.45))
+                        .cornerRadius(3)
+                }
+                RuleMark(y: .value("Goal", goal))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .foregroundStyle(.secondary)
+                    .annotation(position: .top, alignment: .leading) { Text("Goal").font(.system(size: 10)).foregroundStyle(.secondary) }
+            }
+            .chartXAxis {
+                if m.waterDays == 7 {
+                    AxisMarks(values: .stride(by: .day)) { _ in AxisValueLabel(format: .dateTime.weekday(.abbreviated)) }
+                } else {
+                    AxisMarks(values: .stride(by: .day, count: 7)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.day().month(.abbreviated)) }
+                }
+            }
+            .chartYScale(domain: 0...max(goal + 1, (counts.max() ?? 0) + 1))
+            .frame(height: 150)
+            HStack {
+                stat(logged.isEmpty ? "–" : String(format: "%.1f", Double(logged.reduce(0, +)) / Double(logged.count)), "glasses a day")
+                Spacer()
+                stat("\(counts.filter { $0 >= goal }.count) of \(m.waterDays)", "days at your goal")
+                Spacer()
+                stat("\(streak)", streak == 1 ? "day streak" : "day streak")
+            }
+        }
+    }
+
+    func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.system(size: 17, weight: .semibold)).monospacedDigit()
+            Text(label).font(.system(size: 10.5)).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    func remindersPane(_ world: World) -> some View {
+        Section("Your reminders") {
+            if world.habits.isEmpty { caption("Add your own, like stretching, vitamins or a walk. Your pet tells you when it's time.") }
+            ForEach(world.habits) { h in
+                HStack(spacing: 8) {
+                    Image(systemName: "checklist").foregroundStyle(Color.accentColor).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(h.text).lineLimit(1)
+                        Text(h.label).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button { world.removeHabit(h.id); m.refresh() } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless).help("Delete this reminder")
+                }
+            }
+        }
+        Section("New reminder") {
+            TextField("What", text: $m.habitText, prompt: Text("Stretch, drink tea, take vitamins..."))
+            Picker("When", selection: $m.habitEvery) {
+                Text("Every day at a time").tag(0); Text("Every 30 minutes").tag(1800); Text("Every hour").tag(3600); Text("Every 2 hours").tag(7200)
+            }
+            if m.habitEvery == 0 { DatePicker("Time", selection: $m.habitTime, displayedComponents: .hourAndMinute) }
+            HStack {
+                Spacer()
+                Button("Add Reminder") {
+                    let text = m.habitText.trimmingCharacters(in: .whitespaces)
+                    guard !text.isEmpty else { return }
+                    let c = Calendar.current.dateComponents([.hour, .minute], from: m.habitTime)
+                    world.addHabit(Habit(text: text, every: Double(m.habitEvery), hour: c.hour ?? 9, minute: c.minute ?? 0))
+                    m.habitText = ""
+                    m.refresh()
+                }
+                .disabled(m.habitText.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    @ViewBuilder
+    func soundsPane(_ world: World) -> some View {
+        Section {
+            Toggle("Sounds", isOn: Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() }))
+        }
+        Section("Volume") {
+            volumeRow(world, "all", "All sounds", sample: "pop")
+            ForEach(Synth.categories, id: \.key) { c in
+                volumeRow(world, c.key, c.name, sample: ["voice": world.pet.species.vocal.sound, "purr": "purr", "chime": "chime",
+                                                          "eating": "chomp", "toys": "boing"][c.key] ?? "pop")
+            }
+        }
+        .disabled(!world.soundOn)
+    }
+
+    /// A volume slider that plays its sound when you let go, so you hear the new level.
+    func volumeRow(_ world: World, _ key: String, _ name: String, sample: String) -> some View {
+        LabeledContent(name) {
+            Slider(value: Binding(get: { world.volumes[key] ?? 1 }, set: { world.setVolume($0, for: key) }), in: 0...1,
+                   onEditingChanged: { editing in if !editing { world.synth.play(sample) } })
+                .frame(width: 180)
+        }
+    }
+
+    @ViewBuilder
+    func connectionsPane(_ world: World) -> some View {
+        Section {
                 calendar(world)
                 connection("music.note", "Music",
                            world.player.running ? "Playing in \(world.player.appName)" : "Works with every player, nothing to sign in to") {
@@ -550,22 +778,35 @@ struct RootView: View {
                         Button("Open") { world.requestAccessibility() }.buttonStyle(Pill(strong: true)).fixedSize()
                     }
                 }
-            }
+            
+        }
+    }
 
-            section("App")
-            if m.open.contains("App") {
-                if #available(macOS 13.0, *) {
-                    row("Open at login") { toggle(Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() })) }
-                }
-                if world.updater.enabled { updatesRow(world) }
+    @ViewBuilder
+    func generalPane(_ world: World) -> some View {
+        // the same basics as the menu's Settings
+        Section("Your pet") {
+            TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }))
+                .onSubmit { world.rename(m.draft); m.editing = false; m.refresh() }       // saved on Return, so it doesn't announce every letter
+            Picker("Size", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
+                Text("Small").tag(3); Text("Medium").tag(4); Text("Large").tag(5)
             }
+            .pickerStyle(.segmented)
+            Toggle("Sounds", isOn: Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() }))
+            Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
+        }
+        Section("App") {
+            Toggle("Open at login", isOn: Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() }))
+            if world.updater.enabled { updatesRow(world) }
+        }
+        Section {
             HStack {
-                Button(world.hidden ? "Show pet" : "Hide pet") { world.toggleHidden(); m.refresh() }.buttonStyle(Pill())
-                    .help("⌃⌥P brings your pet back (or opens this menu)")
+                Button(world.hidden ? "Show Pet" : "Hide Pet") { world.toggleHidden(); m.refresh() }
                 Spacer()
-                Button("Quit") { world.quit() }.buttonStyle(Pill())
+                Button("Quit Pocket Pet") { world.quit() }
             }
-            .padding(.top, 2)
+        } footer: {
+            caption("⌃⌥P brings your pet back, or opens its menu.")
         }
     }
 

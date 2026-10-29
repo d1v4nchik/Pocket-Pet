@@ -116,7 +116,7 @@ func renderSheet(_ path: String, only: String? = nil) {
     if tab == 2 || tab == 20 { w.ui.tab = 2; w.player.preview(connected: tab == 20) }
     let savedOpen = UserDefaults.standard.stringArray(forKey: "openSections")
     defer { UserDefaults.standard.set(savedOpen, forKey: "openSections") }      // your real menu keeps its sections
-    if w.ui.tab == 3 { w.ui.open = ["Pet", "Connections"] }
+    if w.ui.tab == 3 { w.ui.open = ["Pet", "Water", "Reminders"] }
     w.hidden = false                // windows were never shown; this just keeps the menu's header normal
     w.pet.mode = .idle
     w.pet.renderCanvas()
@@ -188,6 +188,26 @@ func renderSheet(_ path: String, only: String? = nil) {
     r.scale = 2
     guard let img = r.nsImage, let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return }
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+}
+
+/// The Advanced Settings window, drawn by the app itself (no screen recording needed): `PocketPet --settings-shot out.png Water`
+@MainActor func renderSettingsWindow(_ path: String, pane: String) {
+    let w = World()
+    w.hidden = true
+    w.load()
+    w.ui.world = w
+    let win = w.makeAdvancedWindow()
+    win.contentView = NSHostingView(rootView: AdvancedSettingsView(m: w.ui, start: pane))
+    win.setFrame(NSRect(x: -4000, y: 200, width: 720, height: 560), display: true)     // off screen
+    win.orderFrontRegardless()
+    RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+    // the window as the window server drew it (an app may always capture its own windows)
+    typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+    let fn = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage").map { unsafeBitCast($0, to: Capture.self) }
+    if let img = fn?(.null, 8, UInt32(win.windowNumber), 9)?.takeRetainedValue() {
+        try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+    win.orderOut(nil)
 }
 
 /// The README's screenshots in one picture, on the pets lineup's cream: the menu, today's calendar, the music card and

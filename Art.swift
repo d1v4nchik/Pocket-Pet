@@ -356,11 +356,43 @@ let glyphs: [Character: [String]] = [
     "&": [".X..", "X.X.", ".X..", "X.XX", ".XX."], "(": [".X", "X.", "X.", "X.", ".X"], ")": ["X.", ".X", ".X", ".X", "X."],
     " ": ["..", "..", "..", "..", ".."], "♥": [".X.X.", "XXXXX", "XXXXX", ".XXX.", "..X.."],
     "♪": [".XXX", ".X.X", ".X..", "XX..", "XX.."],
+    // Cyrillic (the letters that look Latin borrow those shapes)
+    "А": [".X.", "X.X", "XXX", "X.X", "X.X"], "Б": ["XXX", "X..", "XX.", "X.X", "XX."], "В": ["XX.", "X.X", "XX.", "X.X", "XX."],
+    "Г": ["XXX", "X..", "X..", "X..", "X.."], "Д": [".XX.", ".X.X", ".X.X", "XXXX", "X..X"], "Е": ["XXX", "X..", "XX.", "X..", "XXX"],
+    "Ж": ["X.X.X", "X.X.X", ".XXX.", "X.X.X", "X.X.X"], "З": ["XX.", "..X", ".X.", "..X", "XX."],
+    "И": ["X..X", "X.XX", "XX.X", "X..X", "X..X"], "Й": [".XX.", "X..X", "X.XX", "XX.X", "X..X"],
+    "К": ["X.X", "X.X", "XX.", "X.X", "X.X"], "Л": [".XX", "X.X", "X.X", "X.X", "X.X"],
+    "М": ["X...X", "XX.XX", "X.X.X", "X...X", "X...X"], "Н": ["X.X", "X.X", "XXX", "X.X", "X.X"],
+    "О": [".X.", "X.X", "X.X", "X.X", ".X."], "П": ["XXX", "X.X", "X.X", "X.X", "X.X"], "Р": ["XX.", "X.X", "XX.", "X..", "X.."],
+    "С": [".XX", "X..", "X..", "X..", ".XX"], "Т": ["XXX", ".X.", ".X.", ".X.", ".X."], "У": ["X.X", "X.X", ".XX", "..X", "XX."],
+    "Ф": [".XXX.", "X.X.X", "X.X.X", ".XXX.", "..X.."], "Х": ["X.X", "X.X", ".X.", "X.X", "X.X"],
+    "Ц": ["X.X.", "X.X.", "X.X.", "XXXX", "...X"], "Ч": ["X.X", "X.X", "XXX", "..X", "..X"],
+    "Ш": ["X.X.X", "X.X.X", "X.X.X", "X.X.X", "XXXXX"], "Щ": ["X.X.X.", "X.X.X.", "X.X.X.", "XXXXXX", ".....X"],
+    "Ъ": ["XX..", ".X..", ".XX.", ".X.X", ".XX."], "Ы": ["X...X", "X...X", "XX..X", "X.X.X", "XX..X"],
+    "Ь": ["X..", "X..", "XX.", "X.X", "XX."], "Э": ["XX.", "..X", ".XX", "..X", "XX."],
+    "Ю": ["X.XX.", "X.X.X", "XXX.X", "X.X.X", "X.XX."], "Я": [".XX", "X.X", ".XX", "X.X", "X.X"],
+    "Є": [".XX", "X..", "XX.", "X..", ".XX"], "І": ["XXX", ".X.", ".X.", ".X.", "XXX"], "Ї": ["X.X", ".X.", ".X.", ".X.", ".X."],
 ]
 
+/// Text the pixel font can draw: Latin and Cyrillic as they are (accents dropped), anything else (Greek, Japanese,
+/// Arabic...) spelled out in Latin letters, so a song title in any language still shows.
 func sanitize(_ s: String) -> String {
-    let folded = s.folding(options: [.diacriticInsensitive], locale: nil).uppercased()
-    return String(folded.filter { glyphs[$0] != nil })
+    var out = "", run = ""
+    func flush() {
+        guard !run.isEmpty else { return }
+        let latin = run.applyingTransform(.toLatin, reverse: false) ?? run
+        out += latin.folding(options: [.diacriticInsensitive], locale: nil).uppercased().filter { glyphs[$0] != nil }
+        run = ""
+    }
+    let alike: [Character: Character] = ["—": "-", "–": "-", "·": "-", "’": "'", "‘": "'", "“": "'", "”": "'", "«": "'", "»": "'", "…": "."]
+    for raw in s.uppercased() {
+        let ch = alike[raw] ?? raw
+        if glyphs[ch] != nil { flush(); out.append(ch); continue }
+        let plain = String(ch).folding(options: [.diacriticInsensitive], locale: nil)          // É -> E, Ё -> Е
+        if plain.count == 1, let c = plain.first, glyphs[c] != nil { flush(); out.append(c) } else { run.append(ch) }
+    }
+    flush()
+    return out
 }
 
 func textWidth(_ s: String) -> Int {

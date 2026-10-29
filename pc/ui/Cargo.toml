@@ -1,0 +1,11 @@
+[package]
+name = "pocket-pet-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pocket Pet's menu and cards, drawn in software so they look the same everywhere"
+publish = false
+
+[dependencies]
+pocket-pet-core = { path = "../core" }
+fontdue = "=0.9.3"

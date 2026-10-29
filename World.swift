@@ -118,6 +118,7 @@ final class Item {
     }
 
     func update(_ dt: Double, world: World) {
+        if removeRequested { world.synth.play("poof"); close(); return }
         let s = scale, fdt = CGFloat(dt)
         let age = world.t - born
         if kind != .butterfly && claim == nil && !held && age > life {
@@ -220,8 +221,16 @@ final class Item {
         }
     }
 
+    /// Double-click a snack or toy and it goes away (a setting).
+    static var doubleClickRemoves = true
+    private var lastDown = 0.0
+    var removeRequested = false
+
     func mouseDown() {
         let m = NSEvent.mouseLocation
+        let n = now()
+        if Item.doubleClickRemoves && n - lastDown < 0.35 { removeRequested = true }
+        lastDown = n
         downAt = m
         grab = CGPoint(x: m.x - x, y: m.y - y)
         samples = [(now(), m)]
@@ -254,6 +263,22 @@ final class Item {
     }
 }
 
+/// One of your own reminders: daily at a time, or every so often while you're at the computer.
+struct Habit: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var text: String
+    var every: Double = 0            // seconds of time at the computer between reminders; 0 = daily at hour:minute
+    var hour = 9, minute = 0
+    var lastShown: Date?
+
+    var label: String {
+        if every > 0 { return every >= 3600 ? "Every \(Int(every / 3600)) h" : "Every \(Int(every / 60)) min" }
+        var c = DateComponents(); c.hour = hour; c.minute = minute
+        let time = Calendar.current.date(from: c).map { DateFormatter.localizedString(from: $0, dateStyle: .none, timeStyle: .short) } ?? ""
+        return "Daily at \(time)"
+    }
+}
+
 // MARK: - World
 
 final class World: NSObject, NSPopoverDelegate {
@@ -279,13 +304,13 @@ final class World: NSObject, NSPopoverDelegate {
     private var nextUpdateCheck = 30.0
     private var hotKey: EventHotKeyRef?
     var notice: Notice?                 // what the bell is ringing for
-    var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible || waterCard.visible }
+    var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible || waterCard.visible || habitCard.visible }
     var bellOn = true
     var bellTabs = true                 // also watch browser tabs (Safari, Chrome-based)
     private var lastRing = -100.0
     var waterEvery = 3600.0             // water reminders: seconds of time at the computer between them, 0 = off
     let waterCard = FloatingCard()
-    let waterGoal = 8
+    var waterGoal = 8                   // glasses a day; reminders rest once you get there
     private var activeSinceDrink = 0.0  // real seconds you've been at the computer since your last glass
     private var lastWall = Date()
     private var nextWaterTry = 0.0, waterSnoozes = 0
@@ -315,7 +340,22 @@ final class World: NSObject, NSPopoverDelegate {
     var fullscreenApp: Bool { fullscreen && !(videoPlaying || t - lastVideoSeen < 20) }
     private var lastFullscreenApp = false
     private var fsOffSince: Double?
-    var musicPlaying = false, musicTitle = "", musicApp = ""
+    var musicPlaying = false { didSet { if musicPlaying && !oldValue { musicStartedAt = t } } }
+    var musicStartedAt = -1e9            // music starting mid-nap startles the pet
+    var musicTitle = "", musicApp = ""
+
+    // Advanced settings
+    var stillness = 0                    // 0 moves around, 1 stays put (still grooms), 2 completely still
+    var stillTyping = true, stillWatching = true, stillMusic = true    // ...and while staying put, still reacts to these
+    var napLength = 0.0                  // the menu's nap: 0 = until you wake it, otherwise seconds
+    var followFor = 60.0                 // "come here": seconds, 0 = until you press the pin again
+    var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
+    var showName = false
+    var volumes: [String: Double] = [:]  // Synth.categories (and "all") -> 0...1
+    let nameTag = FloatingCard()
+    let habitCard = FloatingCard()
+    var habits: [Habit] = []
+    private var habitActive: [UUID: Double] = [:], habitSnoozed: [UUID: Double] = [:], showingHabit: UUID?
     private var notifiedPlaying: Bool?       // what Spotify/Music last told us
     private var nextAudioScan = 0.0
     private var musicAppRunning: Bool?
@@ -368,6 +408,8 @@ final class World: NSObject, NSPopoverDelegate {
             if self.musicCard.visible { self.musicModel.tick &+= 1 }
         }
         synth.enabled = soundOn
+        synth.setVolumes(volumes)
+        nameTag.clickThrough = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             Secrets.load()
             DispatchQueue.main.async {
@@ -475,15 +517,18 @@ final class World: NSObject, NSPopoverDelegate {
         let wall = Date(), real = min(10, max(0, wall.timeIntervalSince(lastWall)))
         lastWall = wall
         if waterEvery > 0 && idleSecs < 90 && !hidden { activeSinceDrink += real }
-        if waterEvery > 0 && activeSinceDrink >= waterEvery && t > nextWaterTry && !waterCard.visible {
+        checkHabits(real)
+        updateNameTag()
+        if waterEvery > 0 && activeSinceDrink >= waterEvery && t > nextWaterTry && !waterCard.visible && glassesToday < waterGoal {
             nextWaterTry = t + 60
             if !menuOpen && !sharing && !askCard.visible && !hidden && pet.mode != .held && idleSecs < 90 { remindWater() }
         }
         if waterCard.visible && (t > waterCard.until || hidden) { snoozeWater(quietly: true) }
+        if habitCard.visible && (t > habitCard.until || hidden), let id = showingHabit { answerHabit(id, false) }
         if bellCard.visible && (t > bellCard.until || hidden) { dismissBell() }
         if toast.visible && t > toast.until { toast.hide() }
         // cards stay by the pet when it walks off or you drag it somewhere
-        let cards = [bellCard, agendaCard, musicCard, waterCard, askCard, toast]
+        let cards = [bellCard, agendaCard, musicCard, waterCard, askCard, toast, habitCard, nameTag]
         if cards.contains(where: \.visible) {
             let (tip, below) = pet.bubbleTip()
             for c in cards where c.visible { c.follow(tip: tip, below: below) }
@@ -879,7 +924,27 @@ final class World: NSObject, NSPopoverDelegate {
     // MARK: Water and screen sharing
 
     var glassesToday: Int { defaults.string(forKey: "waterDay") == Self.dayKey() ? defaults.integer(forKey: "glasses") : 0 }
-    private static func dayKey() -> String { let d = Calendar.current.dateComponents([.year, .month, .day], from: Date()); return "\(d.year!)-\(d.month!)-\(d.day!)" }
+    /// Glasses per day ("2026-10-29": 5), kept for a year, for the Water pane's chart.
+    var waterHistory: [String: Int] {
+        var h = defaults.dictionary(forKey: "waterHistory") as? [String: Int] ?? [:]
+        if h[Self.isoDay(Date())] == nil && glassesToday > 0 { h[Self.isoDay(Date())] = glassesToday }     // from before the history
+        return h
+    }
+
+    private func setGlasses(_ n: Int) {
+        defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "glasses")
+        var h = waterHistory
+        h[Self.isoDay(Date())] = n
+        if h.count > 400 { for k in h.keys.sorted().prefix(h.count - 400) { h[k] = nil } }
+        defaults.set(h, forKey: "waterHistory")
+    }
+
+    static func isoDay(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+    }
+
+    static func dayKey() -> String { let d = Calendar.current.dateComponents([.year, .month, .day], from: Date()); return "\(d.year!)-\(d.month!)-\(d.day!)" }
 
     /// The pet sits up with a glass of water and a card asks whether you've had some.
     func remindWater() {
@@ -896,7 +961,7 @@ final class World: NSObject, NSPopoverDelegate {
 
     func drankWater() {
         let n = glassesToday + 1
-        defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "glasses")
+        setGlasses(n)
         activeSinceDrink = 0; waterSnoozes = 0
         pet.drink()
         synth.play("chomp")
@@ -1097,6 +1162,120 @@ final class World: NSObject, NSPopoverDelegate {
 
     func setSound(_ on: Bool) { soundOn = on; synth.enabled = on; save() }
 
+    func setVolume(_ v: Double, for category: String) {
+        volumes[category] = v
+        synth.setVolumes(volumes)
+        save()
+    }
+
+    // MARK: Advanced settings window
+
+    private var advancedWindow: NSWindow?
+
+    /// Opens Advanced Settings in a window of its own (brought forward if it's already open).
+    func openAdvanced() {
+        closePopover()
+        if advancedWindow == nil { advancedWindow = makeAdvancedWindow() }
+        NSApp.activate(ignoringOtherApps: true)
+        advancedWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// A standard settings window: title bar, sidebar up to the top like System Settings, resizable.
+    func makeAdvancedWindow() -> NSWindow {
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        w.title = "Advanced Settings"
+        w.isReleasedWhenClosed = false
+        w.toolbar = NSToolbar()
+        w.toolbarStyle = .unified
+        w.contentView = NSHostingView(rootView: AdvancedSettingsView(m: ui))
+        w.contentMinSize = NSSize(width: 640, height: 460)
+        w.setFrameAutosaveName("AdvancedSettings")
+        if !w.setFrameUsingName("AdvancedSettings") { w.center() }
+        return w
+    }
+
+    // MARK: Name tag
+
+    /// The pet's name in a little tag above it (when switched on), out of the way of speech and cards.
+    private func updateNameTag() {
+        let want = showName && !hidden && !menuOpen && !askCard.visible && !habitCard.visible && !toast.visible && !pet.bubble.panel.isVisible
+        if want && !nameTag.visible {
+            let (tip, below) = pet.bubbleTip()
+            nameTag.show(NameTagView(name: pet.name), tip: tip, below: below, until: .infinity)
+        } else if !want && nameTag.visible {
+            nameTag.hide()
+        }
+    }
+
+    // MARK: Habit reminders
+
+    /// Your own reminders: at a time each day, or every so often while you're at the computer.
+    private func checkHabits(_ real: Double) {
+        guard !habits.isEmpty else { return }
+        let atComputer = idleSecs < 90 && !hidden
+        for h in habits where h.every > 0 && atComputer { habitActive[h.id, default: 0] += real }
+        guard t > nextHabitCheck else { return }
+        nextHabitCheck = t + 15
+        guard atComputer, !menuOpen, !habitCard.visible, !askCard.visible, !sharing, pet.mode != .held else { return }
+        let now = Date(), cal = Calendar.current
+        for i in habits.indices {
+            let h = habits[i]
+            if let s = habitSnoozed[h.id], t < s { continue }
+            var due = false
+            if h.every > 0 {
+                due = habitActive[h.id, default: 0] >= h.every
+            } else {
+                let at = cal.date(bySettingHour: h.hour, minute: h.minute, second: 0, of: now) ?? now
+                due = now >= at && (h.lastShown.map { !cal.isDate($0, inSameDayAs: now) || $0 < at } ?? true)
+            }
+            if due { showHabit(i); return }
+        }
+    }
+    private var nextHabitCheck = 0.0
+
+    private func showHabit(_ i: Int) {
+        let h = habits[i]
+        habits[i].lastShown = Date()
+        habitActive[h.id] = 0
+        showingHabit = h.id
+        save()
+        pet.say([shortTitle(h.text, 22).uppercased()], 4)
+        pet.spawnBang()
+        synth.play("chime")
+        let (tip, below) = pet.bubbleTip()
+        habitCard.show(HabitView(text: h.text, schedule: h.label, answer: { [weak self] done in self?.answerHabit(h.id, done) }),
+                       tip: tip, below: below, until: t + 90)
+    }
+
+    func answerHabit(_ id: UUID, _ done: Bool) {
+        habitCard.hide()
+        showingHabit = nil
+        if done { pet.hearts(4); pet.celebrate("NICE!") }
+        else {
+            // asks again in 10 minutes
+            habitSnoozed[id] = t + 10 * 60
+            if let i = habits.firstIndex(where: { $0.id == id }) { habits[i].lastShown = nil; habitActive[id] = habits[i].every }
+            pet.say(["IN 10 MIN!"], 1.6)
+        }
+    }
+
+    func addHabit(_ h: Habit) {
+        var h = h
+        // a daily time that's already gone by today starts tomorrow
+        if h.every == 0, let at = Calendar.current.date(bySettingHour: h.hour, minute: h.minute, second: 0, of: Date()), Date() > at { h.lastShown = Date() }
+        habits.append(h); habitActive[h.id] = 0; save()
+    }
+    func removeHabit(_ id: UUID) { habits.removeAll { $0.id == id }; save() }
+
+    // MARK: Water glasses
+
+    /// Took one off (pressed + by mistake).
+    func undoWater() {
+        let n = max(0, glassesToday - 1)
+        setGlasses(n)
+    }
+
     func changeSpecies(to sp: Species) {
         guard pet.species != sp else { return }
         if pet.name == pet.species.defaultName { pet.name = sp.defaultName }
@@ -1152,6 +1331,7 @@ final class World: NSObject, NSPopoverDelegate {
         let m = NSEvent.mouseLocation
         for card in [agendaCard, musicCard] where card.visible && !card.frame.contains(m) { card.hide() }
         if waterCard.visible && waterCard.until - t > 3 && !waterCard.frame.contains(m) { snoozeWater(quietly: true) }
+        if habitCard.visible && !habitCard.frame.contains(m), let id = showingHabit { answerHabit(id, false) }
     }
 
     /// A new version is out: say so once (it stays in Settings after that).
@@ -1224,6 +1404,18 @@ final class World: NSObject, NSPopoverDelegate {
         sizeSetting = d.object(forKey: "size") as? Int ?? 4
         sleepAfter = d.object(forKey: "sleepAfter") as? Double ?? 120
         soundOn = d.object(forKey: "sound") as? Bool ?? true
+        stillness = d.integer(forKey: "stillness")
+        stillTyping = d.object(forKey: "stillTyping") as? Bool ?? true
+        stillWatching = d.object(forKey: "stillWatching") as? Bool ?? true
+        stillMusic = d.object(forKey: "stillMusic") as? Bool ?? true
+        napLength = d.double(forKey: "napLength")
+        followFor = d.object(forKey: "followFor") as? Double ?? 60
+        followSpeed = d.object(forKey: "followSpeed") as? Int ?? 1
+        showName = d.bool(forKey: "showName")
+        Item.doubleClickRemoves = d.object(forKey: "doubleClickRemoves") as? Bool ?? true
+        volumes = d.dictionary(forKey: "volumes") as? [String: Double] ?? [:]
+        waterGoal = d.object(forKey: "waterGoal") as? Int ?? 8
+        if let data = d.data(forKey: "habits"), let h = try? JSONDecoder().decode([Habit].self, from: data) { habits = h }
         bellOn = d.object(forKey: "bell") as? Bool ?? true
         bellTabs = d.object(forKey: "bellTabs") as? Bool ?? true
         useMacCalendar = d.object(forKey: "useMacCalendar") as? Bool ?? true
@@ -1257,6 +1449,15 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(sizeSetting, forKey: "size")
         d.set(sleepAfter, forKey: "sleepAfter")
         d.set(soundOn, forKey: "sound")
+        d.set(stillness, forKey: "stillness")
+        d.set(stillTyping, forKey: "stillTyping"); d.set(stillWatching, forKey: "stillWatching"); d.set(stillMusic, forKey: "stillMusic")
+        d.set(napLength, forKey: "napLength")
+        d.set(followFor, forKey: "followFor"); d.set(followSpeed, forKey: "followSpeed")
+        d.set(showName, forKey: "showName")
+        d.set(Item.doubleClickRemoves, forKey: "doubleClickRemoves")
+        d.set(volumes, forKey: "volumes")
+        d.set(waterGoal, forKey: "waterGoal")
+        if let data = try? JSONEncoder().encode(habits) { d.set(data, forKey: "habits") }
         d.set(bellOn, forKey: "bell")
         d.set(bellTabs, forKey: "bellTabs")
         d.set(useMacCalendar, forKey: "useMacCalendar")

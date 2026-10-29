@@ -330,6 +330,43 @@ struct AskView: View {
     }
 }
 
+/// One of your own reminders, by the pet.
+struct HabitView: View {
+    let text: String
+    let schedule: String
+    var answer: (Bool) -> Void = { _ in }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "checklist").font(.system(size: 18)).foregroundStyle(Color.accentColor).frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(text).font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(schedule).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 6) {
+                Spacer()
+                Button("Later") { answer(false) }.buttonStyle(Pill())
+                Button("Done") { answer(true) }.buttonStyle(Pill(strong: true))
+            }
+        }
+        .padding(.horizontal, 13).padding(.vertical, 11)
+        .frame(width: 240, alignment: .leading)
+        .card()
+    }
+}
+
+/// The pet's name above it, when switched on in Settings.
+struct NameTagView: View {
+    let name: String
+    var body: some View {
+        Text(name).font(.system(size: 10.5, weight: .semibold))
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Capsule().fill(.regularMaterial))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+    }
+}
+
 /// The water reminder: a pixel glass that fills up over the day, and two answers. After "I drank some" it shows
 /// the glass one step fuller for a moment, then closes.
 struct WaterView: View {
@@ -374,6 +411,7 @@ final class FloatingCard {
     private var generation = 0          // a fade-out finishing late must not hide a card that was shown again
     var until = 0.0
     var onClose: (() -> Void)?
+    var clickThrough = false            // the name tag: the mouse goes right through it
 
     var visible: Bool { panel?.isVisible ?? false }
     var frame: NSRect { panel?.frame ?? .zero }
@@ -433,6 +471,7 @@ final class FloatingCard {
         p.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         p.isReleasedWhenClosed = false
+        p.ignoresMouseEvents = clickThrough
         return p
     }
 }

@@ -142,6 +142,7 @@ final class Pet {
     var nextBlink = 2.0, blinkUntil = 0.0, blushUntil = 0.0
     var greeted = false
     var forcedNap = false, sleptAt = 0.0, napEnd = 0.0
+    var napUntil = Double.infinity       // a nap from the menu: until then (forever = until you wake it)
     var seated = false, popT = 0.0
     var nextReact = 0.0, nextBeg = 90.0, nextPeck = 0.0, peckStart = -10.0
     var nextKick = 0.0, kickUntil = 0.0, kicks = 0
@@ -160,8 +161,21 @@ final class Pet {
     var noticedUntil = -10.0
     var playUntil = -10.0           // playing with a toy you just gave it: typing waits a moment
     var sliding = false           // dragged along the top edge in fullscreen
-    var followUntil = 0.0             // "come here": tags along after the cursor until then
+    var followUntil = 0.0             // "come here": tags along after the cursor until then (forever = until you stop it)
     var following: Bool { t < followUntil }
+    /// "Stay in place": 0 moves around, 1 stays put but still grooms and looks around, 2 holds still. Following wins.
+    var stillness: Int { following ? 0 : world.stillness }
+    var inPlace: Bool { stillness > 0 }
+    /// Staying put, it types along, watches and listens only if you said so in Settings.
+    func allowed(_ m: Mode) -> Bool {
+        guard inPlace else { return true }
+        switch m {
+        case .typing: return world.stillTyping
+        case .watching: return world.stillWatching
+        case .listening: return world.stillMusic
+        default: return true
+        }
+    }
     var lastStance = Stance.stand, transitionUntil = 0.0
     var drawnEdge = -1
     /// Holds still while any of its menus or cards is open, so they stay with it.
@@ -201,7 +215,7 @@ final class Pet {
     /// Bats always live up there, hanging.
     var ceilingMode: Bool { !isBird && (world.fullscreenApp || family == .bat) }
     var isAsleep: Bool { mode == .sleeping || mode == .yawning || mode == .catnap }
-    var sleepThreshold: Double { world.sleepAfter * (energy < 25 ? 0.5 : 1) }
+    var sleepThreshold: Double { world.sleepAfter <= 0 ? .infinity : world.sleepAfter * (energy < 25 ? 0.5 : 1) }      // 0 = never naps by itself
 
     /// How often this pet needs to be redrawn right now (lower = less CPU).
     var wantsFPS: Double {
@@ -343,6 +357,7 @@ final class Pet {
     /// Walk along the floor (or climb around the walls) toward a track position.
     @discardableResult
     func go(_ target: CGFloat, speed: CGFloat, _ dt: Double, run: Bool = false) -> Bool {
+        if inPlace && mode != .held { moving = false; running = false; return true }
         let d = trackDelta(target)
         if abs(d) < 3 { return true }
         facing = d > 0 ? 1 : -1
@@ -480,6 +495,7 @@ final class Pet {
     }
 
     func takeOff() {
+        if inPlace { return }
         inAir = true
         edge = 0
         vy = 220 * s / 4
@@ -506,6 +522,13 @@ final class Pet {
     // MARK: Brain
 
     func setMode(_ m: Mode) {
+        if inPlace && [.walk, .zoomies, .hunt].contains(m) {      // staying put: a calm moment instead of wandering off
+            if mode != .idle { mode = .idle; modeT = 0 }
+            act = [.groom, .stretch, .look, .sit].randomElement()!
+            if family != .cat && act == .groom { act = .look }
+            actT = 0; actDur = rnd(2, 5)
+            return
+        }
         guard m != mode else { return }
         if mode == .eating { releaseFood() }
         if mode == .glide { umbrella = false }
@@ -561,26 +584,42 @@ final class Pet {
     /// High-priority reasons to stop whatever ambient thing the pet is doing.
     func ambientInterrupt(skipMusic: Bool = false) -> Bool {
         let w = world
-        if w.typingNow { return begin(.typing) }
-        if w.videoPlaying { return begin(.watching) }
-        if let f = w.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy }) {
+        if w.typingNow && allowed(.typing) { return begin(.typing) }
+        if w.videoPlaying && allowed(.watching) { return begin(.watching) }
+        if let f = w.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
             f.claim = self
             food = f
             spawnBang()
             return begin(.eating)
         }
-        if w.items.contains(where: { $0.isBall && !$0.gone }) { return begin(.ball) }
-        if w.items.contains(where: { $0.kind == .butterfly && !$0.leaving && !$0.gone }) {
+        if w.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { return begin(.ball) }
+        if !inPlace, w.items.contains(where: { $0.kind == .butterfly && !$0.leaving && !$0.gone }) {
             spawnBang()
             return begin(.butterfly)
         }
-        if !skipMusic && !following && w.musicPlaying && w.idleSecs < max(sleepThreshold * 3, 600) { return begin(.listening) }
+        if !skipMusic && !following && w.musicPlaying && allowed(.listening) && w.idleSecs < max(sleepThreshold * 3, 600) { return begin(.listening) }
         if w.idleSecs > sleepThreshold { return begin(.yawning) }
         return false
     }
 
+    /// Staying put: only things that land right next to it.
+    func reachable(_ it: Item) -> Bool { !inPlace || abs(it.x - x) < 60 * s / 4 }
+
     func think(_ dt: Double) {
         if following { follow() }
+        // "completely still": one calm pose (it still blinks) until you switch it off, put it to sleep or pick it up;
+        // typing along, watching and listening still happen in place if Settings allows them
+        let busy: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .sleeping, .yawning, .catnap, .waking, .agenda]
+        let reacting = [.typing, .watching, .listening].contains(mode) && allowed(mode)
+        if stillness == 2 && !inAir && !busy.contains(mode) && !reacting {
+            if world.typingNow && allowed(.typing) { begin(.typing); return }
+            if world.videoPlaying && allowed(.watching) { begin(.watching); return }
+            if world.musicPlaying && allowed(.listening) { begin(.listening); return }
+            if mode != .idle { mode = .idle; modeT = 0 }
+            act = isBird ? .stand : .sit; actT = 0; actDur = 1e9
+            moving = false
+            return
+        }
         // pressed while on the move: stop and look at you right away (the click's answer follows a beat later)
         if t < noticedUntil && !inAir && [.walk, .zoomies, .hunt, .ball, .butterfly].contains(mode) {
             moving = false
@@ -589,17 +628,17 @@ final class Pet {
         }
         // food and toys get noticed even mid-typing or mid-movie
         if !inAir && [.typing, .watching, .listening].contains(mode) {
-            if let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy }) {
+            if let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
                 f.claim = self; food = f; spawnBang(); begin(.eating); return
             }
-            if world.items.contains(where: { $0.isBall && !$0.gone }) { playUntil = t + 10; spawnBang(); begin(.ball); return }
+            if world.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { playUntil = t + 10; spawnBang(); begin(.ball); return }
         }
         // notice typing and videos whatever it's busy with, except moments it can't stop (held, falling, landing, eating)
         let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking,
                                  .sleeping, .yawning, .catnap, .agenda]
         if !inAir && !cannot.contains(mode) && !(mode == .ball && t < playUntil) {
-            if world.typingNow { begin(.typing); return }
-            if world.videoPlaying && mode != .listening { begin(.watching); return }
+            if world.typingNow && allowed(.typing) { begin(.typing); return }
+            if world.videoPlaying && mode != .listening && allowed(.watching) { begin(.watching); return }
         }
         switch mode {
         case .held: break
@@ -611,7 +650,8 @@ final class Pet {
         case .idle: idleThink(dt)
         case .walk:
             if ambientInterrupt() { return }
-            if go(walkTarget, speed: isBird ? 55 : (family == .dog ? 50 : 42), dt, run: running) {
+            let pace: CGFloat = following ? [0.6, 1, 1.9][max(0, min(2, world.followSpeed))] : 1
+            if go(walkTarget, speed: (isBird ? 55 : (family == .dog ? 50 : 42)) * pace, dt, run: running) {
                 setMode(.idle); act = .stand; actT = 0; actDur = rnd(1.5, 4)
             }
         case .typing:
@@ -622,6 +662,7 @@ final class Pet {
         case .watching: watchThink(dt)
         case .listening: listenThink(dt)
         case .yawning:
+            if startledByMusic() { return }
             if !forcedNap && world.idleSecs < 0.8 && modeT > 0.3 {
                 spawn(.question, Double(head.x), Double(head.y) - 3, vy: -2, life: 1)
                 setMode(.idle)
@@ -630,13 +671,15 @@ final class Pet {
             if modeT > 2.8 { setMode(.sleeping) }
         case .sleeping:
             if t > nextZ { nextZ = t + rnd(1.0, 1.6); spawnZ() }
+            if startledByMusic() { return }
             if forcedNap {
-                if energy >= 100 && modeT > 60 { forcedNap = false; setMode(.waking) }
+                if t > napUntil { forcedNap = false; setMode(.waking) }
             } else if world.idleSecs < 0.8 || (world.videoPlaying && modeT > 2) {
                 setMode(.waking)
             }
         case .catnap:
             if t > nextZ { nextZ = t + rnd(1.2, 1.8); spawnZ() }
+            if startledByMusic() { return }
             if t > napEnd || world.typingNow || world.videoPlaying || world.items.contains(where: { !$0.gone && $0.kind != .butterfly }) {
                 setMode(.waking)
             }
@@ -812,6 +855,7 @@ final class Pet {
 
     /// A bat lets go of the top edge, flutters out in an arc and flies back up (or just flies up, `home`).
     func swoop(home: Bool) {
+        if inPlace && !home { return }
         let a = area()
         edge = 0
         y = min(y, a.maxY - 30 * s)
@@ -1294,10 +1338,11 @@ final class Pet {
         if isBird && edge != 0 { edge = 0; startFalling() }
     }
 
-    /// Follows the cursor around for a minute.
+    /// Follows the cursor around for as long as Settings says, or until you press the pin again.
     func comeHere() {
         world.lastPlay = t
-        followUntil = t + 60
+        if following { followUntil = 0; say(["OKAY!"], 1.2); return }
+        followUntil = world.followFor > 0 ? t + world.followFor : .infinity
         forcedNap = false
         if isAsleep { setMode(.waking) }
         else if !inAir && (mode == .idle || mode == .listening || mode == .agenda) { setMode(.walk) }
@@ -1327,7 +1372,7 @@ final class Pet {
         } else {
             walkTarget = target
         }
-        running = far > 220
+        running = far > (world.followSpeed == 2 ? 60 : 220)
     }
 
     func toggleNap() {
@@ -1336,8 +1381,22 @@ final class Pet {
             setMode(.waking)
         } else {
             forcedNap = true
+            napUntil = world.napLength > 0 ? t + world.napLength : .infinity
             begin(.yawning)
         }
+    }
+
+    /// Music starting mid-nap makes it jump awake, unless you put it to sleep until you wake it.
+    func startledByMusic() -> Bool {
+        guard world.musicStartedAt > t - modeT, world.musicStartedAt > t - 2, !(forcedNap && napUntil == .infinity) else { return false }
+        forcedNap = false
+        spawnBang()
+        say(["!?"], 1.2)
+        world.synth.play(family == .cat ? "hiss" : species.vocal.sound)
+        hopV = 380 * s / 4
+        setMode(.idle)
+        act = .look; actT = 0; actDur = 1.2
+        return true
     }
 
     func showAgenda(_ lines: [String], for dur: Double? = nil, prop: Prop = .calendar) {

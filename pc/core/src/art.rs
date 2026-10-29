@@ -189,7 +189,7 @@ impl Canvas {
         if y0 > y1 { return; }
         for y in y0..=y1 {
             let dy = (y as f64 - cy) / ry;
-            let hw = rx * (1.0 - dy * dy).sqrt();
+            let hw = rx * (1.0 - dy * dy).max(0.0).sqrt();     // rounding can leave a hair below zero at the very edge
             let a = iround(cx - hw);
             let b = iround(cx + hw);
             if a <= b { self.hline(a, b, y, c); }
