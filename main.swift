@@ -90,8 +90,11 @@ if args.contains("--startle-test") {
             w.idleSecs = 0.2                                              // you're right there
             w.t += menuOpenFor; p.modeT += menuOpenFor                    // ...in a menu that stays open a while (the pet's clock runs on)
             var hopped = false
-            for _ in 0..<20 { w.t += 0.1; p.update(0.1); if p.hopY > 0 || p.hopV > 0 { hopped = true } }
-            print("\(label): \(before) -> \(p.mode)\(hopped ? ", hopped" : "")")
+            var scared = false
+            for _ in 0..<15 { w.t += 0.1; p.update(0.1); if p.hopY > 0 || p.hopV > 0 { hopped = true }; if w.t < p.scaredUntil { scared = true } }
+            let during = p.mode
+            for _ in 0..<20 { w.t += 0.1; p.update(0.1) }
+            print("\(label): \(before) -> \(scared ? "scared " : "")\(during) -> \(p.mode)\(hopped ? ", jolted" : "")")
         }
         run("natural nap", forced: false, napLength: 0, startle: true)
         run("nap button, until woken", forced: true, napLength: 0, startle: true)

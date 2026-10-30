@@ -143,6 +143,7 @@ final class Pet {
     var greeted = false
     var forcedNap = false, sleptAt = 0.0, napEnd = 0.0
     var napUntil = Double.infinity       // a nap from the menu: until then (forever = until you wake it)
+    var scaredUntil = 0.0                // jolted awake by music: crouches and trembles until then
     var seated = false, popT = 0.0
     var nextReact = 0.0, nextBeg = 90.0, nextPeck = 0.0, peckStart = -10.0
     var nextKick = 0.0, kickUntil = 0.0, kicks = 0
@@ -221,6 +222,7 @@ final class Pet {
     var wantsFPS: Double {
         // As few frames as each moment needs: being dragged or thrown is the only thing that gets 30.
         if mode == .held || mode == .glide || mode == .drift || hopY > 0 { return 30 }
+        if t < scaredUntil { return 20 }                  // the trembling needs the frames
         if stillness == 2 && !inAir && [.idle, .typing, .watching, .listening].contains(mode) { return 2 }     // nothing moves
         if inAir || running { return 20 }
         if moving { return 15 }                           // its pixels are 4 pt wide, so walking looks the same at 15
@@ -607,6 +609,7 @@ final class Pet {
     func reachable(_ it: Item) -> Bool { !inPlace || abs(it.x - x) < 60 * s / 4 }
 
     func think(_ dt: Double) {
+        if t < scaredUntil && mode != .held { moving = false; return }     // too frightened to do anything else yet
         if following { follow() }
         // "completely still": one calm pose (it still blinks) until you switch it off, put it to sleep or pick it up;
         // typing along, watching and listening still happen in place if Settings allows them
@@ -1396,11 +1399,13 @@ final class Pet {
         guard world.startleOnMusic, world.musicPlaying, world.musicStartedAt > t - modeT else { return false }
         forcedNap = false
         spawnBang()
-        say(["!?"], 1.2)
-        world.synth.play(family == .cat ? "hiss" : species.vocal.sound)
-        hopV = 380 * s / 4
+        say([family == .cat ? "EEK!" : family == .dog ? "YIKES!" : isBird ? "AAAH!" : "EEK!"], 1.6)
+        world.synth.play(family == .cat ? "hiss" : family == .bird ? "squawk" : species.vocal.sound)
+        hopV = 260 * s / 4                     // a jolt, then it shrinks down and trembles
+        scaredUntil = t + 2.4
+        for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + Double(i) * 0.45) { [weak self] in self?.spawnDrop() } }
         setMode(.idle)
-        act = .look; actT = 0; actDur = 1.2
+        act = .stand; actT = 0; actDur = 2.4
         return true
     }
 
@@ -1799,6 +1804,13 @@ final class Pet {
             }
         }
         if (mode == .idle || mode == .walk) && fullness < 15 && p.eyes == .open { p.eyes = .sad }
+        // frightened: eyes wide, ears back, mouth open, low to the ground and shaking
+        if t < scaredUntil && mode == .idle {
+            let shake = Int(t / 0.05) % 2 == 0 ? 1 : -1
+            p.eyes = .wide; p.earsFlat = true; p.mouth = .open; p.blush = false; p.bob = 0
+            if isBird || family == .bat { p.arm = .raised; p.headDX = shake > 0 ? 1 : 0 }
+            else if hopY <= 0 { p.stance = .crouch; p.wiggle = shake; p.tailUp = true }
+        }
         // "completely still": the same frame every time (no blinking, swaying, tapping or dancing; props stay)
         if stillness == 2 && [.idle, .typing, .watching, .listening].contains(mode) {
             p.bob = 0; p.phase = 0; p.tail = 0; p.wiggle = 0; p.headDX = 0; p.headDY = 0
