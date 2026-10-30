@@ -221,6 +221,7 @@ final class Pet {
     var wantsFPS: Double {
         // As few frames as each moment needs: being dragged or thrown is the only thing that gets 30.
         if mode == .held || mode == .glide || mode == .drift || hopY > 0 { return 30 }
+        if stillness == 2 && !inAir && [.idle, .typing, .watching, .listening].contains(mode) { return 2 }     // nothing moves
         if inAir || running { return 20 }
         if moving { return 15 }                           // its pixels are 4 pt wide, so walking looks the same at 15
         switch mode {
@@ -611,6 +612,7 @@ final class Pet {
         // typing along, watching and listening still happen in place if Settings allows them
         let busy: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .sleeping, .yawning, .catnap, .waking, .agenda]
         let reacting = [.typing, .watching, .listening].contains(mode) && allowed(mode)
+        if stillness == 2 { hopV = 0; hopY = 0 }                  // no hops either
         if stillness == 2 && !inAir && !busy.contains(mode) && !reacting {
             if world.typingNow && allowed(.typing) { begin(.typing); return }
             if world.videoPlaying && allowed(.watching) { begin(.watching); return }
@@ -684,6 +686,8 @@ final class Pet {
                 setMode(.waking)
             }
         case .waking:
+            // coming back to press play wakes it gently a moment before the music starts: that's still a fright
+            if modeT < 3, startledByMusic() { return }
             if modeT > 2.6 {
                 if world.typingNow { setMode(.typing); return }
                 if t - sleptAt > 60 && sleptAt > 0 { say([t - sleptAt > 1800 ? "GOOD MORNING!" : "HI!"], 1.8) }
@@ -1061,7 +1065,7 @@ final class Pet {
         if world.videoPlaying { begin(.watching); return }
         if !world.musicPlaying { if modeT > 1 { setMode(.idle) }; return }
         if ambientInterrupt(skipMusic: true) { return }
-        if t > nextNote {
+        if t > nextNote && stillness < 2 {
             nextNote = t + rnd(1.6, 2.6)
             spawn(.note, Double(head.x) + rnd(-5, 5), Double(head.y) - 2, vx: rnd(-2.5, 2.5), vy: -rnd(3.5, 5.5), life: 1.8)
         }
@@ -1386,9 +1390,10 @@ final class Pet {
         }
     }
 
-    /// Music starting mid-nap makes it jump awake, unless you put it to sleep until you wake it.
+    /// Music starting mid-nap makes it jump awake (a setting: off, it sleeps through music). It reacts the moment it can:
+    /// right away, or once the menu you pressed play in closes (the pet holds still while it's open).
     func startledByMusic() -> Bool {
-        guard world.musicStartedAt > t - modeT, world.musicStartedAt > t - 2, !(forcedNap && napUntil == .infinity) else { return false }
+        guard world.startleOnMusic, world.musicPlaying, world.musicStartedAt > t - modeT else { return false }
         forcedNap = false
         spawnBang()
         say(["!?"], 1.2)
@@ -1794,6 +1799,13 @@ final class Pet {
             }
         }
         if (mode == .idle || mode == .walk) && fullness < 15 && p.eyes == .open { p.eyes = .sad }
+        // "completely still": the same frame every time (no blinking, swaying, tapping or dancing; props stay)
+        if stillness == 2 && [.idle, .typing, .watching, .listening].contains(mode) {
+            p.bob = 0; p.phase = 0; p.tail = 0; p.wiggle = 0; p.headDX = 0; p.headDY = 0
+            p.eyes = .open; p.mouth = family == .dog ? .tongue : .closed
+            if p.arm == .tap { p.arm = .forward }
+            if p.arm == .raised || p.arm == .scoop || p.arm == .toMouth || p.arm == .lick { p.arm = .rest }
+        }
         return p
     }
 

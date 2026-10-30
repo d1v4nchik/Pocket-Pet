@@ -348,6 +348,7 @@ final class World: NSObject, NSPopoverDelegate {
     var stillness = 0                    // 0 moves around, 1 stays put (still grooms), 2 completely still
     var stillTyping = true, stillWatching = true, stillMusic = true    // ...and while staying put, still reacts to these
     var napLength = 0.0                  // the menu's nap: 0 = until you wake it, otherwise seconds
+    var startleOnMusic = true            // music starting mid-nap makes it jump awake
     var followFor = 60.0                 // "come here": seconds, 0 = until you press the pin again
     var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
     var showName = false
@@ -924,17 +925,19 @@ final class World: NSObject, NSPopoverDelegate {
     // MARK: Water and screen sharing
 
     var glassesToday: Int { defaults.string(forKey: "waterDay") == Self.dayKey() ? defaults.integer(forKey: "glasses") : 0 }
+    /// The water day runs from 4 AM to 4 AM: glasses after midnight still count for the day you're in.
+    static var waterNow: Date { Date().addingTimeInterval(-4 * 3600) }
     /// Glasses per day ("2026-10-29": 5), kept for a year, for the Water pane's chart.
     var waterHistory: [String: Int] {
         var h = defaults.dictionary(forKey: "waterHistory") as? [String: Int] ?? [:]
-        if h[Self.isoDay(Date())] == nil && glassesToday > 0 { h[Self.isoDay(Date())] = glassesToday }     // from before the history
+        if h[Self.isoDay(Self.waterNow)] == nil && glassesToday > 0 { h[Self.isoDay(Self.waterNow)] = glassesToday }     // from before the history
         return h
     }
 
     private func setGlasses(_ n: Int) {
         defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "glasses")
         var h = waterHistory
-        h[Self.isoDay(Date())] = n
+        h[Self.isoDay(Self.waterNow)] = n
         if h.count > 400 { for k in h.keys.sorted().prefix(h.count - 400) { h[k] = nil } }
         defaults.set(h, forKey: "waterHistory")
     }
@@ -944,7 +947,7 @@ final class World: NSObject, NSPopoverDelegate {
         return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
     }
 
-    static func dayKey() -> String { let d = Calendar.current.dateComponents([.year, .month, .day], from: Date()); return "\(d.year!)-\(d.month!)-\(d.day!)" }
+    static func dayKey() -> String { let d = Calendar.current.dateComponents([.year, .month, .day], from: waterNow); return "\(d.year!)-\(d.month!)-\(d.day!)" }
 
     /// The pet sits up with a glass of water and a card asks whether you've had some.
     func remindWater() {
@@ -1416,6 +1419,7 @@ final class World: NSObject, NSPopoverDelegate {
         stillWatching = d.object(forKey: "stillWatching") as? Bool ?? true
         stillMusic = d.object(forKey: "stillMusic") as? Bool ?? true
         napLength = d.double(forKey: "napLength")
+        startleOnMusic = d.object(forKey: "startleOnMusic") as? Bool ?? true
         followFor = d.object(forKey: "followFor") as? Double ?? 60
         followSpeed = d.object(forKey: "followSpeed") as? Int ?? 1
         showName = d.bool(forKey: "showName")
@@ -1459,6 +1463,7 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(stillness, forKey: "stillness")
         d.set(stillTyping, forKey: "stillTyping"); d.set(stillWatching, forKey: "stillWatching"); d.set(stillMusic, forKey: "stillMusic")
         d.set(napLength, forKey: "napLength")
+        d.set(startleOnMusic, forKey: "startleOnMusic")
         d.set(followFor, forKey: "followFor"); d.set(followSpeed, forKey: "followSpeed")
         d.set(showName, forKey: "showName")
         d.set(Item.doubleClickRemoves, forKey: "doubleClickRemoves")

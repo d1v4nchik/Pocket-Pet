@@ -154,16 +154,11 @@ struct RootView: View {
     var body: some View {
         if let world = m.world, let pet = world.pet {
             VStack(alignment: .leading, spacing: 14) {
-                // the Music tab is all music: no needs, snacks or toys, so the queue gets the room
-                if m.tab != 2 {
-                    header(world, pet)
-                    actions(world, pet)
-                    nowPlaying(world)
-                    tabs
-                } else {
-                    tabs
-                    nowPlaying(world)
-                }
+                // the same order on every tab; the Music tab just leaves out the snacks and toys
+                header(world, pet)
+                nowPlaying(world)
+                if m.tab != 2 { actions(world, pet) }
+                tabs
                 Group {
                     switch m.tab {
                     case 0: petsTab(world, pet)
@@ -575,7 +570,8 @@ struct RootView: View {
             Picker("Nap button sleeps", selection: Binding(get: { Int(world.napLength) }, set: { world.napLength = Double($0); save(world) })) {
                 Text("Until I wake it").tag(0); Text("5 minutes").tag(300); Text("15 minutes").tag(900); Text("30 minutes").tag(1800); Text("1 hour").tag(3600)
             }
-            caption("Until I wake it: it sleeps through typing and music. A timed nap ends by itself, and music starting startles it awake.")
+            Toggle("Music startles it awake", isOn: Binding(get: { world.startleOnMusic }, set: { world.startleOnMusic = $0; save(world) }))
+            caption("Until I wake it: it sleeps through your typing until you press the nap button again. A timed nap ends by itself. Either way, music starting gives it a fright if the switch above is on.")
         }
         Section("Moving around") {
             Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
@@ -641,7 +637,7 @@ struct RootView: View {
     @ViewBuilder
     func waterHistorySection(_ world: World) -> some View {
         let goal = world.waterGoal, h = world.waterHistory, cal = Calendar.current
-        let days = (0..<m.waterDays).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: Date())) }
+        let days = (0..<m.waterDays).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: World.waterNow)) }
         let counts = days.map { h[World.isoDay($0)] ?? 0 }
         let blue = Color(red: 0.24, green: 0.61, blue: 0.94)
         // days in a row at the goal, up to today (today doesn't break it while it's still going)

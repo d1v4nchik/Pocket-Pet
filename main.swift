@@ -52,6 +52,55 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
 }
+if args.contains("--still-test") {
+    // "completely still": counts how many different pictures and positions the pet shows over 20 seconds
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let w = World()
+        w.hidden = true
+        w.load()
+        let p = w.pet!
+        w.idleSecs = 0.2
+        for (label, music, still) in [("roaming, music on", true, 0), ("completely still, music on", true, 2), ("completely still, quiet", false, 2)] {
+            w.stillness = still; w.musicPlaying = music; w.stillMusic = true
+            p.followUntil = 0; p.setMode(.idle)
+            var frames = Set<[UInt8]>(), xs = Set<Int>()
+            for i in 0..<200 { w.t += 0.1; p.update(0.1); if i > 20 { frames.insert(p.canvas.px); xs.insert(Int(p.x)) } }
+            print("\(label): \(frames.count) different pictures, \(xs.count) positions, mode \(p.mode)")
+        }
+    }
+    exit(0)
+}
+if args.contains("--startle-test") {
+    // puts the pet to sleep in each kind of nap, starts music, and reports whether it jumped awake
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let w = World()
+        w.hidden = true
+        w.load()
+        let p = w.pet!
+        func run(_ label: String, forced: Bool, napLength: Double, startle: Bool, menuOpenFor: Double = 0) {
+            w.startleOnMusic = startle; w.napLength = napLength; w.musicPlaying = false; w.idleSecs = 600
+            p.followUntil = 0
+            p.forcedNap = false; p.setMode(.idle)
+            if forced { p.forcedNap = false; p.toggleNap() } else { p.forcedNap = false; p.setMode(.yawning) }
+            for _ in 0..<40 { w.t += 0.1; p.update(0.1) }                 // falls asleep
+            let before = p.mode
+            w.musicPlaying = true                                         // press play
+            w.idleSecs = 0.2                                              // you're right there
+            w.t += menuOpenFor; p.modeT += menuOpenFor                    // ...in a menu that stays open a while (the pet's clock runs on)
+            var hopped = false
+            for _ in 0..<20 { w.t += 0.1; p.update(0.1); if p.hopY > 0 || p.hopV > 0 { hopped = true } }
+            print("\(label): \(before) -> \(p.mode)\(hopped ? ", hopped" : "")")
+        }
+        run("natural nap", forced: false, napLength: 0, startle: true)
+        run("nap button, until woken", forced: true, napLength: 0, startle: true)
+        run("nap button, 15 min", forced: true, napLength: 900, startle: true)
+        run("pressed play in the menu (open 6 s)", forced: true, napLength: 900, startle: true, menuOpenFor: 6)
+        run("startle switched off", forced: true, napLength: 0, startle: false)
+    }
+    exit(0)
+}
 if let i = args.firstIndex(of: "--sanitize"), i + 1 < args.count {     // what a speech bubble can show of some text
     print(sanitize(args[i + 1]))
     exit(0)
