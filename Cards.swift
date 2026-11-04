@@ -120,14 +120,20 @@ struct TightLabel: LabelStyle {
 
 extension View {
     /// A floating glass card: Liquid Glass on macOS 26, frosted material before.
+    /// The cards' look: glass with a faint edge and a soft shadow in the card's own rounded shape (the window has no
+    /// shadow of its own, which macOS drew square), so a card stands out on any background, dark ones too.
     @ViewBuilder func card() -> some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         if plainGlass {
             self.background(shape.fill(Color(nsColor: .windowBackgroundColor)))
         } else if #available(macOS 26.0, *) {
             self.glassEffect(.regular, in: shape)
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.75))
+                .shadow(color: .black.opacity(0.32), radius: 12, x: 0, y: 5)
         } else {
             self.background(.regularMaterial, in: shape)
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.75))
+                .shadow(color: .black.opacity(0.32), radius: 12, x: 0, y: 5)
         }
     }
 }
@@ -445,13 +451,15 @@ final class FloatingCard {
     var clickThrough = false            // the name tag: the mouse goes right through it
 
     var visible: Bool { panel?.isVisible ?? false }
-    var frame: NSRect { panel?.frame ?? .zero }
+    /// The card itself, inside the window's margin (the margin leaves room for its shadow).
+    var frame: NSRect { (panel?.frame ?? .zero).insetBy(dx: Self.margin, dy: Self.margin) }
+    static let margin: CGFloat = 18
 
     /// Shows `view` next to `tip` (the top of the pet's head); `below` when the pet hangs from the top of the screen.
     func show<V: View>(_ view: V, tip: CGPoint, below: Bool, until: Double) {
         self.until = until
         generation += 1
-        let host = ClickHostingView(rootView: view)
+        let host = ClickHostingView(rootView: view.padding(Self.margin))
         let size = host.fittingSize
         let p = panel ?? makePanel()
         panel = p
@@ -472,10 +480,12 @@ final class FloatingCard {
 
     private var lastTip: (tip: CGPoint, below: Bool)?
 
+    /// The window for a card of `size` (margin included): the card itself sits just above (or below) the tip.
     private func frame(for size: CGSize, tip: CGPoint, below: Bool) -> NSRect {
         let vf = (NSScreen.screens.first { $0.frame.contains(tip) } ?? NSScreen.main)?.visibleFrame ?? .zero
-        let x = clamp(tip.x - size.width / 2, vf.minX + 8, max(vf.minX + 8, vf.maxX - size.width - 8))
-        let y = clamp(below ? tip.y - size.height - 10 : tip.y + 10, vf.minY + 8, max(vf.minY + 8, vf.maxY - size.height - 8))
+        let m = Self.margin, edge = 8 - m
+        let x = clamp(tip.x - size.width / 2, vf.minX + edge, max(vf.minX + edge, vf.maxX - size.width - edge))
+        let y = clamp(below ? tip.y - size.height - 10 + m : tip.y + 10 - m, vf.minY + edge, max(vf.minY + edge, vf.maxY - size.height - edge))
         return NSRect(x: x.rounded(), y: y.rounded(), width: size.width, height: size.height)
     }
 
