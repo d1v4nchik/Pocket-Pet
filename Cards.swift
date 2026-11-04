@@ -151,6 +151,8 @@ struct MusicCardView: View {
     let player: MusicPlayer
     @ObservedObject var model: MusicCardModel
     @State private var query = ""
+    @State private var searching = false      // the search opens from the magnifying glass, and closes again
+    @FocusState private var typing: Bool
 
     var body: some View {
         let sp = player
@@ -162,6 +164,17 @@ struct MusicCardView: View {
                     Text(sp.song?.artist ?? "").font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                Button {
+                    searching.toggle()
+                    if searching { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { typing = true } }
+                    else { query = ""; sp.clearResults() }
+                    model.tick &+= 1
+                } label: {
+                    Image(systemName: searching ? "xmark" : "magnifyingglass").font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary).frame(width: 26, height: 26).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(searching ? "Close search" : "Search and play")
             }
             // only ticks while playing, and only while the card is up
             TimelineView(.periodic(from: .now, by: sp.playing ? 1 : 3600)) { _ in
@@ -189,13 +202,15 @@ struct MusicCardView: View {
                 Spacer()
                 if sp.full { button("repeat", 12, on: sp.repeating) { sp.setRepeat(!sp.repeating) } }
             }
-            // search and play, right here
+            // search and play, right here (when you open it)
+            if searching || plainGlass {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.secondary)
                 if plainGlass {         // pictures for the README: a text field can't be drawn offscreen
                     Text("Search and play").font(.system(size: 12)).foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     TextField("Search and play", text: $query, onCommit: { sp.quickSearch(query) }).textFieldStyle(.plain).font(.system(size: 12))
+                        .focused($typing)
                 }
                 if !query.isEmpty {
                     Button { query = ""; sp.clearResults() } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
@@ -238,6 +253,7 @@ struct MusicCardView: View {
                 .frame(maxHeight: 160)
             } else if !sp.status.isEmpty {
                 Text(sp.status).font(.system(size: 10.5)).foregroundStyle(.secondary)
+            }
             }
         }
         .padding(14)
@@ -482,7 +498,7 @@ final class FloatingCard {
         p.becomesKeyOnlyIfNeeded = true        // takes the keyboard only for a text field (the music search), never your app's focus otherwise
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.hasShadow = true
+        p.hasShadow = false                    // the glass card draws its own edge; a window shadow turned square when tapped
         p.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         p.isReleasedWhenClosed = false

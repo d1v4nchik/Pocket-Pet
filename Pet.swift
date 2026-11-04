@@ -1651,13 +1651,6 @@ final class Pet {
                 p.arm = isBird ? (flapFast ? .raised : .rest) : .raised
                 p.eyes = .happy; p.mouth = .open; p.headDY = 0
             }
-        case .watching where world.cozy && !moving:
-            // cozy winter: wrapped in a blanket with a mug of hot chocolate, taking a happy sip now and then
-            p.stance = .sit; p.prop = .cocoa; p.cozy = true; p.bob = 0; p.tailUp = false
-            p.frame = Int(t * 2) % 2
-            let cyc = popT.truncatingRemainder(dividingBy: 4.2)
-            p.eyes = cyc > 3.2 ? .happy : (blink ? .closed : .up)
-            if family == .dog { p.mouth = .closed }
         case .watching:
             if moving { break }
             p.stance = .sit; p.prop = .popcorn; p.bob = 0; p.tailUp = false
@@ -1714,7 +1707,6 @@ final class Pet {
             if isBird { p.stance = .sit; birdSleepHead(&p, k: 1) } else { p.stance = .curl }
             p.nightcap = mode == .sleeping && world.isNight
             p.blush = t < blushUntil
-            p.cozy = world.cozy
         case .waking:
             if isBird {
                 if modeT < 0.35 { p.stance = .sit; birdSleepHead(&p, k: 1); p.bob = -1; p.eyes = modeT > 0.15 ? .wide : .closed; p.nightcap = world.isNight }

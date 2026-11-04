@@ -11,8 +11,14 @@ watches videos with popcorn and listens to your music in tiny headphones.
 
 ## ⬇️ Download
 
-**[Get the latest Pocket Pet.dmg](https://github.com/d1v4nchik/Pocket-Pet/releases/latest)**: macOS 13 or newer,
-Apple Silicon or Intel. Once installed, it updates itself.
+The easiest way, with no warnings and no admin password: open **Terminal** and paste
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/d1v4nchik/Pocket-Pet/main/install.sh | bash
+```
+
+Or **[get Pocket Pet.dmg](https://github.com/d1v4nchik/Pocket-Pet/releases/latest)** (see [Installing](#installing)).
+macOS 13 or newer, Apple Silicon or Intel. Once installed, it updates itself and tells you when there's a new version.
 
 ## What It Is
 
@@ -26,9 +32,10 @@ screen with you and reacts to what you do.
 - It **stays out of the way**: in fullscreen apps it climbs to the top edge and hangs out upside down; for fullscreen
   videos it sits in the black bar instead. Share your screen in a call and it asks whether to hide. Want it to stay in one
   spot? One button makes it stay put (still grooming) or hold completely still.
-- It **looks after you**: it holds up a glass of water every so often and keeps a chart of your glasses, reminds you of
-  your own habits (stretching, vitamins, a walk...), nudges you before every calendar event, and rings a little bell
-  when a message arrives.
+- It **looks after you**: it reminds you to drink water (counted in glasses, sips, millilitres or ounces, with a goal
+  tailored to you and reminders that keep pace with your day) and charts it, reminds you of your own habits
+  (stretching, vitamins, a walk...), nudges you before every calendar event, and rings a little bell when a message
+  arrives.
 
 ## The Pets
 
@@ -68,6 +75,12 @@ Dress any of them up from the **Closet**: hats (including a Santa hat), glasses 
 | Everything else | Menu › Settings › **Advanced Settings…** |
 
 ## Installing
+
+**With Terminal (recommended):** paste the line from [Download](#%EF%B8%8F-download). It puts Pocket Pet in the
+Applications folder in your home folder, checks it's signed by Pocket Pet's maintainer, and opens it. macOS only warns
+about apps downloaded by a browser, so there's no "malicious software" message to get past.
+
+**With the DMG:**
 
 1. Download **Pocket.Pet.dmg** from the [latest release](https://github.com/d1v4nchik/Pocket-Pet/releases/latest) and
    open it.

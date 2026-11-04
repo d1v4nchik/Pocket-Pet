@@ -221,6 +221,9 @@ final class BannerWatcher {
     func start() {
         guard AXIsProcessTrusted(), let nc = NSRunningApplication.runningApplications(withBundleIdentifier: Self.centerID).first else { return }
         if observer != nil && nc.processIdentifier == pid { return }
+        // every Accessibility call gives up after half a second (the default is six), so a slow Notification Center
+        // can never hold Pocket Pet up
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
         stop()
         pid = nc.processIdentifier
         var obs: AXObserver?
@@ -238,7 +241,11 @@ final class BannerWatcher {
         }
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
         observer = obs
-        for b in banners() { seen[b.text] = Date() }       // whatever is already showing doesn't ring
+        scanQ.async { [weak self] in                         // whatever is already showing doesn't ring
+            guard let self else { return }
+            let showing = self.banners()
+            DispatchQueue.main.async { for b in showing { self.seen[b.text] = Date() } }
+        }
         // Some macOS versions reuse one window for every banner and send no Accessibility events, so until an event
         // shows up the window server is asked too (Notification Center's on-screen windows, scanned only when they
         // change). Once Accessibility events arrive, that check stops: nothing runs between notifications.
@@ -268,20 +275,28 @@ final class BannerWatcher {
         if shape != lastWindows { log?("windows: \(shape)"); lastWindows = shape; if !mine.isEmpty { changed() } }
     }
 
+    /// Banners are read on a queue of their own: walking Notification Center's windows takes many small Accessibility
+    /// calls, and doing that on the main thread could freeze the app ("not responding") when Notification Center is slow.
+    private let scanQ = DispatchQueue(label: "pocketpet.banners", qos: .utility)
+
     private func changed() {
         log?("changed")
         guard !pending else { return }
         pending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self else { return }
-            self.pending = false
-            let now = Date()
-            self.seen = self.seen.filter { now.timeIntervalSince($0.value) < 180 }
-            let found = self.banners()
-            self.log?("scan: \(found.map(\.text))")
-            for b in found where self.seen[b.text] == nil {
-                self.seen[b.text] = now
-                self.onNotice?(self.notice(b.text, b.element))
+            self.scanQ.async {
+                let found = self.banners()
+                DispatchQueue.main.async {
+                    self.pending = false
+                    let now = Date()
+                    self.seen = self.seen.filter { now.timeIntervalSince($0.value) < 180 }
+                    self.log?("scan: \(found.map(\.text))")
+                    for b in found where self.seen[b.text] == nil {
+                        self.seen[b.text] = now
+                        self.onNotice?(self.notice(b.text, b.element))
+                    }
+                }
             }
         }
     }

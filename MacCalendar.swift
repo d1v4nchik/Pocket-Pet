@@ -41,15 +41,22 @@ final class MacCalendar {
         }
     }
 
-    func refresh() {
-        guard authorized else { return }
-        store.refreshSourcesIfNecessary()
-        let start = Calendar.current.startOfDay(for: Date())
-        let pred = store.predicateForEvents(withStart: start, end: start.addingTimeInterval(2 * 86400), calendars: nil)
-        events = store.events(matching: pred).map {
-            CalEvent(id: $0.eventIdentifier ?? UUID().uuidString, title: $0.title ?? "Event",
-                     start: $0.startDate, end: $0.endDate, allDay: $0.isAllDay, location: $0.location)
-        }.sorted { $0.start < $1.start }
+    /// Read off the main thread: with many calendar accounts this can take a while, and the app mustn't freeze.
+    private let readQ = DispatchQueue(label: "pocketpet.maccalendar", qos: .userInitiated)
+
+    func refresh(_ done: (() -> Void)? = nil) {
+        guard authorized else { done?(); return }
+        let store = self.store
+        readQ.async { [weak self] in
+            store.refreshSourcesIfNecessary()
+            let start = Calendar.current.startOfDay(for: Date())
+            let pred = store.predicateForEvents(withStart: start, end: start.addingTimeInterval(2 * 86400), calendars: nil)
+            let found = store.events(matching: pred).map {
+                CalEvent(id: $0.eventIdentifier ?? UUID().uuidString, title: $0.title ?? "Event",
+                         start: $0.startDate, end: $0.endDate, allDay: $0.isAllDay, location: $0.location)
+            }.sorted { $0.start < $1.start }
+            DispatchQueue.main.async { self?.events = found; done?() }
+        }
     }
 
     static func openInternetAccounts() {

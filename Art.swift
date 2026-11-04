@@ -25,7 +25,6 @@ enum Col: UInt8, CaseIterable {
          yarn, yarnDark, yarnLight, bfA, bfB, bfC, bfD, bfE, bfBody,
          bone, boneShade, boneLight, moon, moonShade, pin, pinDark, sun, sunDark,
          hatShine, glass, glassEdge, water, waterLight,
-         blanket, blanketStripe, blanketEdge, mug, mugStripe, cocoa, steam,
          whisker                 // drawn like the outline, but gets no outline of its own (thin whiskers)
 }
 
@@ -58,8 +57,7 @@ private let baseHex: [Col: UInt32] = [
     .bone: 0xf4ecdc, .boneShade: 0xcfc2a8, .boneLight: 0xffffff, .moon: 0xfff0b0, .moonShade: 0xe2c56a,
     .pin: 0xe5534b, .pinDark: 0xb03a3a, .sun: 0xffd04a, .sunDark: 0xf0a030,
     .hatShine: 0x6c6378, .whisker: 0x2b2738, .glass: 0xeef7ff, .glassEdge: 0x9cc6ea, .water: 0x3d9bf0,
-    .blanket: 0xd8524e, .blanketStripe: 0xf3e2c0, .blanketEdge: 0xe8736c, .mug: 0xf6f1e8, .mugStripe: 0xd8524e,
-    .cocoa: 0x7a4a32, .steam: 0xdfe7f0, .waterLight: 0x8fd0ff,
+    .waterLight: 0x8fd0ff,
 ]
 
 func cgColor(_ h: UInt32) -> CGColor {

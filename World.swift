@@ -7,6 +7,7 @@ import CoreAudio
 import IOKit.pwr_mgt
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 func rnd(_ a: Double, _ b: Double) -> Double { Double.random(in: a...b) }
 func chance(_ p: Double) -> Bool { Double.random(in: 0..<1) < p }
@@ -283,7 +284,7 @@ struct Habit: Codable, Identifiable, Equatable {
 
 // MARK: - World
 
-final class World: NSObject, NSPopoverDelegate {
+final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate {
     var pet: Pet!
     var items: [Item] = []
     let synth = Synth()
@@ -303,7 +304,7 @@ final class World: NSObject, NSPopoverDelegate {
     let bellCard = FloatingCard()
     let toast = FloatingCard()
     let updater = Updater()
-    private var nextUpdateCheck = 30.0
+    private var nextUpdateCheckAt = Date().addingTimeInterval(20)     // by the real clock, so naps and sleep don't delay it
     private var hotKey: EventHotKeyRef?
     var notice: Notice?                 // what the bell is ringing for
     var menuOpen: Bool { popover.isShown || agendaCard.visible || musicCard.visible || bellCard.visible || waterCard.visible || habitCard.visible }
@@ -363,7 +364,6 @@ final class World: NSObject, NSPopoverDelegate {
     var stillTyping = true, stillWatching = true, stillMusic = true    // ...and while staying put, still reacts to these
     var napLength = 0.0                  // the menu's nap: 0 = until you wake it, otherwise seconds
     var startleOnMusic = true            // music starting mid-nap makes it jump awake
-    var cozy = false                     // cozy winter: blankets for naps, hot chocolate for movies
     var followFor = 60.0                 // "come here": seconds, 0 = until you press the pin again
     var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
     var showName = false
@@ -417,7 +417,8 @@ final class World: NSObject, NSPopoverDelegate {
         bannerWatcher.onNotice = { [weak self] n in self?.ring(n) }
         if defaults.bool(forKey: "bellLog") { bannerWatcher.log = { [weak self] in self?.bellLog($0) } }
         tabWatcher.onRead = { [weak self] id in if self?.notice?.tabID == id { self?.dismissBell() } }   // read it in the browser already
-        updater.onChange = { [weak self] in if self?.popover.isShown == true { self?.ui.refresh() } }
+        updater.onChange = { [weak self] in self?.updateBadge(); if self?.popover.isShown == true { self?.ui.refresh() } }
+        UNUserNotificationCenter.current().delegate = self
         player.onChange = { [weak self] in
             guard let self else { return }
             if self.popover.isShown { self.ui.refresh() }
@@ -473,6 +474,11 @@ final class World: NSObject, NSPopoverDelegate {
         }
         for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
             wnc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.pause(false) }
+        }
+        // back from sleep: look for an update soon (a laptop that's only ever closed and opened would wait otherwise)
+        wnc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.nextUpdateCheckAt = min(self.nextUpdateCheckAt, Date().addingTimeInterval(30))
         }
         let dnc = DistributedNotificationCenter.default()
         dnc.addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in self?.pause(true) }
@@ -550,7 +556,10 @@ final class World: NSObject, NSPopoverDelegate {
             for c in cards where c.visible { c.follow(tip: tip, below: below) }
         }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
-        if updater.enabled && t > nextUpdateCheck { nextUpdateCheck = t + 6 * 3600; updater.check { [weak self] in self?.announceUpdate() } }
+        if updater.enabled && Date() > nextUpdateCheckAt {
+            nextUpdateCheckAt = Date().addingTimeInterval(3 * 3600)
+            updater.check { [weak self] in self?.announceUpdate() }
+        }
         if fullscreenUp != lastFullscreenApp { lastFullscreenApp = fullscreenUp; pet.environmentChanged() }
         if musicCard.visible {
             if musicCard.isKey || musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
@@ -778,12 +787,21 @@ final class World: NSObject, NSPopoverDelegate {
             }
         }
         guard musicAppRunning == true else { musicPlaying = false; notifiedPlaying = nil; heard = nil; tellPlayer(); return }
-        if t > nextAudioScan {
+        if t > nextAudioScan && !audioScanning {
+            // Core Audio is asked off the main thread (a busy sound system can't freeze the app); the answer comes back here
             nextAudioScan = t + 6
-            heard = musicAppIsPlaying()
-            if let h = heard, pausedPlayers.contains(h) { heard = nil }       // the player itself says it's paused
-            // with the bell's tab check off, tabs are only looked at while a browser makes sound (no bell, no questions)
-            if browserSound && !(bellOn && bellTabs) { tabWatcher.poll(ring: false) }
+            audioScanning = true
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let sounding = Self.soundingApps()
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.audioScanning = false
+                    self.heard = self.musicPlayingIn(sounding)
+                    if let h = self.heard, self.pausedPlayers.contains(h) { self.heard = nil }   // the player itself says it's paused
+                    // with the bell's tab check off, tabs are only looked at while a browser makes sound (no bell, no questions)
+                    if self.browserSound && !(self.bellOn && self.bellTabs) { self.tabWatcher.poll(ring: false) }
+                }
+            }
         }
         let notified = notifiedPlaying == true          // Spotify and Apple Music say so themselves, instantly
         musicPlaying = notified || heard != nil
@@ -798,18 +816,19 @@ final class World: NSObject, NSPopoverDelegate {
         player.otherName = other ? heard! : ""
     }
 
-    /// Core Audio's list of processes playing sound (no permission needed), including app helpers: the name of the
-    /// music app (or browser without a video) that's playing, if any.
-    private func musicAppIsPlaying() -> String? {
-        guard #available(macOS 14.2, *) else { return nil }
+    private var audioScanning = false
+
+    /// Core Audio's list of processes playing sound right now (no permission needed), as bundle ids (app helpers too).
+    private static func soundingApps() -> [String] {
+        guard #available(macOS 14.2, *) else { return [] }
         var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                               mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         var size: UInt32 = 0
         let sys = AudioObjectID(kAudioObjectSystemObject)
-        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr, size > 0 else { return nil }
+        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr, size > 0 else { return [] }
         var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return nil }
-        browserSound = false
+        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        var out: [String] = []
         for id in ids {
             var running: UInt32 = 0
             var rsize = UInt32(MemoryLayout<UInt32>.size)
@@ -822,6 +841,15 @@ final class World: NSObject, NSPopoverDelegate {
                                                    mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
             guard AudioObjectGetPropertyData(id, &baddr, 0, nil, &bsize, &bundle) == noErr,
                   let b = bundle?.takeRetainedValue() as String? else { continue }
+            out.append(b)
+        }
+        return out
+    }
+
+    /// Of the apps making sound, the music app (or a browser with a music site open and no video) that's playing, if any.
+    private func musicPlayingIn(_ sounding: [String]) -> String? {
+        browserSound = false
+        for b in sounding {
             if let id = Self.musicApps.first(where: { b.hasPrefix($0) }) {
                 if id == MusicPlayer.spotifyID { return "Spotify" }
                 if id == MusicPlayer.musicID { return "Music" }
@@ -1156,15 +1184,15 @@ final class World: NSObject, NSPopoverDelegate {
             self.agendaShownAt = self.t
             self.agendaCard.show(AgendaView(agenda: agenda, close: { [weak self] in self?.agendaCard.hide() }), tip: tip, below: below, until: self.t + dur)
         }
-        macCal.refresh()
-        // fetch whichever sources are stale, then show once they're all back
+        // fetch whichever sources are stale (and the Mac's own calendars), then show once they're all back
         let stale = [google.signedIn && Date().timeIntervalSince(google.lastFetch) > 120,
-                     ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120]
+                     ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120, macCal.authorized]
         var waiting = stale.filter { $0 }.count
         guard waiting > 0 else { show(); return }
         let done = { waiting -= 1; if waiting == 0 { show() } }
         if stale[0] { google.refreshEvents(done) }
         if stale[1] { ics.refresh(done) }
+        if stale[2] { macCal.refresh(done) }
     }
 
     /// Up to `n` letters for the pixel bubble, cut between words.
@@ -1447,13 +1475,50 @@ final class World: NSObject, NSPopoverDelegate {
     }
 
     /// A new version is out: say so once (it stays in Settings after that).
+    /// A new version: a macOS notification, the pet's own toast, a dot on the paw and a banner in the menu. A new version
+    /// is announced right away, then again once a day until it's installed.
     func announceUpdate() {
-        guard let r = updater.available, defaults.string(forKey: "announcedVersion") != r.version, !hidden else { return }
+        updateBadge()
+        guard let r = updater.available else { return }
+        let lastAt = defaults.double(forKey: "announcedAt")
+        guard defaults.string(forKey: "announcedVersion") != r.version || Date().timeIntervalSince1970 - lastAt > 86400 else { return }
         defaults.set(r.version, forKey: "announcedVersion")
+        defaults.set(Date().timeIntervalSince1970, forKey: "announcedAt")
+        notifyUpdate(r.version)
+        guard !hidden else { return }
         pet.say(["NEW VERSION!"], 3)
         let (tip, below) = pet.bubbleTip()
         toast.show(ToastView(title: "Pocket Pet \(r.version) is here", detail: "Click to update. It takes a few seconds and restarts your pet.",
                              close: { [weak self] in self?.toast.hide(); self?.updater.install() }), tip: tip, below: below, until: t + 25)
+    }
+
+    /// The system notification (macOS asks once whether Pocket Pet may send them). Clicking it installs the update.
+    private func notifyUpdate(_ version: String) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let c = UNMutableNotificationContent()
+            c.title = "Pocket Pet \(version) is here"
+            c.body = "Click to update. It takes a few seconds and your pet comes right back."
+            c.sound = .default
+            center.add(UNNotificationRequest(identifier: "update-\(version)", content: c, trigger: nil))
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler done: @escaping () -> Void) {
+        if response.notification.request.identifier.hasPrefix("update-") { DispatchQueue.main.async { self.updater.install() } }
+        done()
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
+        done([.banner, .sound])
+    }
+
+    /// A dot on the menu bar paw while an update is waiting.
+    func updateBadge() {
+        statusItem?.button?.image = pawIcon(dot: updater.available != nil)
     }
 
     /// ⌃⌥P, or opening the app again: bring a hidden pet back, otherwise open its menu.
@@ -1523,7 +1588,6 @@ final class World: NSObject, NSPopoverDelegate {
         napLength = d.double(forKey: "napLength")
         startleOnMusic = d.object(forKey: "startleOnMusic") as? Bool ?? true
         fullscreenClimb = d.object(forKey: "fullscreenClimb") as? Bool ?? true
-        cozy = d.bool(forKey: "cozy")
         followFor = d.object(forKey: "followFor") as? Double ?? 60
         followSpeed = d.object(forKey: "followSpeed") as? Int ?? 1
         showName = d.bool(forKey: "showName")
@@ -1580,7 +1644,6 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(napLength, forKey: "napLength")
         d.set(startleOnMusic, forKey: "startleOnMusic")
         d.set(fullscreenClimb, forKey: "fullscreenClimb")
-        d.set(cozy, forKey: "cozy")
         d.set(followFor, forKey: "followFor"); d.set(followSpeed, forKey: "followSpeed")
         d.set(showName, forKey: "showName")
         d.set(Item.doubleClickRemoves, forKey: "doubleClickRemoves")
@@ -1668,7 +1731,7 @@ final class World: NSObject, NSPopoverDelegate {
         ui.editing = false
     }
 
-    func pawIcon() -> NSImage {
+    func pawIcon(dot: Bool = false) -> NSImage {
         let rows = [
             "....XX.XX....",
             "...XXX.XXX...",
@@ -1681,14 +1744,16 @@ final class World: NSObject, NSPopoverDelegate {
             "...XXXXXXX...",
             "....XXXXX....",
         ]
-        let img = NSImage(size: NSSize(width: 15, height: 14), flipped: true) { _ in
-            NSColor.black.setFill()
+        let img = NSImage(size: NSSize(width: dot ? 18 : 15, height: 14), flipped: true) { _ in
+            // a template draws in black and macOS tints it; with the update dot it draws in the menu bar's own text color
+            (dot ? NSColor.labelColor : NSColor.black).setFill()
             for (r, row) in rows.enumerated() {
                 for (i, ch) in row.enumerated() where ch == "X" { NSRect(x: 1 + i, y: 2 + r, width: 1, height: 1).fill() }
             }
+            if dot { NSColor.systemRed.setFill(); NSBezierPath(ovalIn: NSRect(x: 12.5, y: 0.5, width: 5, height: 5)).fill() }
             return true
         }
-        img.isTemplate = true
+        img.isTemplate = !dot
         return img
     }
 

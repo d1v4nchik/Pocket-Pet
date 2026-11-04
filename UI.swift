@@ -182,6 +182,18 @@ struct RootView: View {
     /// What the pet is up to, and its three needs as little game-style meters.
     func header(_ world: World, _ pet: Pet) -> some View {
         VStack(alignment: .leading, spacing: 9) {
+            // an update waiting: one click installs it
+            if let r = world.updater.available {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                    Text("Pocket Pet \(r.version) is ready").font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    Button(world.updater.busy ? "Updating…" : "Update") { world.updater.install() }
+                        .buttonStyle(Pill(strong: true)).disabled(world.updater.busy)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .glass(12)
+            }
             HStack {
                 Text(world.hidden ? "Hidden" : mood(world, pet).capitalizedFirst).font(.system(size: 14, weight: .semibold))
                 Spacer()
@@ -652,10 +664,6 @@ struct RootView: View {
                 Text("30 seconds").tag(30); Text("1 minute").tag(60); Text("5 minutes").tag(300); Text("Until I stop it").tag(0)
             }
             caption("Press the map pin again to stop it any time.")
-        }
-        Section("Seasons") {
-            Toggle("Cozy winter", isOn: Binding(get: { world.cozy }, set: { world.cozy = $0; save(world) }))
-            caption("Naps under a plaid blanket, and movie time with a blanket and a mug of hot chocolate instead of popcorn.")
         }
         Section("Extras") {
             Toggle("Name tag above the pet", isOn: Binding(get: { world.showName }, set: { world.showName = $0; save(world) }))

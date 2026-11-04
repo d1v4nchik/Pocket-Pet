@@ -42,8 +42,6 @@ func renderSheet(_ path: String, only: String? = nil) {
         add("WATER", sp) { $0.stance = .sit; $0.prop = .glass; $0.arm = sp.isBird ? .forward : .hold; $0.tailUp = false }
         add("SIP", sp) { $0.stance = .sit; $0.prop = .glass; $0.arm = sp.isBird ? .forward : .toMouth; $0.eyes = .happy; $0.tailUp = false }
         add("SCARED", sp) { $0.stance = sp.isBird || sp == .bat ? .stand : .crouch; $0.eyes = .wide; $0.earsFlat = true; $0.mouth = .open; $0.wiggle = 1; if sp.isBird || sp == .bat { $0.arm = .raised } }
-        add("COZY NAP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; $0.cozy = true; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } else if sp.isBird { $0.headDY = 3 } }
-        add("COZY MOVIE", sp) { $0.stance = .sit; $0.prop = .cocoa; $0.cozy = true; $0.eyes = .up; $0.tailUp = false; $0.arm = .rest }
         add("NAP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } else if sp.isBird { $0.headDY = 3 } }
         add("SLEEP", sp) { $0.stance = sp.isBird ? .sit : .curl; $0.eyes = .closed; $0.nightcap = true; if sp == .goose { $0.headDX = -1; $0.headDY = 12 } else if sp.isBird { $0.headDY = 3 } }
         if sp.isBird {
