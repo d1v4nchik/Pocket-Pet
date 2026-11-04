@@ -23,6 +23,8 @@ final class UIModel: ObservableObject {
     @Published var habitEvery = 0              // 0 = daily at habitTime
     @Published var habitTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
     @Published var waterDays = 7               // the Water chart: a week or a month
+    @Published var searching = false           // the Music tab's queue box is searching Spotify
+    @Published var spotifySetup = false        // the steps to connect a Spotify account are open
 
     func refresh() { tick &+= 1 }
 }
@@ -237,10 +239,12 @@ struct RootView: View {
 
     // MARK: Music
 
-    /// What's playing (Spotify, Apple Music, or any other player), with the three buttons everyone needs.
+    /// What's playing (Spotify, Apple Music, or any other player). In the same spot on every tab; on the Music tab it
+    /// opens up in place with the timeline, shuffle and repeat.
     @ViewBuilder
     func nowPlaying(_ world: World) -> some View {
         let sp = world.player
+        let expanded = m.tab == 2
         if sp.running && sp.full && sp.permission == AE.notAllowed {
             HStack {
                 hint("Let Pocket Pet control \(sp.appName) to show what's playing")
@@ -248,36 +252,74 @@ struct RootView: View {
                 Button("Allow") { openAutomation() }.buttonStyle(Pill(strong: true))
             }
         } else if sp.running && (sp.song != nil || sp.app == .other) {
-            HStack(spacing: 10) {
-                Art(url: sp.song?.art, size: 40)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                    Text(sp.song?.artist ?? (world.trusted ? "Controlled with your media keys" : "Allow Accessibility in Settings to control it"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                    if let s = sp.song {
-                        // ticks by itself, so the rest of the menu isn't redrawn every second
-                        TimelineView(.periodic(from: .now, by: sp.playing ? 1 : 3600)) { _ in
-                            GeometryReader { g in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.primary.opacity(0.12))
-                                    Capsule().fill(Color.accentColor)
-                                        .frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
-                                }
-                            }
-                        }
-                        .frame(height: 3)
+            VStack(spacing: expanded ? 8 : 0) {
+                HStack(spacing: 10) {
+                    Art(url: sp.song?.art, size: expanded ? 48 : 40)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                        Text(sp.song?.artist ?? (world.trusted ? "Controlled with your media keys" : "Allow Accessibility to control it"))
+                            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        if !expanded, let s = sp.song { progress(sp, s, times: false) }
+                    }
+                    Spacer(minLength: 4)
+                    if !expanded { transport(sp, size: 12) }
+                }
+                if expanded {
+                    if let s = sp.song { progress(sp, s, times: true) }
+                    HStack(spacing: 0) {
+                        if sp.full { toggleIcon("shuffle", on: sp.shuffle) { sp.setShuffle(!sp.shuffle); m.refresh() }.help("Shuffle") }
+                        Spacer()
+                        transport(sp, size: 14)
+                        Spacer()
+                        if sp.full { toggleIcon("repeat", on: sp.repeating) { sp.setRepeat(!sp.repeating); m.refresh() }.help("Repeat") }
                     }
                 }
-                HStack(spacing: 0) {
-                    control("backward.fill", 12) { sp.previous() }
-                    control(sp.playing ? "pause.fill" : "play.fill", 16) { sp.playPause(); m.refresh() }
-                    control("forward.fill", 12) { sp.next() }
-                }
             }
-            .padding(8)
+            .padding(expanded ? 12 : 8)
             .glass(14)
         }
     }
+
+    func transport(_ sp: MusicPlayer, size: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            control("backward.fill", size) { sp.previous() }
+            control(sp.playing ? "pause.fill" : "play.fill", size + 4) { sp.playPause(); m.refresh() }
+            control("forward.fill", size) { sp.next() }
+        }
+    }
+
+    func toggleIcon(_ symbol: String, on: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                .frame(width: 28, height: 28).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The song's timeline; ticks by itself, so the rest of the menu isn't redrawn every second.
+    func progress(_ sp: MusicPlayer, _ s: Song, times: Bool) -> some View {
+        TimelineView(.periodic(from: .now, by: sp.playing ? 1 : 3600)) { _ in
+            VStack(spacing: 3) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.12))
+                        Capsule().fill(Color.accentColor).frame(width: s.duration > 0 ? g.size.width * min(1, sp.elapsed / s.duration) : 0)
+                    }
+                }
+                .frame(height: 3)
+                if times {
+                    HStack {
+                        Text(clock(sp.elapsed)); Spacer(); Text(clock(s.duration))
+                    }
+                    .font(.system(size: 9.5).monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(height: times ? 18 : 3)
+    }
+
+    func clock(_ s: Double) -> String { let n = Int(max(0, s)); return "\(n / 60):" + String(format: "%02d", n % 60) }
 
     func control(_ symbol: String, _ size: CGFloat, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -295,25 +337,19 @@ struct RootView: View {
         let sp = world.player
         VStack(alignment: .leading, spacing: 10) {
             if !sp.running {
-                row("Nothing's playing") {
-                    HStack(spacing: 5) {
+                // nothing playing: open a player
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Nothing's playing").font(.system(size: 12.5, weight: .semibold))
+                    HStack(spacing: 6) {
                         ForEach([("Spotify", MusicPlayer.spotifyID), ("Music", MusicPlayer.musicID)], id: \.1) { name, id in
                             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
                                 Button("Open \(name)") { NSWorkspace.shared.openApplication(at: url, configuration: .init()) }.buttonStyle(Pill())
                             }
                         }
                     }
+                    hint("Works with Spotify, Apple Music and any other player (through your media keys).")
                 }
-                hint("Spotify and Apple Music work straight away, with nothing to connect. Any other player (YouTube Music, Tidal, VLC...) works through your media keys. Connecting a Spotify account below is optional: it adds the queue and search.")
-            } else if sp.full {
-                HStack(spacing: 6) {
-                    Button { sp.setShuffle(!sp.shuffle); m.refresh() } label: { Label("Shuffle", systemImage: "shuffle") }
-                        .buttonStyle(Pill(strong: sp.shuffle))
-                    Button { sp.setRepeat(!sp.repeating); m.refresh() } label: { Label("Repeat", systemImage: "repeat") }
-                        .buttonStyle(Pill(strong: sp.repeating))
-                }
-            }
-            if sp.running && !sp.full && !world.trusted {
+            } else if !sp.full && !world.trusted {
                 HStack(alignment: .firstTextBaseline) {
                     hint("To control \(sp.appName), allow Accessibility (it presses your media keys for you).")
                     Spacer()
@@ -321,62 +357,72 @@ struct RootView: View {
                 }
             }
             if sp.spotifyInstalled {
-                Divider().opacity(0.5)
-                Text("Spotify queue").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                if sp.connected { queue(world) } else { spotifySteps(world) }
+                if sp.connected { queue(world) }
+                else if m.spotifySetup { spotifySteps(world) }
+                else {
+                    HStack {
+                        hint("See what's up next and search Spotify")
+                        Spacer()
+                        Button("Connect") { m.spotifySetup = true }.buttonStyle(Pill())
+                    }
+                }
             }
         }
     }
 
+    /// Up next, or search results while you're searching: one box, one kind of row.
     @ViewBuilder
     func queue(_ world: World) -> some View {
         let sp = world.player
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Find a song to add", text: $m.songQuery, onCommit: { sp.search(m.songQuery) })
-                .textFieldStyle(.plain)
-            if !m.songQuery.isEmpty {
-                Button { m.songQuery = ""; sp.search("") } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain)
+        let searching = m.searching
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                if searching {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search Spotify", text: $m.songQuery, onCommit: { sp.search(m.songQuery) }).textFieldStyle(.plain)
+                    Button { m.searching = false; m.songQuery = ""; sp.search("") } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .buttonStyle(.plain).help("Back to Up next")
+                } else {
+                    Text("Up next").font(.system(size: 12, weight: .semibold))
+                    if !sp.upNext.isEmpty { Text("\(sp.upNext.count)").font(.system(size: 11)).foregroundStyle(.secondary) }
+                    Spacer()
+                    Button { m.searching = true } label: { Image(systemName: "magnifyingglass") }
+                        .buttonStyle(.plain).help("Search Spotify to play or queue a song")
+                }
             }
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .glass(10)
-        if !sp.status.isEmpty { hint(sp.status) }
-        if !sp.results.isEmpty {
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(sp.results) { s in
-                        songRow(s) {
-                            control("play.fill", 11) { sp.play(s) }.help("Play this song now")
-                            control("plus", 13) { sp.addToQueue(s) }.help("Add to queue")
+            .frame(height: 20)
+            if !sp.status.isEmpty { Text(sp.status).font(.system(size: 10.5)).foregroundStyle(.secondary) }
+            let rows: [Song] = searching ? sp.results : sp.upNext
+            if rows.isEmpty {
+                Text(searching ? (m.songQuery.isEmpty ? "Type a song or artist, then press Return" : "Nothing found yet")
+                     : (sp.running ? "Nothing queued" : "Play something in Spotify to see what's next"))
+                    .font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 6)
+            } else {
+                // a box that scrolls, so the menu keeps its size however long the list is
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { i, s in
+                            songRow(s) {
+                                if searching {
+                                    control("play.fill", 11) { sp.play(s); m.searching = false; m.songQuery = ""; sp.clearResults() }.help("Play this song next, now")
+                                    control("plus", 13) { sp.addToQueue(s) }.help("Add to the end of your queue")
+                                } else {
+                                    control("play.fill", 11) { sp.skip(to: i); m.refresh() }.help("Skip ahead to this song")
+                                }
+                            }
                         }
                     }
                 }
+                .frame(maxHeight: 200)
             }
-            .frame(maxHeight: 112)
-        } else {
-            Text("Up next").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            if sp.upNext.isEmpty {
-                hint(sp.running ? "Nothing queued" : "Play something in Spotify to see what's next")
-            }
-            // a box that scrolls, so the menu keeps its size however long the queue is
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(Array(sp.upNext.enumerated()), id: \.offset) { i, s in
-                        songRow(s) { control("play.fill", 11) { sp.skip(to: i); m.refresh() }.help("Skip ahead to this song") }
-                    }
-                }
-            }
-            .frame(maxHeight: 210)
         }
-        Button("Disconnect Spotify account") { sp.disconnect(); m.refresh() }
-            .buttonStyle(.plain).font(.system(size: 10.5)).foregroundStyle(.secondary)
+        .padding(10)
+        .glass(14)
     }
 
     func songRow<B: View>(_ s: Song, @ViewBuilder buttons: () -> B) -> some View {
         HStack(spacing: 8) {
-            Art(url: s.art, size: 28)
+            Art(url: s.art, size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(s.name).font(.system(size: 12)).lineLimit(1)
                 Text(s.artist).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
@@ -531,6 +577,15 @@ struct RootView: View {
             row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
             row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() })) }
                 .help("Off: your pet walks on every edge of the screen, and birds fly about")
+            row("Water") {
+                HStack(spacing: 2) {
+                    Text("\(world.waterText(world.waterToday, unit: false)) / \(world.waterText(world.waterGoalML))")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                    control("minus", 11) { world.undoWater(); m.refresh() }.disabled(world.waterToday == 0).help("Take one off")
+                    control("plus", 11) { world.drankWater(); m.refresh() }.help("Add \(world.waterText(world.servingML))")
+                }
+            }
+            .help("Goal, units and reminders are in Advanced Settings › Water")
             Button { world.openAdvanced() } label: { Label("Advanced Settings…", systemImage: "gearshape") }
                 .buttonStyle(Pill()).fixedSize().padding(.top, 4)
                 .help("Water, reminders, sleep, staying in place, following, sounds, calendar, music and the bell")
@@ -575,6 +630,10 @@ struct RootView: View {
         }
         Section("Moving around") {
             Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
+            Picker("In fullscreen apps", selection: Binding(get: { world.fullscreenClimb }, set: { world.fullscreenClimb = $0; save(world) })) {
+                Text("Goes up to the top edge").tag(true); Text("Stays at the bottom").tag(false)
+            }
+            .help("Up: cats and dogs climb and hang upside down, birds fly up. Fullscreen videos always keep it in the black bar at the bottom.")
             Picker("Stay in place", selection: Binding(get: { world.stillness }, set: { world.stillness = $0; save(world) })) {
                 Text("Off").tag(0); Text("Stays put, still grooms").tag(1); Text("Completely still").tag(2)
             }
@@ -594,68 +653,129 @@ struct RootView: View {
             }
             caption("Press the map pin again to stop it any time.")
         }
+        Section("Seasons") {
+            Toggle("Cozy winter", isOn: Binding(get: { world.cozy }, set: { world.cozy = $0; save(world) }))
+            caption("Naps under a plaid blanket, and movie time with a blanket and a mug of hot chocolate instead of popcorn.")
+        }
         Section("Extras") {
             Toggle("Name tag above the pet", isOn: Binding(get: { world.showName }, set: { world.showName = $0; save(world) }))
             Toggle("Double-click a snack or toy to put it away", isOn: Binding(get: { Item.doubleClickRemoves }, set: { Item.doubleClickRemoves = $0; save(world) }))
         }
     }
 
-    @ViewBuilder
-    func waterPane(_ world: World) -> some View {
-        let n = world.glassesToday, goal = world.waterGoal
-        Section("Today") {
-        HStack(spacing: 10) {
-            Image(nsImage: waterGlassImage(n, of: goal)).interpolation(.none).resizable().aspectRatio(contentMode: .fit).frame(height: 32)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(n >= goal ? "Goal reached today!" : "\(n) of \(goal) glasses today").font(.system(size: 12, weight: .medium))
-                    .lineLimit(1).fixedSize()
-                HStack(spacing: 3) {
-                    ForEach(0..<goal, id: \.self) { i in
-                        Capsule().fill(i < n ? Color(red: 0.24, green: 0.61, blue: 0.94) : Color.primary.opacity(0.12))
-                            .frame(width: max(5, 120 / CGFloat(goal) - 3), height: 4)
-                    }
-                }
+    /// Today's glass, how much, how you're doing against your day, and − / +.
+    func waterToday(_ world: World) -> some View {
+        let today = world.waterToday, goal = world.waterGoalML
+        return HStack(spacing: 10) {
+            Image(nsImage: waterGlassImage(Double(today) / Double(max(1, goal)))).interpolation(.none).resizable()
+                .aspectRatio(contentMode: .fit).frame(height: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(world.waterLine).font(.system(size: 12, weight: .medium)).lineLimit(1).fixedSize()
+                Text(world.paceText).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            // + counts a glass; − takes one back if you pressed + by mistake
-            control("minus", 12) { world.undoWater(); m.refresh() }.disabled(n == 0).help("Take one off")
-            control("plus", 12) { world.drankWater(); m.refresh() }.help("Had a glass")
-        }
-        }
-        waterHistorySection(world)
-        Section {
-            Stepper("Daily goal: \(goal) glasses", value: Binding(get: { world.waterGoal }, set: { world.waterGoal = $0; save(world) }), in: 2...16)
-            Picker("Remind me", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
-                Text("Off").tag(0); Text("Every 30 minutes").tag(1800); Text("Every hour").tag(3600); Text("Every 2 hours").tag(7200)
-            }
-        } footer: {
-            caption("Starts from zero every morning. Reminders count the time you're at your computer and stop once you reach your goal. Pressed + by mistake? − takes it back.")
+            // + adds a glass (or a sip); − takes one back if you pressed + by mistake
+            control("minus", 12) { world.undoWater(); m.refresh() }.disabled(today == 0).help("Take one off")
+            control("plus", 12) { world.drankWater(); m.refresh() }.help("Add \(world.waterText(world.servingML))")
         }
     }
 
-    /// Glasses per day over the last week or month, the goal as a line, and a few numbers.
+    func minutesBinding(_ get: @escaping () -> Int, _ set: @escaping (Int) -> Void) -> Binding<Date> {
+        Binding(get: { Calendar.current.startOfDay(for: Date()).addingTimeInterval(Double(get()) * 60) },
+                set: { let c = Calendar.current.dateComponents([.hour, .minute], from: $0); set((c.hour ?? 0) * 60 + (c.minute ?? 0)) })
+    }
+
+    @ViewBuilder
+    func waterPane(_ world: World) -> some View {
+        Section("Today") { waterToday(world) }
+        waterHistorySection(world)
+        Section("Your goal") {
+            Picker("Daily goal", selection: Binding(get: { world.waterGoalMode }, set: { world.waterGoalMode = $0; save(world) })) {
+                Text("One I set").tag(0); Text("Tailored to me").tag(1)
+            }
+            .pickerStyle(.segmented)
+            if world.waterGoalMode == 0 {
+                let step = world.waterUnit == .ml ? 100 : world.waterUnit == .oz ? 118 : world.servingML
+                Stepper("\(world.waterText(world.fixedGoalML)) a day",
+                        value: Binding(get: { world.fixedGoalML }, set: { world.fixedGoalML = max(500, min(6000, $0)); save(world) }), step: step)
+            } else {
+                let lb = world.weightInLB
+                Stepper("Weight: \(lb ? Int((world.weightKG * 2.2046).rounded()) : Int(world.weightKG.rounded())) \(lb ? "lb" : "kg")",
+                        value: Binding(get: { world.weightKG }, set: { world.weightKG = max(25, min(250, $0)); save(world) }), step: lb ? 0.4536 : 1)
+                Picker("Weight in", selection: Binding(get: { world.weightInLB }, set: { world.weightInLB = $0; save(world) })) {
+                    Text("kg").tag(false); Text("lb").tag(true)
+                }
+                .pickerStyle(.segmented)
+                Picker("How active you are", selection: Binding(get: { world.activity }, set: { world.activity = $0; save(world) })) {
+                    Text("Light").tag(0); Text("Moderate").tag(1); Text("Very active").tag(2)
+                }
+                Toggle("Hot weather", isOn: Binding(get: { world.hotWeather }, set: { world.hotWeather = $0; save(world) }))
+                LabeledContent("Your goal") {
+                    Text(world.waterUnit == .ml ? world.waterText(world.tailoredGoalML)
+                         : "\(world.waterText(world.tailoredGoalML)) (\(NumberFormatter.localizedString(from: NSNumber(value: world.tailoredGoalML), number: .decimal)) ml)")
+                        .fontWeight(.semibold)
+                }
+                caption("About 33 ml per kg of body weight, plus more when you're active or it's hot. A rough guide, not medical advice.")
+            }
+        }
+        Section("Counting") {
+            Picker("Count in", selection: Binding(get: { world.waterUnit }, set: { world.waterUnit = $0; save(world) })) {
+                Text("Glasses").tag(WaterUnit.glasses); Text("Sips").tag(WaterUnit.sips)
+                Text("Millilitres").tag(WaterUnit.ml); Text("Ounces").tag(WaterUnit.oz)
+            }
+            Picker(world.waterUnit == .glasses ? "A glass is" : "Each + adds", selection: Binding(get: { world.glassML }, set: { world.glassML = $0; save(world) })) {
+                ForEach([150, 200, 250, 300, 350, 400, 500], id: \.self) { ml in Text("\(ml) ml").tag(ml) }
+            }
+            .disabled(world.waterUnit == .sips)
+            if world.waterUnit == .sips {
+                Picker("A sip is", selection: Binding(get: { world.sipML }, set: { world.sipML = $0; save(world) })) {
+                    ForEach([15, 20, 25, 30, 40], id: \.self) { ml in Text("\(ml) ml").tag(ml) }
+                }
+            }
+        }
+        Section {
+            Picker("Remind me", selection: Binding(get: { Int(world.waterEvery) }, set: { world.setWater(Double($0)); m.refresh() })) {
+                Text("Off").tag(0)
+                Text("Adapts to my pace").tag(-1)
+                Divider()
+                Text("Every 15 minutes").tag(900); Text("Every 20 minutes").tag(1200); Text("Every 30 minutes").tag(1800)
+                Text("Every 45 minutes").tag(2700); Text("Every hour").tag(3600); Text("Every 1½ hours").tag(5400)
+                Text("Every 2 hours").tag(7200); Text("Every 3 hours").tag(10800)
+            }
+            Toggle("Only while I'm awake", isOn: Binding(get: { world.quietAtNight }, set: { world.quietAtNight = $0; save(world) }))
+            DatePicker("I wake up at", selection: minutesBinding({ world.wakeMinutes }, { world.wakeMinutes = $0; save(world) }), displayedComponents: .hourAndMinute)
+            DatePicker("I go to bed at", selection: minutesBinding({ world.bedMinutes }, { world.bedMinutes = $0; save(world) }), displayedComponents: .hourAndMinute)
+        } header: {
+            Text("Reminders")
+        } footer: {
+            caption("Adapts to my pace spreads your goal over your waking hours: it reminds you more often when you fall behind and stays quiet while you're ahead. Reminders count only the time you're at your computer and stop once you reach your goal.\n\nYour water day runs from 4 AM to 4 AM, so a drink after midnight still counts for the day you're in. The chart keeps every day.")
+        }
+    }
+
+    /// Water per day over the last week or month, the goal as a line, and a few numbers (in your unit).
     @ViewBuilder
     func waterHistorySection(_ world: World) -> some View {
-        let goal = world.waterGoal, h = world.waterHistory, cal = Calendar.current
+        let goalML = world.waterGoalML, h = world.waterHistory, cal = Calendar.current
         let days = (0..<m.waterDays).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: World.waterNow)) }
-        let counts = days.map { h[World.isoDay($0)] ?? 0 }
+        let mls = days.map { h[World.isoDay($0)] ?? 0 }
+        let values = mls.map { world.waterValue($0) }, goal = world.waterValue(goalML)
         let blue = Color(red: 0.24, green: 0.61, blue: 0.94)
         // days in a row at the goal, up to today (today doesn't break it while it's still going)
         let streak: Int = {
             var n = 0
-            for (i, c) in counts.enumerated().reversed() {
-                if c >= goal { n += 1 } else if i == counts.count - 1 { continue } else { break }
+            for (i, v) in mls.enumerated().reversed() {
+                if v >= goalML { n += 1 } else if i == mls.count - 1 { continue } else { break }
             }
             return n
         }()
-        let logged = counts.filter { $0 > 0 }
+        let logged = mls.filter { $0 > 0 }
         Section("History") {
             Picker("", selection: $m.waterDays) { Text("Week").tag(7); Text("Month").tag(30) }
                 .pickerStyle(.segmented).labelsHidden()
             Chart {
-                ForEach(Array(zip(days, counts)), id: \.0) { d, c in
-                    BarMark(x: .value("Day", d, unit: .day), y: .value("Glasses", c))
-                        .foregroundStyle(c >= goal ? blue : blue.opacity(0.45))
+                ForEach(Array(zip(days, values)), id: \.0) { d, v in
+                    BarMark(x: .value("Day", d, unit: .day), y: .value("Water", v))
+                        .foregroundStyle(v >= goal ? blue : blue.opacity(0.45))
                         .cornerRadius(3)
                 }
                 RuleMark(y: .value("Goal", goal))
@@ -670,14 +790,14 @@ struct RootView: View {
                     AxisMarks(values: .stride(by: .day, count: 7)) { _ in AxisGridLine(); AxisValueLabel(format: .dateTime.day().month(.abbreviated)) }
                 }
             }
-            .chartYScale(domain: 0...max(goal + 1, (counts.max() ?? 0) + 1))
+            .chartYScale(domain: 0...max(goal * 1.15, (values.max() ?? 0) * 1.1, 1))
             .frame(height: 150)
             HStack {
-                stat(logged.isEmpty ? "–" : String(format: "%.1f", Double(logged.reduce(0, +)) / Double(logged.count)), "glasses a day")
+                stat(logged.isEmpty ? "–" : world.waterText(logged.reduce(0, +) / logged.count), "a day on average")
                 Spacer()
-                stat("\(counts.filter { $0 >= goal }.count) of \(m.waterDays)", "days at your goal")
+                stat("\(mls.filter { $0 >= goalML }.count) of \(m.waterDays)", "days at your goal")
                 Spacer()
-                stat("\(streak)", streak == 1 ? "day streak" : "day streak")
+                stat("\(streak)", "day streak")
             }
         }
     }
@@ -762,8 +882,11 @@ struct RootView: View {
                 // what each kind of player needs (only Spotify's queue and search need an account)
                 if world.player.spotifyInstalled {
                     source("dot.radiowaves.left.and.right", "Spotify") {
-                        if world.player.connected { status("Queue and search on") }
-                        else { Button("Add queue") { m.tab = 2 }.buttonStyle(Pill()).help("Optional: connect your Spotify account to see and add to your queue") }
+                        if world.player.connected {
+                            status("Queue and search on")
+                            Button("Disconnect") { world.player.disconnect(); m.refresh() }.buttonStyle(Pill())
+                        }
+                        else { Button("Add queue") { m.tab = 2; m.spotifySetup = true; world.closeAdvanced() }.buttonStyle(Pill()).help("Optional: connect your Spotify account to see and add to your queue") }
                     }
                 }
                 source("music.note.list", "Apple Music") { status("Ready") }

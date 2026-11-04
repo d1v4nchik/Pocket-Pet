@@ -14,7 +14,7 @@ enum Eyes { case open, closed, happy, wide, angry, dizzy, sad, up, half }
 enum Mouth { case closed, open, tongue }
 /// Wing (birds) or front paw (four-legged pets).
 enum Arm { case rest, raised, forward, tap, down, scoop, toMouth, lick, hold }
-enum Prop { case none, laptop, popcorn, calendar, glass }
+enum Prop { case none, laptop, popcorn, calendar, glass, cocoa }
 
 enum Hat: String, Codable, CaseIterable {
     case none, bow, flower, crown, topHat, party, witch, cowboy, santa
@@ -48,6 +48,8 @@ struct Pose {
     var blush = false
     var nightcap = false
     var phones = false
+    var cozy = false         // cozy winter: tucked under a blanket
+    var frame = 0            // little loops (the cocoa's steam)
     var wiggle = 0
     var outfit = Outfit()
 }
@@ -1001,18 +1003,47 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
     drawExtras(&c, p, Anchors(headX: cx, headTop: ht, headW: 11, eyes: [(cx - 4, ht + 4), (cx + 2, ht + 4)], profile: false, neck: (cx, ht + 10)))
 }
 
-/// Draws any pet with its extras.
+/// Draws any pet with its extras (and, in cozy winter, its blanket and hot chocolate).
 @discardableResult
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
+    var body = p
+    if p.prop == .cocoa { body.prop = .none }          // the mug goes on after the blanket, so it isn't tucked in
     let a: Anchors
     switch sp {
-    case .goose: a = drawGoose(&c, p, cx: cx)
-    case .parrot: a = drawParrot(&c, p, cx: cx)
-    case .bat: a = drawBat(&c, p, cx: cx)
-    default: a = drawQuad(&c, sp, p, cx: cx)
+    case .goose: a = drawGoose(&c, body, cx: cx)
+    case .parrot: a = drawParrot(&c, body, cx: cx)
+    case .bat: a = drawBat(&c, body, cx: cx)
+    default: a = drawQuad(&c, sp, body, cx: cx)
     }
     drawExtras(&c, p, a)
+    if p.cozy { drawBlanket(&c, a) }
+    if p.prop == .cocoa { drawMug(&c, x: sp == .goose ? cx + 9 : sp == .parrot ? cx + 7 : cx + 6, g: c.h - 2, frame: p.frame) }
     return a
+}
+
+/// A plaid blanket over the pet, up to its chin; the head stays out (so do hats).
+func drawBlanket(_ c: inout Canvas, _ a: Anchors) {
+    guard let b = c.bounds() else { return }
+    let g = c.h - 2
+    let x0 = b.0 - 1, x1 = b.2 + 1
+    let top = max(b.1 + 2, min(g - 3, a.neck.1 - 2))
+    let hx0 = a.headX - a.headW / 2 - 1, hx1 = a.headX + a.headW / 2 + 1
+    guard top <= g else { return }
+    for y in top...g {
+        for x in x0...x1 {
+            if y == top && (x == x0 || x == x1) { continue }                         // rounded corners
+            if x >= hx0 && x <= hx1 && y <= min(a.neck.1, g) && y >= a.headTop - 4 { continue }   // the head pokes out
+            let stripe = (x - x0) % 4 == 2 || (y - top) % 4 == 2
+            c.set(x, y, y == top ? .blanketEdge : stripe ? .blanketStripe : .blanket)
+        }
+    }
+}
+
+/// A mug of hot chocolate with marshmallows, steaming (the steam sways with `frame`).
+func drawMug(_ c: inout Canvas, x: Int, g: Int, frame: Int) {
+    let steam = frame % 2 == 0 ? [".S..S..", "..S..S.", ".S..S.."] : ["..S..S.", ".S..S..", "..S..S."]
+    c.sprite(x, g - 9, steam + ["MMMMMM.", "MWCWCM.", "MKKKKMH", "MMMMMMH", "MKKKKMH", "MMMMMM.", ".MMMM.."],
+             ["S": .steam, "M": .mug, "W": .white, "C": .cocoa, "K": .mugStripe, "H": .mug])
 }
 
 // MARK: - Particles

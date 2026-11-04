@@ -210,11 +210,11 @@ final class Pet {
     var family: Family { species.family }
     var isBird: Bool { species.isBird }
     /// Walking the screen edges instead of the floor: zero gravity, or a fullscreen app (then only the top edge).
-    var wallMode: Bool { !isBird && (!world.gravity || world.fullscreenApp || family == .bat) }
-    var flyMode: Bool { isBird && (!world.gravity || world.fullscreenApp) }
+    var wallMode: Bool { !isBird && (!world.gravity || world.fullscreenUp || family == .bat) }
+    var flyMode: Bool { isBird && (!world.gravity || world.fullscreenUp) }
     /// A fullscreen app: four-legged pets get spooked, leap to the top edge and hang out there upside down.
     /// Bats always live up there, hanging.
-    var ceilingMode: Bool { !isBird && (world.fullscreenApp || family == .bat) }
+    var ceilingMode: Bool { !isBird && (world.fullscreenUp || family == .bat) }
     var isAsleep: Bool { mode == .sleeping || mode == .yawning || mode == .catnap }
     var sleepThreshold: Double { world.sleepAfter <= 0 ? .infinity : world.sleepAfter * (energy < 25 ? 0.5 : 1) }      // 0 = never naps by itself
 
@@ -1527,7 +1527,7 @@ final class Pet {
         apexY = y
         if isBird {
             inAir = true
-            flyGoal = (world.gravity && !world.fullscreenApp) ? .land : .wander
+            flyGoal = (world.gravity && !world.fullscreenUp) ? .land : .wander
             afterLand = nil
             setMode(.fly)
         } else if !wallMode {
@@ -1651,6 +1651,13 @@ final class Pet {
                 p.arm = isBird ? (flapFast ? .raised : .rest) : .raised
                 p.eyes = .happy; p.mouth = .open; p.headDY = 0
             }
+        case .watching where world.cozy && !moving:
+            // cozy winter: wrapped in a blanket with a mug of hot chocolate, taking a happy sip now and then
+            p.stance = .sit; p.prop = .cocoa; p.cozy = true; p.bob = 0; p.tailUp = false
+            p.frame = Int(t * 2) % 2
+            let cyc = popT.truncatingRemainder(dividingBy: 4.2)
+            p.eyes = cyc > 3.2 ? .happy : (blink ? .closed : .up)
+            if family == .dog { p.mouth = .closed }
         case .watching:
             if moving { break }
             p.stance = .sit; p.prop = .popcorn; p.bob = 0; p.tailUp = false
@@ -1707,6 +1714,7 @@ final class Pet {
             if isBird { p.stance = .sit; birdSleepHead(&p, k: 1) } else { p.stance = .curl }
             p.nightcap = mode == .sleeping && world.isNight
             p.blush = t < blushUntil
+            p.cozy = world.cozy
         case .waking:
             if isBird {
                 if modeT < 0.35 { p.stance = .sit; birdSleepHead(&p, k: 1); p.bob = -1; p.eyes = modeT > 0.15 ? .wide : .closed; p.nightcap = world.isNight }

@@ -236,17 +236,22 @@ final class MusicPlayer {
         }
     }
 
-    /// Plays just this song, now. Through your Spotify account that's the song on its own (Spotify's "play track"
-    /// would carry on through its whole album); a song from your Apple Music library plays from your library.
+    /// Plays this song now, then carries on with what you were listening to: through your Spotify account it joins
+    /// the front of your queue and is skipped to (Spotify's own "play track" would play its whole album instead).
+    /// A song from your Apple Music library plays from your library.
     func play(_ s: Song) {
         if s.id.hasPrefix("music:") {
             let id = String(s.id.dropFirst(6)).filter { $0.isHexDigit }        // persistent ids are hex, nothing else gets in
             q.async { Self.runScript("tell application id \"\(Self.musicID)\" to play (some track of library playlist 1 whose persistent ID is \"\(id)\")") }
         } else if connected {
-            api("PUT", "/v1/me/player/play", body: ["uris": [s.id]]) { [weak self] _, code in
+            api("POST", "/v1/me/player/queue", ["uri": s.id]) { [weak self] _, code in
                 guard let self else { return }
-                if code != 200 && code != 204 { self.playTrack(s) }         // no Premium: Spotify's own way
-                self.later(0.6) { self.refresh(); self.refreshUpNext() }
+                if code == 200 || code == 204 {
+                    self.api("POST", "/v1/me/player/next") { _, _ in self.later(0.5) { self.refresh(); self.refreshUpNext() } }
+                } else {
+                    self.playTrack(s)                                         // no Premium: Spotify's own way
+                    self.later(0.6) { self.refresh(); self.refreshUpNext() }
+                }
             }
             return
         } else {

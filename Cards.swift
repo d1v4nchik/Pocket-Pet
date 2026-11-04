@@ -367,33 +367,48 @@ struct NameTagView: View {
     }
 }
 
-/// The water reminder: a pixel glass that fills up over the day, and two answers. After "I drank some" it shows
-/// the glass one step fuller for a moment, then closes.
+/// The water reminder: a pixel glass that fills up over the day, how you're doing, and two answers. After "I drank
+/// some" it shows the glass fuller for a moment, then closes.
 struct WaterView: View {
     let title: String
-    let glasses: Int, goal: Int
+    let line: String                    // "3 of 8 glasses today", "750 of 2,000 ml today"
+    let progress: Double
+    var dots: (Int, Int)? = nil         // glasses had and goal, drawn as dots when they fit
+    var pace = ""
+    var drink = "I drank some"
     var done = false
     var answer: (Bool) -> Void = { _ in }
 
     var body: some View {
+        let blue = Color(red: 0.24, green: 0.61, blue: 0.94)
         HStack(alignment: .center, spacing: 12) {
-            Image(nsImage: waterGlassImage(glasses, of: goal))
+            Image(nsImage: waterGlassImage(progress))
                 .interpolation(.none)
                 .transition(.scale.combined(with: .opacity))
-                .id(glasses)
+                .id(Int(progress * 100))
             VStack(alignment: .leading, spacing: 6) {
-                Text(done ? (glasses >= goal ? "All \(goal) glasses!" : "Nice, keep it up!") : title).font(.system(size: 12.5, weight: .semibold))
-                Text(glasses == 0 ? "Your first glass today" : "\(glasses) of \(goal) glasses today")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                HStack(spacing: 3) {
-                    ForEach(0..<goal, id: \.self) { i in
-                        Capsule().fill(i < glasses ? Color(red: 0.24, green: 0.61, blue: 0.94) : Color.primary.opacity(0.12)).frame(width: 13, height: 4)
+                Text(done ? (progress >= 1 ? "Goal reached!" : "Nice, keep it up!") : title).font(.system(size: 12.5, weight: .semibold))
+                Text(line).font(.system(size: 11)).foregroundStyle(.secondary)
+                if let (had, goal) = dots {
+                    HStack(spacing: 3) {
+                        ForEach(0..<goal, id: \.self) { i in
+                            Capsule().fill(i < had ? blue : Color.primary.opacity(0.12)).frame(width: max(6, 112 / CGFloat(goal) - 3), height: 4)
+                        }
                     }
+                } else {
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.12))
+                            Capsule().fill(blue).frame(width: g.size.width * min(1, progress))
+                        }
+                    }
+                    .frame(width: 140, height: 4)
                 }
+                if !pace.isEmpty && !done { Text(pace).font(.system(size: 10.5)).foregroundStyle(.secondary) }
                 if !done {
                     HStack(spacing: 6) {
                         Button("Later") { answer(false) }.buttonStyle(Pill())
-                        Button("I drank some") { answer(true) }.buttonStyle(Pill(strong: true))
+                        Button(drink) { answer(true) }.buttonStyle(Pill(strong: true))
                     }
                     .padding(.top, 2)
                 }

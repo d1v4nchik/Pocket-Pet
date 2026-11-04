@@ -120,10 +120,10 @@ private let butterflyOpen: [[String]] = [
 private let butterflyHalf = ["....k.k....", "..BABkBAB..", "..BACkCAB..", "..BAAkAAB..", "...BAkAB...", "...BDkDB...", "...BEkEB...", "....BkB...."]
 private let butterflyEdge = ["....k.k....", ".....k.....", "....BAB....", "....BAB....", "....BDB....", "....BDB....", ".....k.....", "..........."]
 
-/// The water card's glass: fills a step for every glass you've had today (an empty glass shows a sip of water).
-func waterGlassImage(_ glasses: Int, of goal: Int) -> NSImage {
+/// The water glass: fills as you get through today's goal (an empty glass shows a sip of water).
+func waterGlassImage(_ progress: Double) -> NSImage {
     var c = Canvas(14, 16)
-    let water = 2 + min(10, Int((Double(glasses) / Double(max(1, goal)) * 10).rounded()))   // rows of water, of 12
+    let water = 2 + min(10, Int((max(0, progress) * 10).rounded()))   // rows of water, of 12
     for y in 1...13 {
         let inset = y >= 12 ? y - 11 : 0
         let l = 1 + inset, r = 12 - inset

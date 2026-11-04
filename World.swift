@@ -263,6 +263,8 @@ final class Item {
     }
 }
 
+enum WaterUnit: Int, CaseIterable { case glasses, sips, ml, oz }
+
 /// One of your own reminders: daily at a time, or every so often while you're at the computer.
 struct Habit: Codable, Identifiable, Equatable {
     var id = UUID()
@@ -308,9 +310,18 @@ final class World: NSObject, NSPopoverDelegate {
     var bellOn = true
     var bellTabs = true                 // also watch browser tabs (Safari, Chrome-based)
     private var lastRing = -100.0
-    var waterEvery = 3600.0             // water reminders: seconds of time at the computer between them, 0 = off
+    var waterEvery = 3600.0             // water reminders: seconds at the computer between them, 0 = off, -1 = adapts to your pace
     let waterCard = FloatingCard()
-    var waterGoal = 8                   // glasses a day; reminders rest once you get there
+    // How water is counted (stored in millilitres, shown in your unit) and how much you aim for
+    var waterUnit = WaterUnit.glasses
+    var glassML = 250, sipML = 25
+    var waterGoalMode = 0               // 0 a goal you set, 1 tailored to you
+    var fixedGoalML = 2000
+    var weightKG = 65.0, weightInLB = false
+    var activity = 1                    // 0 light, 1 moderate, 2 very active
+    var hotWeather = false
+    var wakeMinutes = 8 * 60, bedMinutes = 23 * 60     // your day, for pacing and quiet nights (minutes after midnight)
+    var quietAtNight = true
     private var activeSinceDrink = 0.0  // real seconds you've been at the computer since your last glass
     private var lastWall = Date()
     private var nextWaterTry = 0.0, waterSnoozes = 0
@@ -338,6 +349,9 @@ final class World: NSObject, NSPopoverDelegate {
     /// Fullscreen for anything but a video: pets head for the top edge. Fullscreen videos (YouTube...) keep them at the
     /// bottom, sitting in the black bar to watch; a short pause in the video doesn't send them back up.
     var fullscreenApp: Bool { fullscreen && !(videoPlaying || t - lastVideoSeen < 20) }
+    /// In a fullscreen app the pet goes up to the top edge (climbing, or flying for birds), or stays at the bottom.
+    var fullscreenClimb = true
+    var fullscreenUp: Bool { fullscreenApp && fullscreenClimb }
     private var lastFullscreenApp = false
     private var fsOffSince: Double?
     var musicPlaying = false { didSet { if musicPlaying && !oldValue { musicStartedAt = t } } }
@@ -349,6 +363,7 @@ final class World: NSObject, NSPopoverDelegate {
     var stillTyping = true, stillWatching = true, stillMusic = true    // ...and while staying put, still reacts to these
     var napLength = 0.0                  // the menu's nap: 0 = until you wake it, otherwise seconds
     var startleOnMusic = true            // music starting mid-nap makes it jump awake
+    var cozy = false                     // cozy winter: blankets for naps, hot chocolate for movies
     var followFor = 60.0                 // "come here": seconds, 0 = until you press the pin again
     var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
     var showName = false
@@ -517,10 +532,10 @@ final class World: NSObject, NSPopoverDelegate {
         // skipped: if now's a bad moment (a menu is open, you're sharing your screen), it waits a minute and asks then.
         let wall = Date(), real = min(10, max(0, wall.timeIntervalSince(lastWall)))
         lastWall = wall
-        if waterEvery > 0 && idleSecs < 90 && !hidden { activeSinceDrink += real }
+        if waterEvery != 0 && idleSecs < 90 && !hidden { activeSinceDrink += real }
         checkHabits(real)
         updateNameTag()
-        if waterEvery > 0 && activeSinceDrink >= waterEvery && t > nextWaterTry && !waterCard.visible && glassesToday < waterGoal {
+        if waterDue && t > nextWaterTry && !waterCard.visible {
             nextWaterTry = t + 60
             if !menuOpen && !sharing && !askCard.visible && !hidden && pet.mode != .held && idleSecs < 90 { remindWater() }
         }
@@ -536,7 +551,7 @@ final class World: NSObject, NSPopoverDelegate {
         }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
         if updater.enabled && t > nextUpdateCheck { nextUpdateCheck = t + 6 * 3600; updater.check { [weak self] in self?.announceUpdate() } }
-        if fullscreenApp != lastFullscreenApp { lastFullscreenApp = fullscreenApp; pet.environmentChanged() }
+        if fullscreenUp != lastFullscreenApp { lastFullscreenApp = fullscreenUp; pet.environmentChanged() }
         if musicCard.visible {
             if musicCard.isKey || musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
             if t > musicCard.until || hidden || pet.mode == .held { musicCard.hide() }
@@ -924,22 +939,96 @@ final class World: NSObject, NSPopoverDelegate {
 
     // MARK: Water and screen sharing
 
-    var glassesToday: Int { defaults.string(forKey: "waterDay") == Self.dayKey() ? defaults.integer(forKey: "glasses") : 0 }
-    /// The water day runs from 4 AM to 4 AM: glasses after midnight still count for the day you're in.
+    /// Millilitres today (glasses from before millilitres count as 250 ml each).
+    var waterToday: Int {
+        guard defaults.string(forKey: "waterDay") == Self.dayKey() else { return 0 }
+        if let ml = defaults.object(forKey: "waterML") as? Int { return ml }
+        return defaults.integer(forKey: "glasses") * 250
+    }
+    /// The water day runs from 4 AM to 4 AM: a drink after midnight still counts for the day you're in.
     static var waterNow: Date { Date().addingTimeInterval(-4 * 3600) }
-    /// Glasses per day ("2026-10-29": 5), kept for a year, for the Water pane's chart.
+    /// Millilitres per day ("2026-10-29": 1500), kept for a year, for the Water pane's chart.
     var waterHistory: [String: Int] {
-        var h = defaults.dictionary(forKey: "waterHistory") as? [String: Int] ?? [:]
-        if h[Self.isoDay(Self.waterNow)] == nil && glassesToday > 0 { h[Self.isoDay(Self.waterNow)] = glassesToday }     // from before the history
+        var h = defaults.dictionary(forKey: "waterHistoryML") as? [String: Int]
+            ?? (defaults.dictionary(forKey: "waterHistory") as? [String: Int] ?? [:]).mapValues { $0 * 250 }
+        if h[Self.isoDay(Self.waterNow)] == nil && waterToday > 0 { h[Self.isoDay(Self.waterNow)] = waterToday }
         return h
     }
 
-    private func setGlasses(_ n: Int) {
-        defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "glasses")
+    private func setWater(ml n: Int) {
+        defaults.set(Self.dayKey(), forKey: "waterDay"); defaults.set(n, forKey: "waterML")
         var h = waterHistory
         h[Self.isoDay(Self.waterNow)] = n
         if h.count > 400 { for k in h.keys.sorted().prefix(h.count - 400) { h[k] = nil } }
-        defaults.set(h, forKey: "waterHistory")
+        defaults.set(h, forKey: "waterHistoryML")
+    }
+
+    /// The goal you set, or one tailored to you: about 33 ml per kg of body weight, more when you're active or it's hot.
+    var waterGoalML: Int { waterGoalMode == 1 ? tailoredGoalML : fixedGoalML }
+    var tailoredGoalML: Int {
+        let raw = weightKG * 33 + [0, 350, 700][max(0, min(2, activity))] + (hotWeather ? 500 : 0)
+        return Int((raw / 50).rounded()) * 50
+    }
+    /// One tap of + (or "I drank some"): a glass, or a sip when you count sips.
+    var servingML: Int { waterUnit == .sips ? sipML : glassML }
+
+    /// An amount in the unit you count in: "3 glasses", "24 sips", "750 ml", "25 oz" (or just the number).
+    func waterText(_ ml: Int, unit: Bool = true) -> String {
+        switch waterUnit {
+        case .glasses:
+            let g = Double(ml) / Double(glassML), n = g.rounded() == g ? String(Int(g)) : String(format: "%.1f", g)
+            return unit ? "\(n) \(g == 1 ? "glass" : "glasses")" : n
+        case .sips:
+            let n = Int((Double(ml) / Double(sipML)).rounded())
+            return unit ? "\(n) \(n == 1 ? "sip" : "sips")" : "\(n)"
+        case .ml:
+            let n = NumberFormatter.localizedString(from: NSNumber(value: ml), number: .decimal)
+            return unit ? "\(n) ml" : n
+        case .oz:
+            let n = Int((Double(ml) / 29.5735).rounded())
+            return unit ? "\(n) oz" : "\(n)"
+        }
+    }
+    func waterValue(_ ml: Int) -> Double {
+        switch waterUnit {
+        case .glasses: return Double(ml) / Double(glassML)
+        case .sips: return Double(ml) / Double(sipML)
+        case .ml: return Double(ml)
+        case .oz: return Double(ml) / 29.5735
+        }
+    }
+    var waterLine: String { "\(waterText(waterToday, unit: false)) of \(waterText(waterGoalML)) today" }
+
+    /// Your waking hours today (the water day's), for pacing and quiet nights.
+    var wakingHours: (start: Date, end: Date) {
+        let base = Calendar.current.startOfDay(for: Self.waterNow)
+        let start = base.addingTimeInterval(Double(wakeMinutes) * 60)
+        var end = base.addingTimeInterval(Double(bedMinutes) * 60)
+        if end <= start { end = end.addingTimeInterval(86400) }
+        return (start, end)
+    }
+    var awakeHours: Bool { let h = wakingHours, now = Date(); return now >= h.start && now < h.end }
+    /// What you'd have had by now, spreading your goal evenly over your waking hours.
+    var waterExpected: Int {
+        let h = wakingHours
+        let f = min(1, max(0, Date().timeIntervalSince(h.start) / h.end.timeIntervalSince(h.start)))
+        return Int(Double(waterGoalML) * f)
+    }
+    /// "On track", "About 1 glass behind", "Ahead of schedule"...
+    var paceText: String {
+        let today = waterToday, goal = waterGoalML, behind = waterExpected - today
+        if today >= goal { return "Goal reached!" }
+        if behind <= servingML / 2 { return today > waterExpected + servingML ? "Ahead of schedule" : "On track" }
+        return "About \(waterText(max(servingML, (behind / servingML) * servingML))) behind"
+    }
+
+    /// Time for a reminder? Every so often, or (adapting to your pace) sooner the further behind you are and not at all
+    /// while you're ahead. Never once you reach your goal, or (if you like) outside your waking hours.
+    var waterDue: Bool {
+        guard waterEvery != 0, waterToday < waterGoalML, !(quietAtNight && !awakeHours) else { return false }
+        if waterEvery > 0 { return activeSinceDrink >= waterEvery }
+        let behind = waterExpected - waterToday
+        return behind >= servingML / 2 && activeSinceDrink >= (behind >= servingML * 2 ? 20 * 60 : 40 * 60)
     }
 
     static func isoDay(_ d: Date) -> String {
@@ -957,23 +1046,33 @@ final class World: NSObject, NSPopoverDelegate {
         synth.play("pop")
         for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.35) { [weak self] in self?.pet.spawnDrop() } }
         let (tip, below) = pet.bubbleTip()
-        waterCard.show(WaterView(title: title, glasses: glassesToday, goal: waterGoal, answer: { [weak self] drank in
+        waterCard.show(waterView(title: title, answer: { [weak self] drank in
             if drank { self?.drankWater() } else { self?.snoozeWater() }
         }), tip: tip, below: below, until: t + 60)
     }
 
+    func waterView(title: String, done: Bool = false, answer: @escaping (Bool) -> Void = { _ in }) -> WaterView {
+        let goal = waterGoalML, today = waterToday
+        let glasses = waterUnit == .glasses && goal % glassML == 0 && goal / glassML <= 12
+        return WaterView(title: title, line: waterLine, progress: Double(today) / Double(max(1, goal)),
+                         dots: glasses ? (today / glassML, goal / glassML) : nil, pace: paceText,
+                         drink: waterUnit == .sips ? "I took a sip" : "I drank some", done: done, answer: answer)
+    }
+
     func drankWater() {
-        let n = glassesToday + 1
-        setGlasses(n)
+        let before = waterToday
+        setWater(ml: before + servingML)
         activeSinceDrink = 0; waterSnoozes = 0
         pet.drink()
         synth.play("chomp")
+        if before < waterGoalML && waterToday >= waterGoalML {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in self?.pet.celebrate("HYDRATED!") }
+        }
         guard !popover.isShown else { return }          // counted from the menu: no card on top of it
         let (tip, below) = pet.bubbleTip()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
-            waterCard.show(WaterView(title: "", glasses: n, goal: waterGoal, done: true), tip: tip, below: below, until: t + 2.2)
+            waterCard.show(waterView(title: "", done: true), tip: tip, below: below, until: t + 2.2)
         }
-        if n == waterGoal { DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in self?.pet.celebrate("HYDRATED!") } }
     }
 
     /// "Later" (or the card left alone): asks again in 15 minutes.
@@ -981,7 +1080,7 @@ final class World: NSObject, NSPopoverDelegate {
         waterCard.hide()
         pet.putAway()
         waterSnoozes += 1
-        activeSinceDrink = max(0, waterEvery - 15 * 60)
+        activeSinceDrink = max(0, (waterEvery > 0 ? waterEvery : 40 * 60) - 15 * 60)
         if !quietly { pet.say(["OKAY, IN A BIT!"], 1.6) }
     }
 
@@ -1190,6 +1289,12 @@ final class World: NSObject, NSPopoverDelegate {
         advancedWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// Back to the menu (its Music tab has the Spotify steps).
+    func closeAdvanced() {
+        advancedWindow?.close()
+        if let b = statusItem?.button { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { b.performClick(nil) } }
+    }
+
     /// A standard settings window: title bar, sidebar up to the top like System Settings, resizable.
     func makeAdvancedWindow() -> NSWindow {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
@@ -1281,10 +1386,7 @@ final class World: NSObject, NSPopoverDelegate {
     // MARK: Water glasses
 
     /// Took one off (pressed + by mistake).
-    func undoWater() {
-        let n = max(0, glassesToday - 1)
-        setGlasses(n)
-    }
+    func undoWater() { setWater(ml: max(0, waterToday - servingML)) }
 
     func changeSpecies(to sp: Species) {
         guard pet.species != sp else { return }
@@ -1420,12 +1522,25 @@ final class World: NSObject, NSPopoverDelegate {
         stillMusic = d.object(forKey: "stillMusic") as? Bool ?? true
         napLength = d.double(forKey: "napLength")
         startleOnMusic = d.object(forKey: "startleOnMusic") as? Bool ?? true
+        fullscreenClimb = d.object(forKey: "fullscreenClimb") as? Bool ?? true
+        cozy = d.bool(forKey: "cozy")
         followFor = d.object(forKey: "followFor") as? Double ?? 60
         followSpeed = d.object(forKey: "followSpeed") as? Int ?? 1
         showName = d.bool(forKey: "showName")
         Item.doubleClickRemoves = d.object(forKey: "doubleClickRemoves") as? Bool ?? true
         volumes = d.dictionary(forKey: "volumes") as? [String: Double] ?? [:]
-        waterGoal = d.object(forKey: "waterGoal") as? Int ?? 8
+        fixedGoalML = d.object(forKey: "waterGoalML") as? Int ?? (d.object(forKey: "waterGoal") as? Int ?? 8) * 250
+        waterUnit = WaterUnit(rawValue: d.integer(forKey: "waterUnit")) ?? .glasses
+        glassML = d.object(forKey: "glassML") as? Int ?? 250
+        sipML = d.object(forKey: "sipML") as? Int ?? 25
+        waterGoalMode = d.integer(forKey: "waterGoalMode")
+        weightKG = d.object(forKey: "weightKG") as? Double ?? 65
+        weightInLB = d.bool(forKey: "weightInLB")
+        activity = d.object(forKey: "activity") as? Int ?? 1
+        hotWeather = d.bool(forKey: "hotWeather")
+        wakeMinutes = d.object(forKey: "wakeMinutes") as? Int ?? 8 * 60
+        bedMinutes = d.object(forKey: "bedMinutes") as? Int ?? 23 * 60
+        quietAtNight = d.object(forKey: "quietAtNight") as? Bool ?? true
         if let data = d.data(forKey: "habits"), let h = try? JSONDecoder().decode([Habit].self, from: data) { habits = h }
         bellOn = d.object(forKey: "bell") as? Bool ?? true
         bellTabs = d.object(forKey: "bellTabs") as? Bool ?? true
@@ -1464,11 +1579,17 @@ final class World: NSObject, NSPopoverDelegate {
         d.set(stillTyping, forKey: "stillTyping"); d.set(stillWatching, forKey: "stillWatching"); d.set(stillMusic, forKey: "stillMusic")
         d.set(napLength, forKey: "napLength")
         d.set(startleOnMusic, forKey: "startleOnMusic")
+        d.set(fullscreenClimb, forKey: "fullscreenClimb")
+        d.set(cozy, forKey: "cozy")
         d.set(followFor, forKey: "followFor"); d.set(followSpeed, forKey: "followSpeed")
         d.set(showName, forKey: "showName")
         d.set(Item.doubleClickRemoves, forKey: "doubleClickRemoves")
         d.set(volumes, forKey: "volumes")
-        d.set(waterGoal, forKey: "waterGoal")
+        d.set(fixedGoalML, forKey: "waterGoalML")
+        d.set(waterUnit.rawValue, forKey: "waterUnit"); d.set(glassML, forKey: "glassML"); d.set(sipML, forKey: "sipML")
+        d.set(waterGoalMode, forKey: "waterGoalMode"); d.set(weightKG, forKey: "weightKG"); d.set(weightInLB, forKey: "weightInLB")
+        d.set(activity, forKey: "activity"); d.set(hotWeather, forKey: "hotWeather")
+        d.set(wakeMinutes, forKey: "wakeMinutes"); d.set(bedMinutes, forKey: "bedMinutes"); d.set(quietAtNight, forKey: "quietAtNight")
         if let data = try? JSONEncoder().encode(habits) { d.set(data, forKey: "habits") }
         d.set(bellOn, forKey: "bell")
         d.set(bellTabs, forKey: "bellTabs")
