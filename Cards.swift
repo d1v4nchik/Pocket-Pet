@@ -120,22 +120,36 @@ struct TightLabel: LabelStyle {
 
 extension View {
     /// A floating glass card: Liquid Glass on macOS 26, frosted material before.
-    /// The cards' look: glass with a faint edge and a soft shadow in the card's own rounded shape (the window has no
-    /// shadow of its own, which macOS drew square), so a card stands out on any background, dark ones too.
+    /// The cards' look: the same material as the menu's popover, kept in its bright "active" look (a card's window is
+    /// never the focused one, so glass on it was drawn dimmed and grey), with a faint edge and a soft shadow in the
+    /// card's own rounded shape (the window has no shadow of its own, which macOS drew square).
     @ViewBuilder func card() -> some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         if plainGlass {
             self.background(shape.fill(Color(nsColor: .windowBackgroundColor)))
-        } else if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.75))
-                .shadow(color: .black.opacity(0.32), radius: 12, x: 0, y: 5)
         } else {
-            self.background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.75))
-                .shadow(color: .black.opacity(0.32), radius: 12, x: 0, y: 5)
+            self.background(PopoverMaterial(cornerRadius: 16))
+                .overlay(shape.strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.75))
+                .shadow(color: .black.opacity(0.28), radius: 12, x: 0, y: 5)
         }
     }
+}
+
+/// The menu's popover material behind a card, always drawn active, with rounded corners.
+struct PopoverMaterial: NSViewRepresentable {
+    var cornerRadius: CGFloat
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .popover
+        v.blendingMode = .behindWindow
+        v.state = .active
+        v.wantsLayer = true
+        v.layer?.cornerRadius = cornerRadius
+        v.layer?.cornerCurve = .continuous
+        v.layer?.masksToBounds = true
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) { v.layer?.cornerRadius = cornerRadius }
 }
 
 /// Can take typing (for the search box) without activating the app.
