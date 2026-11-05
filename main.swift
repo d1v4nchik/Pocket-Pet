@@ -7,6 +7,7 @@
 // Privacy: typing is detected from the system keystroke counter (never the keys themselves).
 
 import Cocoa
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let world = World()
@@ -51,6 +52,31 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     }
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
+}
+if args.contains("--multi-test") {
+    // several pets at once: add two, let them live for a while, save, load, remove (your settings are put back after)
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let d = UserDefaults.standard
+        let saved = ["multiPets", "companions", "pet"].map { ($0, d.object(forKey: $0)) }
+        defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
+        let w = World()
+        w.hidden = true
+        w.load()
+        w.setMultiPets(true)
+        let other = Species.allCases.filter { $0 != w.pet.species }
+        w.toggleCompanion(other[0]); w.toggleCompanion(other[1])
+        for _ in 0..<100 { w.t += 0.1; for p in w.pets { p.update(0.1) } }
+        print("pets on the desktop: \(w.pets.map { $0.species.rawValue })")
+        w.save()
+        let w2 = World(); w2.hidden = true; w2.load()
+        print("after loading again: \(w2.pets.map { $0.species.rawValue })")
+        w2.toggleCompanion(other[0])
+        print("after sending \(other[0].rawValue) home: \(w2.pets.map { $0.species.rawValue })")
+        w2.setMultiPets(false)
+        print("multiple pets off: \(w2.pets.map { $0.species.rawValue })")
+    }
+    exit(0)
 }
 if args.contains("--still-test") {
     // "completely still": counts how many different pictures and positions the pet shows over 20 seconds

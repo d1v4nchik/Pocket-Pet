@@ -119,10 +119,10 @@ struct TightLabel: LabelStyle {
 }
 
 extension View {
-    /// A floating glass card: Liquid Glass on macOS 26, frosted material before.
     /// The cards' look: the same material as the menu's popover, kept in its bright "active" look (a card's window is
     /// never the focused one, so glass on it was drawn dimmed and grey), with a faint edge and a soft shadow in the
-    /// card's own rounded shape (the window has no shadow of its own, which macOS drew square).
+    /// card's own rounded shape (the window has no shadow of its own, which macOS drew square). Measured on screen,
+    /// it comes out as dark as the menu's popover over a dark background.
     @ViewBuilder func card() -> some View {
         let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         if plainGlass {

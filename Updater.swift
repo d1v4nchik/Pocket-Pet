@@ -106,16 +106,44 @@ final class Updater {
         guard unzip.terminationStatus == 0, Bundle(url: fresh)?.bundleIdentifier == Bundle.main.bundleIdentifier else {
             throw fail("The download didn't contain Pocket Pet.")
         }
-        guard fm.isWritableFile(atPath: here.deletingLastPathComponent().path) else {
-            throw fail("Pocket Pet's folder can't be changed from here. Get the new version from the release page instead.")
+        // Where it goes, whatever the app's folder allows:
+        // 1. its folder can be changed: swap the whole app
+        // 2. only the app itself can (the main Applications folder on a Mac you're not an admin of): swap its insides
+        // 3. neither, or macOS is running it from a temporary read-only copy (opened straight from Downloads or the DMG):
+        //    install it in the Applications folder in your home folder and open it from there
+        let translocated = here.path.contains("/AppTranslocation/")
+        let target: URL
+        if !translocated && fm.isWritableFile(atPath: here.deletingLastPathComponent().path) {
+            try swapApp(fresh, at: here)
+            target = here
+        } else if !translocated && fm.isWritableFile(atPath: here.path) && fm.isWritableFile(atPath: here.appendingPathComponent("Contents").path) {
+            let contents = here.appendingPathComponent("Contents"), old = here.appendingPathComponent(".Contents (previous)")
+            try? fm.removeItem(at: old)
+            try fm.moveItem(at: contents, to: old)
+            do { try fm.copyItem(at: fresh.appendingPathComponent("Contents"), to: contents) } catch { try? fm.moveItem(at: old, to: contents); throw error }
+            try? fm.removeItem(at: old)
+            target = here
+        } else {
+            let home = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
+            try fm.createDirectory(at: home, withIntermediateDirectories: true)
+            target = home.appendingPathComponent("Pocket Pet.app")
+            if fm.fileExists(atPath: target.path) { try swapApp(fresh, at: target) } else { try fm.copyItem(at: fresh, to: target) }
+            UserDefaults.standard.set(true, forKey: "movedToHomeApplications")
         }
-        // swap: old aside, new in, old gone (and put back if anything fails)
+        // the signature was checked above, so the "downloaded from the internet" flag of the old copy can go (otherwise
+        // macOS stops the updated app on its next launch, as if it had never been opened)
+        removexattr(target.path, "com.apple.quarantine", XATTR_NOFOLLOW)
+        return target
+    }
+
+    /// Old aside, new in, old gone (and put back if anything fails).
+    private static func swapApp(_ fresh: URL, at here: URL) throws {
+        let fm = FileManager.default
         let old = here.deletingLastPathComponent().appendingPathComponent(".Pocket Pet (previous).app")
         try? fm.removeItem(at: old)
         try fm.moveItem(at: here, to: old)
         do { try fm.copyItem(at: fresh, to: here) } catch { try? fm.moveItem(at: old, to: here); throw error }
         try? fm.removeItem(at: old)
-        return here
     }
 
     private static func relaunch(_ app: URL) {

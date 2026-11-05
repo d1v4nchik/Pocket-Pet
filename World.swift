@@ -155,7 +155,7 @@ final class Item {
                 }
                 onGround = y <= fl + 0.5 && abs(vy) < 1
             } else {
-                if isFood, let p = world.pet, p === claim, age > 0.6 {
+                if isFood, let p = claim, age > 0.6 {           // floats to whichever pet is eating it
                     let m = p.mouthPoint()
                     let dx = m.x - x, dy = m.y - y, d = max(1, hypot(dx, dy))
                     let sp = min(170 * s / 4, d * 3)
@@ -386,6 +386,11 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     let popover = NSPopover()
     let ui = UIModel()
     weak var popoverPet: Pet?
+    /// Several pets at once (a setting): your pet, plus up to four companions picked in the Pets tab.
+    var multiPets = false
+    var companions: [Pet] = []
+    var pets: [Pet] { [pet] + companions }
+    static let maxCompanions = 4
     private var uiTimer: Timer?
     private var imageCache: [String: NSImage] = [:]
 
@@ -439,11 +444,12 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         setupStatusItem()
         registerShortcut()
         pet.spawnIn()
+        companions.forEach { $0.spawnIn() }
         lastTick = now()
         schedule(30)
         let nc = NotificationCenter.default
         nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.pet.environmentChanged()
+            self?.pets.forEach { $0.environmentChanged() }
         }
         // React right away when switching Spaces or apps (that's when fullscreen changes).
         let wnc = NSWorkspace.shared.notificationCenter
@@ -460,12 +466,12 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         }
         // Clicks reach the pet the moment the cursor is over it (and pass through as soon as it leaves),
         // whatever the frame rate: mouse moves are cheap events, not polling.
-        NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in self?.pet?.updateHover() }
-        NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] e in self?.pet?.updateHover(); return e }
+        NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in self?.pets.forEach { $0.updateHover() } }
+        NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] e in self?.pets.forEach { $0.updateHover() }; return e }
         // The calendar and music cards close like menus: on any click outside them (mouse clicks need no permission).
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.clickedOutsideCards(onPet: false) }
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            self?.clickedOutsideCards(onPet: e.window === self?.pet?.panel)
+            self?.clickedOutsideCards(onPet: self?.pets.contains { e.window === $0.panel } ?? false)
             return e
         }
         // Nobody can see the pet: stop entirely until they're back.
@@ -521,7 +527,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         t += dt
         sense()
         updateStats(dt)
-        if !hidden { pet.update(dt) }
+        if !hidden { for p in pets { p.update(dt) } }
         for it in items where !it.gone { it.update(dt, world: self) }
         items.removeAll { $0.gone }
         if t > nextButterfly {
@@ -556,11 +562,18 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             for c in cards where c.visible { c.follow(tip: tip, below: below) }
         }
         if t > 8 && t - dt <= 8 { offerAccessibility() }          // a little after launch, once
+        if t > 6 && t - dt <= 6 && defaults.bool(forKey: "movedToHomeApplications") {
+            // the last update couldn't change the old copy's folder, so it went to ~/Applications: say where
+            defaults.removeObject(forKey: "movedToHomeApplications")
+            let (tip, below) = pet.bubbleTip()
+            toast.show(ToastView(title: "Updated!", detail: "Pocket Pet now lives in the Applications folder in your home folder. You can delete the old copy.",
+                                 close: { [weak self] in self?.toast.hide() }), tip: tip, below: below, until: t + 20)
+        }
         if updater.enabled && Date() > nextUpdateCheckAt {
             nextUpdateCheckAt = Date().addingTimeInterval(3 * 3600)
             updater.check { [weak self] in self?.announceUpdate() }
         }
-        if fullscreenUp != lastFullscreenApp { lastFullscreenApp = fullscreenUp; pet.environmentChanged() }
+        if fullscreenUp != lastFullscreenApp { lastFullscreenApp = fullscreenUp; pets.forEach { $0.environmentChanged() } }
         if musicCard.visible {
             if musicCard.isKey || musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
             if t > musicCard.until || hidden || pet.mode == .held { musicCard.hide() }
@@ -574,7 +587,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         // Only run as fast as the pet needs right now.
         guard !paused else { return }
         let busyItems = items.contains { !$0.resting }
-        let want = hidden ? 1 : max(pet.wantsFPS, busyItems ? 20 : 0)
+        let want = hidden ? 1 : max(pets.map(\.wantsFPS).max() ?? 8, busyItems ? 20 : 0)
         if want > fps { schedule(want); lowSince = t }
         else if want < fps { if t - lowSince > 1.5 { schedule(want) } }
         else { lowSince = t }
@@ -736,13 +749,13 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         let covers = fullscreenDesktop(on: sc) ?? (spans && (fullscreen || !menuBarShowing))
         if covers {
             fsOffSince = nil
-            if !fullscreen { fullscreen = true; pet.environmentChanged() }     // entering: right away
+            if !fullscreen { fullscreen = true; pets.forEach { $0.environmentChanged() } }     // entering: right away
         } else if fullscreen {
             // leaving: only once it's still true a moment later (desktops sliding can blink the window list)
             if let since = fsOffSince, now() - since > 0.25 {
                 fsOffSince = nil
                 fullscreen = false
-                pet.environmentChanged()
+                pets.forEach { $0.environmentChanged() }
             } else if fsOffSince == nil {
                 fsOffSince = now()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.checkFullscreen() }
@@ -1278,14 +1291,14 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     func setGravity(_ on: Bool) {
         guard on != gravity else { return }
         gravity = on
-        pet.environmentChanged()
+        pets.forEach { $0.environmentChanged() }
         save()
         ui.refresh()
     }
 
     func setSize(_ n: Int) {
         sizeSetting = n
-        pet.buildWindow()
+        pets.forEach { $0.buildWindow() }
         items.forEach { $0.resize(scale) }
         save()
     }
@@ -1416,8 +1429,35 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     /// Took one off (pressed + by mistake).
     func undoWater() { setWater(ml: max(0, waterToday - servingML)) }
 
+    /// Several pets at once: tapping a pet in the Pets tab brings it along, or sends it home.
+    func toggleCompanion(_ sp: Species) {
+        if let c = companions.first(where: { $0.species == sp }) {
+            c.say(["BYE!"], 1)
+            c.panel.orderOut(nil); c.bubble.hide()
+            companions.removeAll { $0 === c }
+        } else if sp != pet.species && companions.count < Self.maxCompanions {
+            let r = PetRecord(id: UUID().uuidString, species: sp, name: sp.defaultName, outfit: Outfit(), fullness: 80, happiness: 85, energy: 90,
+                              x: Double(pet.x) + Double.random(in: -160...160))
+            let c = Pet(world: self, record: r)
+            companions.append(c)
+            if !hidden { c.spawnIn() } else { c.panel.orderOut(nil) }
+        }
+        save()
+    }
+
+    func setMultiPets(_ on: Bool) {
+        multiPets = on
+        if !on { for c in companions { c.panel.orderOut(nil); c.bubble.hide() }; companions = [] }
+        save()
+    }
+
     func changeSpecies(to sp: Species) {
         guard pet.species != sp else { return }
+        if let c = companions.first(where: { $0.species == sp }) {      // a companion already: it swaps places with yours
+            c.species = pet.species
+            if c.name == sp.defaultName { c.name = c.species.defaultName }
+            c.transformed()
+        }
         if pet.name == pet.species.defaultName { pet.name = sp.defaultName }
         pet.species = sp
         pet.transformed()
@@ -1452,11 +1492,10 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             let (tip, below) = pet.bubbleTip()
             if !quietly { toast.show(ToastView(title: "\(pet.name) is hidden", detail: "Press ⌃⌥P, or open Pocket Pet again, to bring them back.",
                                  close: { [weak self] in self?.toast.hide() }), tip: tip, below: below, until: t + 6) }
-            pet.panel.orderOut(nil)
-            pet.bubble.hide()
+            pets.forEach { $0.panel.orderOut(nil); $0.bubble.hide() }
             items.forEach { $0.panel.orderOut(nil) }
         } else {
-            pet.panel.orderFrontRegardless()
+            pets.forEach { $0.panel.orderFrontRegardless() }
             items.forEach { $0.panel.orderFrontRegardless() }
             lastTick = now()
         }
@@ -1631,6 +1670,10 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             if awaySeconds > 3600 { r.energy = 100 }
         }
         pet = Pet(world: self, record: r)
+        multiPets = d.bool(forKey: "multiPets")
+        if multiPets, let data = d.data(forKey: "companions"), let recs = try? JSONDecoder().decode([PetRecord].self, from: data) {
+            companions = recs.prefix(Self.maxCompanions).map { Pet(world: self, record: $0) }
+        }
     }
 
     func save() {
@@ -1659,6 +1702,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         d.set(useMacCalendar, forKey: "useMacCalendar")
         d.set(waterEvery, forKey: "water")
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
+        d.set(multiPets, forKey: "multiPets")
+        if let data = try? JSONEncoder().encode(companions.map(\.record)) { d.set(data, forKey: "companions") }
         d.set(Date().timeIntervalSince1970, forKey: "savedAt")
     }
 

@@ -502,11 +502,27 @@ struct RootView: View {
     func petsTab(_ world: World, _ pet: Pet) -> some View {
         // rows of five, so every pet fits inside the menu however many there are
         let cols = Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
-        return GlassGroup {
-            LazyVGrid(columns: cols, spacing: 8) {
-                ForEach(Species.allCases) { sp in
-                    Tile(img: world.faceImage(sp), help: sp.title, selected: pet.species == sp, size: 48) { world.changeSpecies(to: sp); m.refresh() }
+        let multi = world.multiPets
+        return VStack(alignment: .leading, spacing: 8) {
+            GlassGroup {
+                LazyVGrid(columns: cols, spacing: 8) {
+                    ForEach(Species.allCases) { sp in
+                        let along = world.companions.contains { $0.species == sp }
+                        // one pet: tap to switch. Several: tap to bring a pet along or send it home; right-click for your main pet
+                        Tile(img: world.faceImage(sp), help: multi ? (pet.species == sp ? "\(sp.title): your main pet" : along ? "Send \(sp.title) home" : "Bring \(sp.title) along") : sp.title,
+                             selected: pet.species == sp || along, size: 48) {
+                            if multi && pet.species != sp { world.toggleCompanion(sp) } else { world.changeSpecies(to: sp) }
+                            m.refresh()
+                        }
+                        .contextMenu {
+                            if multi && pet.species != sp { Button("Make \(sp.title) my main pet") { world.changeSpecies(to: sp); m.refresh() } }
+                        }
+                    }
                 }
+            }
+            if multi {
+                hint(world.companions.count >= World.maxCompanions ? "That's the most pets at once (5). Tap one to send it home."
+                     : "Tap pets to bring them along. Right-click one to make it your main pet.")
             }
         }
     }
@@ -933,6 +949,8 @@ struct RootView: View {
             .pickerStyle(.segmented)
             Toggle("Sounds", isOn: Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() }))
             Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
+            Toggle("Several pets at once", isOn: Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() }))
+            if world.multiPets { caption("Pick extra pets in the menu's Pets tab: up to five on your desktop together.") }
         }
         Section("App") {
             Toggle("Open at login", isOn: Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() }))
