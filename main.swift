@@ -286,6 +286,7 @@ if let i = args.firstIndex(of: "--pets-shot"), i + 1 < args.count {
         let other = Species.allCases.filter { $0 != w.pet.species }
         w.toggleCompanion(other[0]); w.toggleCompanion(other[3])
         w.ui.world = w; w.ui.tab = 0
+        if i + 2 < args.count, args[i + 2] == "music" { w.ui.tab = 2; w.player.preview(connected: true) }
         w.hidden = false
         let win = NSWindow(contentRect: NSRect(x: -3800, y: 200, width: 340, height: 520), styleMask: [.borderless], backing: .buffered, defer: false)
         win.contentView = NSHostingView(rootView: RootView(m: w.ui).padding(16).frame(width: 340).background(Color(nsColor: .windowBackgroundColor)))

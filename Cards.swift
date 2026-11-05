@@ -257,7 +257,7 @@ struct MusicCardView: View {
                                     }
                                     .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(RowButton())
                                 .help("Play this song now")
                                 if sp.connected && !s.id.hasPrefix("music:") {
                                     Button { sp.addToQueue(s); model.tick &+= 1 } label: {
@@ -270,6 +270,8 @@ struct MusicCardView: View {
                         }
                     }
                 }
+                .scrollIndicators(.never)              // no scroll bar over the rows' buttons
+                .padding(.horizontal, -6)
                 .frame(maxHeight: 160)
             } else if !sp.status.isEmpty {
                 Text(sp.status).font(.system(size: 10.5)).foregroundStyle(.secondary)

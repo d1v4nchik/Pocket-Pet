@@ -132,6 +132,23 @@ extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
+/// A whole list row as one button (songs in Up next and search): easy to hit, softly lit under the cursor.
+struct RowButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { RowBody(configuration: configuration) }
+    struct RowBody: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hover = false
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.14 : hover ? 0.07 : 0)))
+                .contentShape(Rectangle())
+                .onHover { hover = $0 }
+        }
+    }
+}
+
 struct Pill: ButtonStyle {
     var strong = false
     func makeBody(configuration: Configuration) -> some View {
@@ -428,21 +445,27 @@ struct RootView: View {
                      : (sp.running ? "Nothing queued" : "Play something in Spotify to see what's next"))
                     .font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 6)
             } else {
-                // a box that scrolls, so the menu keeps its size however long the list is
+                // a box that scrolls, so the menu keeps its size however long the list is. Each whole row is the button
+                // and there's no scroll bar on top of the rows (scroll with the trackpad or wheel)
                 ScrollView {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 2) {
                         ForEach(Array(rows.enumerated()), id: \.offset) { i, s in
-                            songRow(s) {
-                                if searching {
-                                    control("play.fill", 11) { sp.play(s); m.searching = false; m.songQuery = ""; sp.clearResults() }.help("Play this song next, now")
-                                    control("plus", 13) { sp.addToQueue(s) }.help("Add to the end of your queue")
-                                } else {
-                                    control("play.fill", 11) { sp.skip(to: i); m.refresh() }.help("Skip ahead to this song")
+                            HStack(spacing: 0) {
+                                Button {
+                                    if searching { sp.play(s); m.searching = false; m.songQuery = ""; sp.clearResults() }
+                                    else { sp.skip(to: i); m.refresh() }
+                                } label: {
+                                    songRow(s) { Image(systemName: "play.fill").font(.system(size: 10)).foregroundStyle(.secondary).frame(width: 16) }
                                 }
+                                .buttonStyle(RowButton())
+                                .help(searching ? "Play this song next, now" : "Skip ahead to this song")
+                                if searching { control("plus", 13) { sp.addToQueue(s) }.help("Add to the end of your queue") }
                             }
                         }
                     }
                 }
+                .scrollIndicators(.never)
+                .padding(.horizontal, -6)
                 .frame(maxHeight: 200)
             }
         }
