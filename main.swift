@@ -66,7 +66,20 @@ if args.contains("--multi-test") {
         w.setMultiPets(true)
         let other = Species.allCases.filter { $0 != w.pet.species }
         w.toggleCompanion(other[0]); w.toggleCompanion(other[1])
-        for _ in 0..<100 { w.t += 0.1; for p in w.pets { p.update(0.1) } }
+        w.playTogether = true; w.idleSecs = 5; w.stillness = 0
+        var said: [String: Int] = [:], visits = 0, tags = 0
+        var wasVisiting = Set<ObjectIdentifier>(), wasZooming = Set<ObjectIdentifier>()
+        for _ in 0..<1200 {                      // two minutes
+            w.t += 0.1
+            for p in w.pets {
+                p.update(0.1)
+                let id = ObjectIdentifier(p)
+                if p.visiting != nil, !wasVisiting.contains(id) { visits += 1; wasVisiting.insert(id) } else if p.visiting == nil { wasVisiting.remove(id) }
+                if p.mode == .zoomies, !wasZooming.contains(id) { tags += 1; wasZooming.insert(id) } else if p.mode != .zoomies { wasZooming.remove(id) }
+                if w.t < p.bubbleUntil, let line = p.bubbleLines.first { said[line, default: 0] += 1 }
+            }
+        }
+        print("in two minutes: \(visits) visits, \(tags) dashes (tag), said: \(said.keys.sorted())")
         print("pets on the desktop: \(w.pets.map { $0.species.rawValue })")
         w.save()
         let w2 = World(); w2.hidden = true; w2.load()

@@ -605,6 +605,12 @@ struct RootView: View {
             row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
             row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() })) }
                 .help("Off: your pet walks on every edge of the screen, and birds fly about")
+            row("Several pets") { toggle(Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() })) }
+                .help("Pick extra pets in the Pets tab: up to five on your desktop together")
+            if world.multiPets {
+                row("   Play together") { toggle(Binding(get: { world.playTogether }, set: { world.playTogether = $0; world.save(); m.refresh() })) }
+                    .help("They visit each other, play tag and nap side by side")
+            }
             row("Water") {
                 HStack(spacing: 2) {
                     Text("\(world.waterText(world.waterToday, unit: false)) / \(world.waterText(world.waterGoalML))")
@@ -950,7 +956,10 @@ struct RootView: View {
             Toggle("Sounds", isOn: Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() }))
             Toggle("Gravity", isOn: Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() }))
             Toggle("Several pets at once", isOn: Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() }))
-            if world.multiPets { caption("Pick extra pets in the menu's Pets tab: up to five on your desktop together.") }
+            if world.multiPets {
+                Toggle("They play together", isOn: Binding(get: { world.playTogether }, set: { world.playTogether = $0; save(world) }))
+                caption("Pick extra pets in the menu's Pets tab: up to five on your desktop together. Playing together, they visit each other to say hi, play tag, and curl up next to a friend that's napping.")
+            }
         }
         Section("App") {
             Toggle("Open at login", isOn: Binding(get: { world.openAtLogin }, set: { world.openAtLogin = $0; m.refresh() }))

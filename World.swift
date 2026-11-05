@@ -388,6 +388,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     weak var popoverPet: Pet?
     /// Several pets at once (a setting): your pet, plus up to four companions picked in the Pets tab.
     var multiPets = false
+    var playTogether = true              // several pets visit each other, play tag and nap together
     var companions: [Pet] = []
     var pets: [Pet] { [pet] + companions }
     static let maxCompanions = 4
@@ -1671,6 +1672,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         }
         pet = Pet(world: self, record: r)
         multiPets = d.bool(forKey: "multiPets")
+        playTogether = d.object(forKey: "playTogether") as? Bool ?? true
         if multiPets, let data = d.data(forKey: "companions"), let recs = try? JSONDecoder().decode([PetRecord].self, from: data) {
             companions = recs.prefix(Self.maxCompanions).map { Pet(world: self, record: $0) }
         }
@@ -1703,6 +1705,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         d.set(waterEvery, forKey: "water")
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
         d.set(multiPets, forKey: "multiPets")
+        d.set(playTogether, forKey: "playTogether")
         if let data = try? JSONEncoder().encode(companions.map(\.record)) { d.set(data, forKey: "companions") }
         d.set(Date().timeIntervalSince1970, forKey: "savedAt")
     }
