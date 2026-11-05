@@ -50,6 +50,10 @@ screen with you and reacts to what you do.
 
 Dress any of them up from the **Closet**: hats (including a Santa hat), glasses and neckwear.
 
+Want more than one? Switch on **Several pets at once** in Settings and bring up to five along, each with its own name.
+They get along like real animals: cats touch noses, groom each other and play-fight, dogs and foxes play-bow and chase,
+a cat and a dog are careful with each other, the goose honks everyone off, and the parrot copies whoever it meets.
+
 ## How It Plays
 
 1. Open Pocket Pet. Your pet drops in and starts exploring.
