@@ -31,7 +31,7 @@ if [[ "${1:-}" == "--new-signing-identity" ]]; then
 fi
 
 SOURCES=(main.swift Art.swift Pets.swift Pet.swift ItemArt.swift World.swift Google.swift MacCalendar.swift ICSCalendar.swift
-         Cards.swift AppleEvents.swift Music.swift Notifications.swift Updater.swift UI.swift Sound.swift Sheet.swift)
+         Cards.swift AppleEvents.swift Music.swift Notifications.swift Updater.swift UI.swift Sound.swift Sheet.swift Social.swift)
 
 # Version and update settings live in small files next to this script (release.sh sets VERSION).
 VERSION="$(cat VERSION 2>/dev/null || echo 3.0)"

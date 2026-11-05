@@ -53,6 +53,113 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
 }
+if args.contains("--social-test") {
+    // every scene for each pair of species: does it play out, finish, and leave both pets free? (settings put back after)
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let d = UserDefaults.standard
+        let saved = ["multiPets", "companions", "pet", "playTogether"].map { ($0, d.object(forKey: $0)) }
+        defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
+        let w = World()
+        w.hidden = true
+        w.load()
+        w.setMultiPets(true)
+        w.playTogether = true; w.idleSecs = 5; w.stillness = 0
+        // picture strips of each scene, saved where SOCIAL_SHOTS points (one PNG per pair of species)
+        let shots = ProcessInfo.processInfo.environment["SOCIAL_SHOTS"]
+        func frame(_ ps: [Pet]) -> CGImage? {
+            let mid = (ps[0].x + ps[1].x) / 2, W = 360, H = 112
+            guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            ctx.setFillColor(CGColor(red: 0.93, green: 0.93, blue: 0.95, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+            ctx.setFillColor(CGColor(red: 0.5, green: 0.5, blue: 0.55, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: 4))
+            ctx.interpolationQuality = .none
+            for q in ps { if let im = q.spriteImage() {
+                let cxp = (q.x - mid) / w.scale * 2 + CGFloat(W) / 2
+                ctx.draw(im, in: CGRect(x: cxp - CGFloat(im.width) / 2, y: 4 + q.hopY / w.scale * 2 - 2, width: CGFloat(im.width), height: CGFloat(im.height)))
+            } }
+            return ctx.makeImage()
+        }
+        func sheet(_ rows: [[CGImage]], _ name: String) {
+            guard let dir = shots, !rows.isEmpty else { return }
+            let cols = rows.map(\.count).max() ?? 1, W = 360, H = 112, k = 2
+            guard let ctx = CGContext(data: nil, width: cols * W * k, height: rows.count * H * k, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+            ctx.setFillColor(CGColor(gray: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: cols * W * k, height: rows.count * H * k))
+            ctx.interpolationQuality = .none
+            for (r, row) in rows.enumerated() { for (c, im) in row.enumerated() {
+                ctx.draw(im, in: CGRect(x: c * W * k + 2, y: (rows.count - 1 - r) * H * k + 2, width: W * k - 4, height: H * k - 4))
+            } }
+            guard let out = ctx.makeImage(), let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: "\(dir)/\(name).png") as CFURL, "public.png" as CFString, 1, nil) else { return }
+            CGImageDestinationAddImage(dest, out, nil); CGImageDestinationFinalize(dest)
+        }
+        let pairs: [(Species, Species, [Game])] = [
+            (.ginger, .siamese, [.boop, .groom, .fight]), (.dalmatian, .fox, [.boop, .sniff, .chase, .fight]),
+            (.calico, .fox, [.wary, .hiss]), (.dalmatian, .tuxedo, [.wary, .hiss, .snub]),
+            (.goose, .ginger, [.honk, .boop]), (.fox, .goose, [.honk]), (.parrot, .dalmatian, [.mimic]), (.calico, .parrot, [.mimic])]
+        for (a, b, games) in pairs {
+            for c in w.companions { w.toggleCompanion(c.species) }
+            w.changeSpecies(to: a); w.toggleCompanion(b)
+            let p = w.pet!, f = w.companions[0]
+            var rows: [[CGImage]] = []
+            for g in games {
+                p.x = 700; f.x = 1000
+                for q in w.pets { q.food = nil; q.pal = nil; q.game = nil; q.setMode(.idle); q.happiness = 90; q.energy = 90; q.fullness = 90 }
+                for _ in 0..<60 { w.t += 0.1; for q in w.pets { q.update(0.1) } }      // settle on the floor
+                for q in w.pets { q.setMode(.idle); q.nextSocial = w.t + 999 }
+                p.start(g, with: f)
+                var kinds: [String] = [], secs = 0.0, closest = CGFloat.infinity
+                var row: [CGImage] = [], state = "", snapAt = -1.0
+                while (p.mode == .social || f.mode == .social) && secs < 45 {
+                    w.t += 0.05; secs += 0.05
+                    for q in w.pets { q.update(0.05) }
+                    let now = "\(p.social)\(f.social)\(p.mode)\(f.mode)\(p.moving)\(f.moving)"
+                    if now != state { state = now; snapAt = secs + 0.3 }
+                    if snapAt > 0 && secs >= snapAt && row.count < 8 { snapAt = -1; if let im = frame([p, f]) { row.append(im) } }
+                    for q in [p, f] where q.mode == .social {
+                        let k = "\(q === p ? "A" : "B").\(q.social)"
+                        if kinds.last != k && !kinds.suffix(4).contains(k) { kinds.append(k) }
+                    }
+                    closest = min(closest, abs(p.x - f.x))
+                }
+                let clean = p.pal == nil && f.pal == nil && p.mode != .social && f.mode != .social
+                print("\(a.rawValue)+\(b.rawValue) \(g): \(String(format: "%.1f", secs))s \(clean ? "ok" : "STUCK") closest \(Int(closest / w.scale)) cells -> \(kinds.joined(separator: " "))")
+                // afterwards: do they step apart instead of staying on top of each other?
+                for _ in 0..<200 { w.t += 0.1; for q in w.pets { q.update(0.1) } }
+                let gap = abs(p.x - f.x) / w.scale
+                print("   20 s later: \(Int(gap)) cells apart, modes \(p.mode) / \(f.mode)")
+                rows.append(row)
+            }
+            sheet(rows, "\(a.rawValue)-\(b.rawValue)")
+        }
+        // left alone for five minutes with three pets: which scenes happen, and how long any two stand stacked
+        for c in w.companions { w.toggleCompanion(c.species) }
+        w.changeSpecies(to: .ginger); w.toggleCompanion(.siamese); w.toggleCompanion(.dalmatian)
+        for q in w.pets { q.nextSocial = w.t + Double.random(in: 5...20) }
+        var games: [String: Int] = [:], stacked = 0.0
+        for _ in 0..<3000 {
+            w.t += 0.1
+            for q in w.pets {
+                let before = q.game
+                q.update(0.1)
+                if let g = q.game, before == nil { games["\(g)", default: 0] += 1 }
+            }
+            let ps = w.pets
+            for i in 0..<ps.count { for j in (i + 1)..<ps.count {
+                let a = ps[i], b = ps[j]
+                if a.mode != .social && b.mode != .social && a.mode != .walk && b.mode != .walk && !(a.isAsleep && b.isAsleep)
+                    && abs(a.x - b.x) < a.bodyHalf + b.bodyHalf { stacked += 0.1 }
+            } }
+        }
+        print("five minutes, three pets: scenes \(games.sorted { $0.key < $1.key }), stacked at rest \(Int(stacked)) s")
+        // names stay with the pet when another one becomes the main pet
+        let names = w.pets.map { "\($0.species.rawValue)=\($0.name)" }
+        w.rename(w.companions[0], "Biscuit")
+        w.makeMain(w.companions[0])
+        print("names before: \(names); after renaming and making it main: \(w.pets.map { "\($0.species.rawValue)=\($0.name)" })")
+    }
+    exit(0)
+}
 if args.contains("--multi-test") {
     // several pets at once: add two, let them live for a while, save, load, remove (your settings are put back after)
     _ = NSApplication.shared
@@ -161,6 +268,36 @@ if let i = args.firstIndex(of: "--card-shot"), i + 1 < args.count {
         if let num = NSApp.windows.first(where: { $0.isVisible })?.windowNumber, let img = fn?(.null, 8, UInt32(num), 9)?.takeRetainedValue() {
             try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
         }
+    }
+    exit(0)
+}
+if let i = args.firstIndex(of: "--pets-shot"), i + 1 < args.count {
+    // the menu's Pets tab with three pets, in a real window as macOS draws it (your pets are put back after)
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let d = UserDefaults.standard
+        let saved = ["multiPets", "companions", "pet"].map { ($0, d.object(forKey: $0)) }
+        defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
+        let w = World()
+        w.hidden = true
+        w.load()
+        w.setMultiPets(true)
+        for c in w.companions { w.toggleCompanion(c.species) }
+        let other = Species.allCases.filter { $0 != w.pet.species }
+        w.toggleCompanion(other[0]); w.toggleCompanion(other[3])
+        w.ui.world = w; w.ui.tab = 0
+        w.hidden = false
+        let win = NSWindow(contentRect: NSRect(x: -3800, y: 200, width: 340, height: 520), styleMask: [.borderless], backing: .buffered, defer: false)
+        win.contentView = NSHostingView(rootView: RootView(m: w.ui).padding(16).frame(width: 340).background(Color(nsColor: .windowBackgroundColor)))
+        win.setContentSize(win.contentView!.fittingSize)
+        win.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        let fn = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage").map { unsafeBitCast($0, to: Capture.self) }
+        if let img = fn?(.null, 8, UInt32(win.windowNumber), 9)?.takeRetainedValue() {
+            try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+        }
+        for c in w.companions { c.panel.orderOut(nil) }
     }
     exit(0)
 }

@@ -368,7 +368,6 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
     var showName = false
     var volumes: [String: Double] = [:]  // Synth.categories (and "all") -> 0...1
-    let nameTag = FloatingCard()
     let habitCard = FloatingCard()
     var habits: [Habit] = []
     private var habitActive: [UUID: Double] = [:], habitSnoozed: [UUID: Double] = [:], showingHabit: UUID?
@@ -432,7 +431,6 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         }
         synth.enabled = soundOn
         synth.setVolumes(volumes)
-        nameTag.clickThrough = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             Secrets.load()
             DispatchQueue.main.async {
@@ -557,7 +555,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if bellCard.visible && (t > bellCard.until || hidden) { dismissBell() }
         if toast.visible && t > toast.until { toast.hide() }
         // cards stay by the pet when it walks off or you drag it somewhere
-        let cards = [bellCard, agendaCard, musicCard, waterCard, askCard, toast, habitCard, nameTag]
+        let cards = [bellCard, agendaCard, musicCard, waterCard, askCard, toast, habitCard]
         if cards.contains(where: \.visible) {
             let (tip, below) = pet.bubbleTip()
             for c in cards where c.visible { c.follow(tip: tip, below: below) }
@@ -1354,14 +1352,23 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
 
     // MARK: Name tag
 
-    /// The pet's name in a little tag above it (when switched on), out of the way of speech and cards.
+    /// Each pet's name in a little tag above it (when switched on), out of the way of speech and cards.
     private func updateNameTag() {
-        let want = showName && !hidden && !menuOpen && !askCard.visible && !habitCard.visible && !toast.visible && !pet.bubble.panel.isVisible
-        if want && !nameTag.visible {
-            let (tip, below) = pet.bubbleTip()
-            nameTag.show(NameTagView(name: pet.name), tip: tip, below: below, until: .infinity)
-        } else if !want && nameTag.visible {
-            nameTag.hide()
+        for p in pets {
+            let cardsUp = p === pet && (askCard.visible || habitCard.visible || toast.visible)
+            let want = showName && !hidden && !menuOpen && !cardsUp && !p.bubble.panel.isVisible
+            let tag = p.nameTag
+            if want {
+                let (tip, below) = p.bubbleTip()
+                if !tag.visible || p.tagShows != p.name {
+                    tag.show(NameTagView(name: p.name), tip: tip, below: below, until: .infinity)
+                    p.tagShows = p.name
+                } else {
+                    tag.follow(tip: tip, below: below)
+                }
+            } else if tag.visible {
+                tag.hide()
+            }
         }
     }
 
@@ -1434,7 +1441,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     func toggleCompanion(_ sp: Species) {
         if let c = companions.first(where: { $0.species == sp }) {
             c.say(["BYE!"], 1)
-            c.panel.orderOut(nil); c.bubble.hide()
+            c.panel.orderOut(nil); c.bubble.hide(); c.nameTag.hide()
             companions.removeAll { $0 === c }
         } else if sp != pet.species && companions.count < Self.maxCompanions {
             let r = PetRecord(id: UUID().uuidString, species: sp, name: sp.defaultName, outfit: Outfit(), fullness: 80, happiness: 85, energy: 90,
@@ -1472,12 +1479,25 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         save()
     }
 
-    func rename(_ name: String) {
-        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !n.isEmpty else { return }
-        pet.name = String(n.prefix(20))
-        pet.say(["I'M \(sanitize(pet.name))!"], 2)
-        pet.hearts(2)
+    func rename(_ name: String) { rename(pet, name) }
+
+    /// Renames any of your pets; it says its new name.
+    func rename(_ p: Pet, _ name: String) {
+        let n = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
+        guard !n.isEmpty, n != p.name else { return }
+        p.name = n
+        p.say(["I'M \(sanitize(p.name))!"], 2)
+        p.hearts(2)
+        save()
+    }
+
+    /// Several pets: another one becomes your main pet (the one the menu, dress-up and reminders are about).
+    /// Each keeps its own name, outfit and mood.
+    func makeMain(_ c: Pet) {
+        guard let i = companions.firstIndex(where: { $0 === c }) else { return }
+        companions[i] = pet
+        pet = c
+        c.hearts(2)
         save()
     }
 
@@ -1776,7 +1796,10 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         uiTimer = nil
         if let p = popoverPet, p.mode == .idle { p.actDur = 1 }
         popoverPet = nil
-        ui.editing = false
+        // names typed but not confirmed with Return still count
+        if ui.editing { rename(ui.draft) }
+        for (id, n) in ui.names { if let p = pets.first(where: { $0.id == id }) { rename(p, n) } }
+        ui.editing = false; ui.names = [:]; ui.renaming = nil
     }
 
     func pawIcon(dot: Bool = false) -> NSImage {

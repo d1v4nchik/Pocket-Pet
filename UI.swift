@@ -10,6 +10,8 @@ final class UIModel: ObservableObject {
     @Published var tab = 0
     @Published var editing = false
     @Published var draft = ""
+    @Published var names: [String: String] = [:]      // pets being renamed in the Pets tab, by id
+    @Published var renaming: String?                   // which one has its name field open
     @Published var calWay = 0          // which way to connect Google Calendar is open: 1 link, 2 Mac, 3 sign in
     @Published var link = ""
     @Published var songQuery = ""
@@ -68,6 +70,10 @@ struct Tile: View {
     /// so the glow under the cursor can't be mistaken for the current choice.
     var selected: Bool? = nil
     var size: CGFloat = 34
+    /// A small symbol in the corner (your main pet's star).
+    var badge: String? = nil
+    /// How strongly a selected tile is outlined: the main pet full, pets that came along lighter.
+    var strength: Double = 1
     let action: () -> Void
 
     var body: some View {
@@ -79,11 +85,22 @@ struct Tile: View {
                 else { Image(systemName: symbol ?? "circle").font(.system(size: size * 0.4, weight: .regular)) }
             }
             .frame(width: size, height: size)
+            .overlay(alignment: .topTrailing) {
+                if let badge {
+                    Image(systemName: badge)
+                        .font(.system(size: max(7, size * 0.16), weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: size * 0.3, height: size * 0.3)
+                        .background(Circle().fill(Color.accentColor))
+                        .padding(3)
+                }
+            }
             .foregroundStyle(.primary)
             .contentShape(Rectangle())
-            .background(shape.fill(Color.accentColor.opacity(on ? 0.22 : 0)))
+            // outline and fill go under the glass: drawn over it, glass blurs them away
+            .background(shape.fill(Color.accentColor.opacity(on ? 0.22 * strength : 0)))
+            .overlay(shape.strokeBorder(Color.accentColor.opacity(on ? 0.9 * strength : 0), lineWidth: strength < 1 ? 1 : 2))
             .glass(size * 0.3, interactive: selected == nil)
-            .overlay(shape.strokeBorder(Color.accentColor.opacity(on ? 0.9 : 0), lineWidth: 1.5))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -152,6 +169,7 @@ struct AdvancedSettingsView: View {
 
 struct RootView: View {
     @ObservedObject var m: UIModel
+    @FocusState var naming: Bool          // the pet name being edited in the Pets tab
 
     var body: some View {
         if let world = m.world, let pet = world.pet {
@@ -507,24 +525,88 @@ struct RootView: View {
             GlassGroup {
                 LazyVGrid(columns: cols, spacing: 8) {
                     ForEach(Species.allCases) { sp in
-                        let along = world.companions.contains { $0.species == sp }
-                        // one pet: tap to switch. Several: tap to bring a pet along or send it home; right-click for your main pet
-                        Tile(img: world.faceImage(sp), help: multi ? (pet.species == sp ? "\(sp.title): your main pet" : along ? "Send \(sp.title) home" : "Bring \(sp.title) along") : sp.title,
-                             selected: pet.species == sp || along, size: 48) {
-                            if multi && pet.species != sp { world.toggleCompanion(sp) } else { world.changeSpecies(to: sp) }
+                        let friend = world.companions.first { $0.species == sp }
+                        let main = pet.species == sp
+                        // one pet: tap to switch. Several: tap to bring a pet along or send it home; the star marks your main pet
+                        Tile(img: world.faceImage(sp),
+                             help: main ? "\(pet.name) the \(sp.title): your main pet" : !multi ? sp.title
+                                   : friend.map { "Send \($0.name) home" } ?? "Bring a \(sp.title) along",
+                             selected: main || friend != nil, size: 48, badge: main && multi ? "star.fill" : nil,
+                             strength: main ? 1 : 0.5) {
+                            if multi && !main { world.toggleCompanion(sp) } else { world.changeSpecies(to: sp) }
                             m.refresh()
                         }
                         .contextMenu {
-                            if multi && pet.species != sp { Button("Make \(sp.title) my main pet") { world.changeSpecies(to: sp); m.refresh() } }
+                            if let friend { Button("Make \(friend.name) my main pet") { world.makeMain(friend); m.refresh() } }
                         }
                     }
                 }
             }
             if multi {
-                hint(world.companions.count >= World.maxCompanions ? "That's the most pets at once (5). Tap one to send it home."
-                     : "Tap pets to bring them along. Right-click one to make it your main pet.")
+                namesList(world)
+                if world.companions.isEmpty || world.companions.count >= World.maxCompanions {
+                    hint(world.companions.isEmpty ? "Tap pets to bring them along." : "That's the most pets at once (5). Tap one to send it home.")
+                }
             }
         }
+    }
+
+    /// Several pets: each one by name, your main pet first with its star. Click a name to rename it.
+    func namesList(_ world: World) -> some View {
+        VStack(spacing: 4) {
+            ForEach(world.pets, id: \.id) { p in
+                let main = p === world.pet
+                HStack(spacing: 8) {
+                    Pixel(img: world.faceImage(p.species)).frame(width: 18, height: 18)
+                    if m.renaming == p.id {
+                        TextField(p.species.title, text: Binding(get: { m.names[p.id] ?? p.name }, set: { m.names[p.id] = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12))
+                            .focused($naming)
+                            .onAppear { DispatchQueue.main.async { naming = true } }
+                            .onSubmit { finishRenaming(world, p) }
+                            .onChange(of: naming) { focused in if !focused && m.renaming == p.id { finishRenaming(world, p) } }
+                    } else {
+                        Button {
+                            if let id = m.renaming, let q = world.pets.first(where: { $0.id == id }) { finishRenaming(world, q) }
+                            m.names[p.id] = p.name; m.renaming = p.id
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(p.name).font(.system(size: 12.5, weight: main ? .semibold : .regular)).lineLimit(1)
+                                Image(systemName: "pencil").font(.system(size: 10)).foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Rename \(p.name)")
+                    }
+                    Spacer(minLength: 4)
+                    if main {
+                        HStack(spacing: 3) {
+                            Image(systemName: "star.fill").font(.system(size: 9, weight: .bold))
+                            Text("Main").font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 6)
+                        .help("Your main pet: the menu, dress-up and reminders are about it")
+                    } else {
+                        Button("Make main") { world.makeMain(p); m.refresh() }
+                            .buttonStyle(Pill())
+                            .lineLimit(1)
+                            .fixedSize()
+                            .help("Make \(p.name) your main pet")
+                    }
+                }
+                .frame(height: 24)
+            }
+        }
+    }
+
+    func finishRenaming(_ world: World, _ p: Pet) {
+        world.rename(p, m.names[p.id] ?? p.name)
+        m.names[p.id] = nil
+        if m.renaming == p.id { m.renaming = nil }
+        m.refresh()
     }
 
     /// Dress-up: your pet big on the left in its outfit, one kind of item at a time on the right.

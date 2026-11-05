@@ -5,7 +5,8 @@ import Cocoa
 enum Mode {
     case fly, glide, drift, landing, dizzy, held,
          idle, walk, typing, watching, listening, yawning, sleeping, waking, catnap,
-         eating, refusing, ball, tired, butterfly, vocal, angry, petted, beg, zoomies, hunt, agenda
+         eating, refusing, ball, tired, butterfly, vocal, angry, petted, beg, zoomies, hunt, agenda,
+         social                                  // doing something with another pet (Social.swift)
 }
 enum IdleAct { case stand, look, preen, peck, sit, vocal, yawn, flap, hop, gaze, lie, groom, stretch, beg }
 enum FlyGoal { case wander, land }
@@ -14,7 +15,7 @@ enum FlyGoal { case wander, land }
 private let edgeAngle: [CGFloat] = [0, -.pi / 2, .pi, .pi / 2]
 
 private let groundModes: Set<Mode> = [.typing, .watching, .listening, .yawning, .sleeping, .waking, .catnap,
-                                      .tired, .beg, .zoomies, .hunt, .walk, .refusing, .agenda]
+                                      .tired, .beg, .zoomies, .hunt, .walk, .refusing, .agenda, .social]
 
 struct PetRecord: Codable {
     var id: String
@@ -147,6 +148,15 @@ final class Pet {
     // Several pets: walking over to a friend (to say hi, or to nap next to it), and when to think about it next
     weak var visiting: Pet?
     var napWithFriend = false, nextSocial = 0.0
+    // A moment with a friend (Social.swift): what it's doing, with whom, where it's heading; the pet that walked over
+    // also runs the scene for both
+    var social = Social.greet, socialT = 0.0, wiggling = false, swatOffset = 0.0
+    weak var pal: Pet?
+    /// Its name above it, when name tags are on (each pet has its own).
+    let nameTag: FloatingCard = { let c = FloatingCard(); c.clickThrough = true; return c }()
+    var tagShows = ""
+    var socialGoal: CGFloat?, socialSpeed: CGFloat = 36, socialRun = false
+    var game: Game?, stage = 0, stageT = 0.0, stageLen = 0.0, gameT = 0.0, lastDT = 0.0, legs = 0, rounds = 1
     var seated = false, popT = 0.0
     var nextReact = 0.0, nextBeg = 90.0, nextPeck = 0.0, peckStart = -10.0
     var nextKick = 0.0, kickUntil = 0.0, kicks = 0
@@ -663,7 +673,7 @@ final class Pet {
                 if let friend = visiting, abs(friend.x - x) < 60 * s {         // got to the friend it was visiting
                     visiting = nil
                     if napWithFriend { napWithFriend = false; face(toward: CGPoint(x: friend.x, y: friend.y), dead: 0); begin(.yawning) }
-                    else { greet(friend) }
+                    else { meet(friend) }
                     return
                 }
                 visiting = nil
@@ -739,6 +749,7 @@ final class Pet {
                 }
             }
         case .hunt: huntThink(dt)
+        case .social: socialStep(dt)
         }
     }
 
@@ -765,8 +776,11 @@ final class Pet {
             setMode(.fly)
             return
         }
+        if pal != nil { pal = nil; game = nil; socialGoal = nil }          // a game that got interrupted
+        visiting = nil; napWithFriend = false
         if ambientInterrupt() { return }
-        if socialThink() { return }
+        if friendThink() { return }
+        if modeT > 4 && makeRoom() { return }
         if flyMode && modeT > (t - world.lastPlay > 180 ? 20 : 1.5) { takeOff(); return }   // calm birds perch a while
         if fullness < 25 && t > nextBeg {
             nextBeg = t + rnd(70, 140)
@@ -888,6 +902,7 @@ final class Pet {
 
     func startWalk() {
         walkTarget = randomWalkTarget()
+        if edge == 0 && !wallMode && !inAir { walkTarget = roomy(walkTarget) }     // not right on top of another pet
         running = false
         setMode(.walk)
     }
@@ -1406,12 +1421,13 @@ final class Pet {
 
     // MARK: Friends (several pets at once)
 
-    /// Now and then: walk over to another pet to say hi, start a game of tag, or curl up next to a friend that's asleep.
-    func socialThink() -> Bool {
+    /// Now and then: walk over to another pet (to play, see Social.swift), or curl up next to a friend that's asleep.
+    func friendThink() -> Bool {
         guard world.playTogether, !world.companions.isEmpty, t > nextSocial, !inPlace, !following, !inAir, edge == 0, !wallMode,
               fullness > 20 else { return false }
         nextSocial = t + rnd(30, 75)
-        let friends = world.pets.filter { $0 !== self && !$0.inAir && $0.edge == 0 && $0.mode != .held && !$0.wallMode }
+        let friends = world.pets.filter { $0 !== self && ($0.freeToPlay || $0.isAsleep) && !$0.inAir && $0.edge == 0 && !$0.wallMode
+                                          && abs($0.y - y) < 40 }
         guard let friend = friends.randomElement() else { return false }
         let gap = 24 * s
         let side: CGFloat = x < friend.x ? -1 : 1
@@ -1420,51 +1436,13 @@ final class Pet {
             guard energy < 75 && world.idleSecs > 60 else { return false }
             visiting = friend; napWithFriend = true
             walkTarget = friend.x + side * gap * 0.7
-        } else if chance(0.35) && happiness > 50 && energy > 40 && friend.mode == .idle && !friend.inPlace && friend.scaredUntil < t {
-            playTag(with: friend)
-            return true
         } else {
             visiting = friend; napWithFriend = false
-            walkTarget = friend.x + side * gap
+            walkTarget = floorClamp(friend.x + side * gap * 1.6)
         }
         running = false
         setMode(.walk)
         return true
-    }
-
-    /// Says hi: faces its friend, a word and a heart, and the friend answers.
-    func greet(_ friend: Pet) {
-        face(toward: CGPoint(x: friend.x, y: friend.y), dead: 0)
-        say([["HI!", species.vocal.word + "!", "HELLO!"].randomElement()!], 1.6)
-        hearts(2)
-        happiness = min(100, happiness + 4)
-        setMode(.idle); act = family == .cat ? .groom : .sit; actT = 0; actDur = rnd(2, 4)
-        friend.answer(self)
-    }
-
-    /// A friend said hi: look at it and answer (unless busy, asleep, or holding completely still).
-    func answer(_ friend: Pet) {
-        guard [.idle, .walk, .listening].contains(mode), !inAir, stillness < 2 else { return }
-        face(toward: CGPoint(x: friend.x, y: friend.y), dead: 0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            guard let self else { return }
-            self.say([["HI!", self.species.vocal.word + "!", "♥"].randomElement()!], 1.4)
-            self.hearts(1)
-        }
-        happiness = min(100, happiness + 3)
-        if mode == .walk { setMode(.idle) }
-        act = .stand; actT = 0; actDur = 2.5
-    }
-
-    /// Tag! Both dash about for a bit.
-    func playTag(with friend: Pet) {
-        spawnBang()
-        say(["TAG!"], 1.2)
-        zoomLeft = Int.random(in: 3...4); setMode(.zoomies)
-        friend.spawnBang()
-        friend.zoomLeft = Int.random(in: 3...4); friend.setMode(.zoomies)
-        friend.nextSocial = friend.t + 30
-        world.lastPlay = t
     }
 
     /// Music starting mid-nap makes it jump awake (a setting: off, it sleeps through music). It reacts the moment it can:
@@ -1876,6 +1854,8 @@ final class Pet {
             case 2: p.stance = hopY > 0 ? .leap : .crouch; p.eyes = .wide
             default: p.stance = .sit; p.tailUp = true
             }
+        case .social:
+            socialPose(&p)
         }
         if (mode == .idle || mode == .walk) && fullness < 15 && p.eyes == .open { p.eyes = .sad }
         // frightened: eyes wide, ears back, mouth open, low to the ground and shaking
