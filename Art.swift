@@ -53,7 +53,7 @@ private let baseHex: [Col: UInt32] = [
     .cookie: 0xdca162, .cookieDark: 0xb87b42, .choc: 0x5e3b28, .milk: 0xfbfbf7, .milkShade: 0xdcdcd6,
     .milkBlue: 0x6f9be0, .ballRed: 0xff6b6b, .ballRedDark: 0xd64c55,
     .yarn: 0xff9fca, .yarnDark: 0xd9689f, .yarnLight: 0xffcde3,
-    .bfA: 0xff9a3d, .bfB: 0x3d5ea8, .bfC: 0xfff3e0, .bfD: 0xff9a3d, .bfE: 0xfff3e0, .bfBody: 0x3b2d2f,
+    .bfA: 0xff9a3d, .bfB: 0x3d5ea8, .bfC: 0xfff3e0, .bfD: 0xff9a3d, .bfE: 0xfff3e0, .bfBody: 0x6a5560,
     .bone: 0xf4ecdc, .boneShade: 0xcfc2a8, .boneLight: 0xffffff, .moon: 0xfff0b0, .moonShade: 0xe2c56a,
     .pin: 0xe5534b, .pinDark: 0xb03a3a, .sun: 0xffd04a, .sunDark: 0xf0a030,
     .hatShine: 0x6c6378, .whisker: 0x2b2738, .glass: 0xeef7ff, .glassEdge: 0x9cc6ea, .water: 0x3d9bf0,

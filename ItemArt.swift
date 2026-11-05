@@ -83,18 +83,19 @@ private let sprites: [ItemKind: ([String], [Character: Col])] = [
 ]
 
 /// Butterfly colors: A forewings, D hindwings, B the edges and veins, C spots, E the eyespots on the hindwings.
+/// All soft pastels, edged in a deeper shade of the same color (never black, never neon).
 let butterflyPalettes: [[Col: UInt32]] = [
-    [.bfA: 0x2a2632, .bfD: 0x2a2632, .bfB: 0x16131b, .bfC: 0x4f8dff, .bfE: 0x9ccbff],   // black with blue
-    [.bfA: 0xf0452e, .bfD: 0xff7a30, .bfB: 0x5a1a12, .bfC: 0xffd9a0, .bfE: 0x2a1410],   // red
-    [.bfA: 0x5d5a24, .bfD: 0x6e6a2a, .bfB: 0x2a2812, .bfC: 0xd6e85a, .bfE: 0xf3ff9a],   // olive and lime
-    [.bfA: 0x5fe0a8, .bfD: 0x26b2a0, .bfB: 0x174238, .bfC: 0xd8fff0, .bfE: 0x0f6a5c],   // green
-    [.bfA: 0xffd23a, .bfD: 0xffae2a, .bfB: 0x3b2d20, .bfC: 0x221a14, .bfE: 0x4f8dff],   // yellow swallowtail
-    [.bfA: 0xf28a2a, .bfD: 0xf6a23a, .bfB: 0x26180f, .bfC: 0xffffff, .bfE: 0xffffff],   // monarch
-    [.bfA: 0x3fb8ff, .bfD: 0x2f86f0, .bfB: 0x10203a, .bfC: 0xffffff, .bfE: 0xb6f0ff],   // blue morpho
-    [.bfA: 0xb06cff, .bfD: 0xff7ec8, .bfB: 0x3a1f52, .bfC: 0xfff0a8, .bfE: 0xffffff],   // purple and pink
+    [.bfA: 0xc9b8f0, .bfD: 0xe2c8f2, .bfB: 0x7a68a8, .bfC: 0xfff6fb, .bfE: 0xf7b8d2],   // lavender
+    [.bfA: 0xffc9a8, .bfD: 0xffdcc0, .bfB: 0xb07a5e, .bfC: 0xfffaf0, .bfE: 0xf3a5a5],   // peach
+    [.bfA: 0xb8e8d2, .bfD: 0xcdf1df, .bfB: 0x5e9a84, .bfC: 0xffffff, .bfE: 0xf6e7a8],   // mint
+    [.bfA: 0xb8d8f5, .bfD: 0xcfe4f8, .bfB: 0x6286ad, .bfC: 0xffffff, .bfE: 0xf7c6dc],   // baby blue
+    [.bfA: 0xf7c1d4, .bfD: 0xfad4e2, .bfB: 0xb06f8a, .bfC: 0xfffafc, .bfE: 0xc9b8f0],   // blush
+    [.bfA: 0xf9e3a3, .bfD: 0xfbecbd, .bfB: 0xab9356, .bfC: 0xfffdf3, .bfE: 0xf3b0a0],   // butter
+    [.bfA: 0xd7c4ee, .bfD: 0xb8d8f5, .bfB: 0x7a72a6, .bfC: 0xffffff, .bfE: 0xf7c1d4],   // lilac and sky
+    [.bfA: 0xf6c6b8, .bfD: 0xc9b8f0, .bfB: 0x9a7590, .bfC: 0xfff8f4, .bfE: 0xf9e3a3],   // sunset
 ]
 
-/// A butterfly's look: one of the presets, or (half the time) a random bright color scheme.
+/// A butterfly's look: one of the presets, or (half the time) a random pastel.
 func randomButterflyPalette() -> [Col: UInt32] {
     if Bool.random() { return butterflyPalettes.randomElement()! }
     let h = Double.random(in: 0..<1)
@@ -105,9 +106,10 @@ func randomButterflyPalette() -> [Col: UInt32] {
         let (r, g, b): (Double, Double, Double) = [(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)][i % 6]
         return UInt32(r * 255) << 16 | UInt32(g * 255) << 8 | UInt32(b * 255)
     }
-    let spot = [0xffffff, 0xfff1a0, hsv(h + 0.5, 0.65, 1)].randomElement()!
-    return [.bfA: hsv(h, 0.72, 1), .bfD: hsv(h + Double.random(in: -0.12...0.12), 0.8, 0.92),
-            .bfB: hsv(h, 0.65, 0.22), .bfC: spot, .bfE: hsv(h + 0.5, 0.75, 1)]
+    // low saturation and high brightness make a pastel; the edge is the same hue, deeper and soft
+    let spot = [0xffffff, 0xfff8ee, hsv(h + 0.5, 0.25, 0.98)].randomElement()!
+    return [.bfA: hsv(h, 0.28, 0.98), .bfD: hsv(h + Double.random(in: -0.08...0.08), 0.22, 0.99),
+            .bfB: hsv(h, 0.38, 0.62), .bfC: spot, .bfE: hsv(h + 0.45, 0.3, 0.97)]
 }
 
 /// Wing patterns: spots, veins, two-tone tips, eyespots. Frames: open, half, edge-on, half.

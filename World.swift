@@ -1825,7 +1825,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     func itemImage(_ k: ItemKind) -> NSImage {
         let key = "item-\(k)"
         if let i = imageCache[key] { return i }
-        let pal = grayPalette(k == .butterfly ? makePalette(butterflyPalettes[5]) : basePalette)   // the monarch reads best in gray
+        let pal = grayPalette(k == .butterfly ? makePalette(butterflyPalettes[0]) : basePalette)   // lavender, edged darker, reads well in gray
         let img = itemCanvas(k, bites: 0, frame: 0).trimmed(0).image(pal, scale: 8)
         imageCache[key] = img
         return img
