@@ -126,7 +126,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
         case .dalmatian: return "Dalmatian"
         case .fox: return "Fox"
         case .redPanda: return "Red panda"
-        case .turtle: return "Turtle"
+        case .turtle: return "Tortoise"            // (the case keeps its first name so saved pets carry over)
         case .bat: return "Bat"
         }
     }
@@ -1244,7 +1244,8 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
             c.thick(ox + 15, oy + 18, tx, ty, 2, .body)
         }
     }
-    return Anchors(headX: cx, headTop: oy, headW: 13, eyes: [(ox + 5, oy + 6), (ox + 12, oy + 6)], profile: false, neck: (cx, oy + 12))
+    // its head is a narrow dome: hats sit snug on top, the flower tucked on its edge
+    return Anchors(headX: cx, headTop: oy + 2, headW: 7, eyes: [(ox + 5, oy + 6), (ox + 12, oy + 6)], profile: false, neck: (cx, oy + 12))
 }
 
 private let turtleColors: [Character: Col] = ["G": .body, "D": .bodyShade, "M": .mark, "S": .markShade, "L": .mark2, "E": .accent,
@@ -1261,7 +1262,7 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     }
     func at(_ col: Int) -> Int { ox + (w - 1 - col) }          // a column of the head-left drawings, on the canvas
     let headAnchors = { (dx: Int, dy: Int) -> Anchors in
-        Anchors(headX: at(8) + dx, headTop: oy + 4 + dy, headW: 9, eyes: [(at(7) + dx, oy + 6 + dy)], profile: true, neck: (at(10) + dx, oy + 11 + dy))
+        Anchors(headX: at(8) + dx, headTop: oy + 4 + dy, headW: 9, eyes: [(at(7) + dx, oy + 6 + dy)], profile: true, neck: (at(12) + dx, oy + 7 + dy))   // the top of its neck, where it leaves the shell
     }
     switch p.stance {
     case .upright where p.prop == .book || p.prop == .laptop:
@@ -1333,7 +1334,7 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .popcorn { drawPopcorn(&c, bx: front, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: front, y: g - 15) }
     if p.prop == .glass { drawGlass(&c, x: p.arm == .toMouth ? front - 2 : front, y: oy + top + (p.arm == .toMouth ? 1 : 3)) }
-    return headAnchors(-hdx, hdy + p.bob)
+    return headAnchors(-hdx, hdy + p.bob + sink)                                   // outfits follow the head as it tucks in
 }
 
 // MARK: - Red panda
@@ -1552,21 +1553,41 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
     let half = a.headW / 2
     let (nx, ny) = a.neck
     let nh = a.profile ? 2 : 3
+    // side on (facing right), the neck is narrow: fit the neckwear to it, wrapped round from outline to outline, with the
+    // bow, bell or bandana's point at the throat
+    var l = nx, r = nx
+    func inside(_ x: Int) -> Bool { let v = c.get(x, ny); return v != 0 && v != Col.outline.rawValue }
+    if a.profile {
+        while l > nx - 4 && inside(l - 1) { l -= 1 }
+        while r < nx + 4 && inside(r + 1) { r += 1 }
+    }
     switch o.neck {
     case .none: break
+    case .scarf where a.profile:
+        c.rect(l, ny, r - l + 1, 2, .scarf)
+        c.set(r, ny, .scarfStripe)
+        c.rect(l - 1, ny + 1, 2, 3, .scarf); c.set(l - 1, ny + 2, .scarfStripe)  // the end flapping down its back
     case .scarf:
         c.rect(nx - nh, ny, nh * 2 + 1, 2, .scarf)
         for x in stride(from: nx - nh + 1, through: nx + nh, by: 2) { c.set(x, ny, .scarfStripe) }
-        c.rect(nx - nh - (a.profile ? 1 : 0), ny + 1, 2, 3, .scarf)
+        c.rect(nx - nh, ny + 1, 2, 3, .scarf)
+    case .bowtie where a.profile:
+        c.hline(l, r, ny + 1, .ruby)
+        c.sprite(r - 1, ny, ["X.X", "XXX", "X.X"], ["X": .ruby])
     case .bowtie:
-        if a.profile { c.sprite(nx + 1, ny, ["X.X", "XXX", "X.X"], ["X": .ruby]) }
-        else { c.sprite(nx - 2, ny, ["XX.XX", "XXXXX", "XX.XX"], ["X": .ruby]) }
+        c.sprite(nx - 2, ny, ["XX.XX", "XXXXX", "XX.XX"], ["X": .ruby])
+    case .bell where a.profile:
+        c.hline(l, r, ny, .collar)
+        c.rect(r - 1, ny + 1, 2, 2, .gold)
     case .bell:
         c.hline(nx - nh, nx + nh, ny, .collar)
-        c.rect(a.profile ? nx + 1 : nx - 1, ny + 1, a.profile ? 2 : 3, 2, .gold)
+        c.rect(nx - 1, ny + 1, 3, 2, .gold)
+    case .bandana where a.profile:
+        c.hline(l, r, ny, .bandana)
+        c.hline(l + 1, r, ny + 1, .bandana)
+        c.hline(r - 1, r, ny + 2, .bandana); c.set(r, ny + 3, .bandana)
     case .bandana:
-        if a.profile { c.sprite(nx - 1, ny, ["BBBB", ".BWB", "..BB", "...B"], ["B": .bandana, "W": .white]) }
-        else { c.sprite(nx - 3, ny, ["BBBBBBB", ".BWBBB.", "..BBB..", "...B..."], ["B": .bandana, "W": .white]) }
+        c.sprite(nx - 3, ny, ["BBBBBBB", ".BWBBB.", "..BBB..", "...B..."], ["B": .bandana, "W": .white])
     }
     for (ex, ey) in a.eyes {
         if a.profile {
@@ -1706,7 +1727,11 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
 @discardableResult
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     var p = p
-    if sp == .turtle && (p.stance == .curl || p.onBook) { p.nightcap = false; p.outfit.hat = .none }    // it has its own nightcap
+    // the tortoise: nothing on while it's tucked in its shell (or on its way in), or asleep in its own nightcap
+    if sp == .turtle && ([.curl, .squash, .crouch, .held, .umbrella].contains(p.stance) || p.onBook || p.tuck > 0.6) {
+        p.nightcap = false; p.outfit = Outfit()
+    }
+    if sp == .turtle && p.tuck > 0.3 { p.outfit.neck = .none }      // its neck is drawing in: the collar goes first
     lastBook = nil
     if p.stance == .front { p.outfit = Outfit(); p.nightcap = false; p.phones = false }   // the close-up: just the face
     let a: Anchors
@@ -1718,8 +1743,33 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     default: a = drawQuad(&c, sp, p, cx: cx)
     }
     if let b = lastBook { lineBook(&c, b, inFront: !p.onBook) }
+    if sp == .turtle && a.profile && p.outfit.neck != .none {
+        drawTortoiseNeck(&c, p.outfit.neck, a.neck)               // its neck sticks out sideways: wrap it round
+        p.outfit.neck = .none
+    }
     drawExtras(&c, p, a)
     return a
+}
+
+/// Neckwear on the tortoise's side view. Its neck runs sideways out of the shell, so a collar is an upright band round
+/// it (two columns wide, four rows tall from `top`), with whatever hangs from it dangling under the throat.
+private func drawTortoiseNeck(_ c: inout Canvas, _ n: Neckwear, _ top: (Int, Int)) {
+    let (x, y) = top
+    switch n {
+    case .none: break
+    case .scarf:
+        c.rect(x, y, 2, 4, .scarf)
+        c.set(x + 1, y + 1, .scarfStripe)
+        c.rect(x + 1, y + 4, 1, 2, .scarf)                                     // the end hanging under its chin
+    case .bowtie:
+        c.rect(x, y, 1, 4, .ruby)
+        c.sprite(x, y + 3, ["X.X", "XXX", "X.X"], ["X": .ruby])               // tied under its chin
+    case .bell:
+        c.rect(x, y, 1, 4, .collar)
+        c.rect(x, y + 4, 2, 2, .gold); c.set(x, y + 5, .outline)
+    case .bandana:
+        c.sprite(x, y, ["BB.", "BW.", "BB.", "BBB", "BWB", ".B."], ["B": .bandana, "W": .white])
+    }
 }
 
 // MARK: - Particles

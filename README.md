@@ -47,7 +47,7 @@ screen with you and reacts to what you do.
 | 🐈 | Ginger, Siamese, Tabby and Calico cats | Fish, yarn, chasing your cursor |
 | 🐕 | Dalmatian | Bones, balls, zoomies |
 | 🦊 | Fox | Berries, curling up for long naps |
-| 🐢 | Turtle | Strawberries, slow strolls, napping in its nightcap |
+| 🐢 | Tortoise | Strawberries, slow strolls, pulling into its shell, napping in its nightcap |
 | 🦇 | Bat | Hanging from the top of your screen, swooping, fruit (and flying free with gravity off) |
 
 Dress any of them up from the **Closet**: hats (including a Santa hat), glasses and neckwear.

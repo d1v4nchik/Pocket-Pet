@@ -33,6 +33,25 @@ func renderSheet(_ path: String, only: String? = nil) {
             add(sanitize(sp.title), sp) { $0.stance = .front }
         }
     }
+    if only == "dress" {               // the tortoise in its outfits, every pose
+        let outfits: [Outfit] = [Outfit(hat: .topHat, glasses: .round, neck: .bowtie), Outfit(hat: .crown, glasses: .hearts, neck: .scarf),
+                                 Outfit(hat: .witch, glasses: .shades, neck: .bell), Outfit(hat: .flower, glasses: .none, neck: .bandana)]
+        for o in outfits {
+            add("STAND", .turtle) { $0.outfit = o }
+            add("WALK", .turtle) { $0.outfit = o; $0.stance = .walk; $0.phase = 1 }
+            add("READ", .turtle) { $0.outfit = o; $0.stance = .upright; $0.prop = .book }
+            add("TYPE", .turtle) { $0.outfit = o; $0.stance = .upright; $0.prop = .laptop }
+            add("SHELL", .turtle) { $0.outfit = o; $0.stance = .squash; $0.tuck = 1 }
+            add("TUCKING", .turtle) { $0.outfit = o; $0.stance = .stand; $0.tuck = 0.6 }
+        }
+    }
+    if only == "necks" {               // every pet side on, in each neckwear
+        for sp in Species.lineup {
+            for n in Neckwear.allCases where n != .none {
+                add(n.rawValue.uppercased(), sp) { $0.outfit = Outfit(neck: n); $0.stance = .walk; $0.phase = 1 }
+            }
+        }
+    }
     if only == "paw" {                 // paw on the glass, frame by frame: rising in, pressing, a high five
         let frames: [(String, Double, Double, Double)] = [("IN 1", 0.1, 0.25, -1), ("IN 2", 0.25, 0.6, -1), ("PRESS L", 0.6, 1, -1), ("PRESS R", 1.1, 1, -1),
                                                             ("BLINK", 2.5, 1, -1), ("HIGH FIVE", 1.0, 1, 0.1), ("HIGH FIVE 2", 1.0, 1, 0.5), ("OUT", 3.5, 0.3, -1)]
@@ -59,7 +78,7 @@ func renderSheet(_ path: String, only: String? = nil) {
             add("HAPPY", sp) { $0.eyes = .happy; $0.mouth = sp.family == .dog ? .tongue : .open; $0.blush = true; if !sp.isBird { $0.stance = .sit } }
         }
     }
-    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" && only != "tuck" && only != "paw" {
+    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" && only != "tuck" && only != "paw" && only != "dress" && only != "necks" {
         add(sanitize(sp.title), sp) { _ in }
         add("WALK", sp) { $0.stance = .walk; $0.phase = 1.2 }
         add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }
@@ -119,7 +138,7 @@ func renderSheet(_ path: String, only: String? = nil) {
         for i in 0..<4 { cells.append(("RANDOM", itemCanvas(.butterfly, bites: 0, frame: i == 3 ? 1 : 0, variant: i), makePalette(randomButterflyPalette()))) }
     }
 
-    let cols = only == nil ? 10 : (key ? 9 : 6)
+    let cols = only == nil ? 10 : (key ? 9 : (only == "necks" ? 8 : 6))
     let cellW = CGFloat(canvasW) * s + 8, cellH = CGFloat(canvasH) * s + 22
     let rowsN = (cells.count + cols - 1) / cols
     let W = Int(CGFloat(cols) * cellW), H = Int(CGFloat(rowsN) * cellH)
