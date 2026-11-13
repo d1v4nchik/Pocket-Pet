@@ -2042,9 +2042,10 @@ final class Pet {
             case 1:                      // thinking very hard
                 p.thinking = true; p.spin = t * 10; p.eyes = blink ? .closed : .open; p.mouth = .closed
                 if quad { p.stance = .sit; p.arm = .tap }
+                if family == .turtle { p.stance = .upright }
             case 2:                      // dozed off over the book
                 p.eyes = .closed; p.blush = true
-                if quad { p.stance = .lie; p.headDY = 3; p.headDX = 2 }
+                if quad { p.stance = .lie; p.headDY = 3; p.headDX = 2; p.onBook = true }
                 else if family == .turtle { p.stance = .curl }                 // in its nightcap, head on the pages
                 else if isBird { p.stance = .sit; birdSleepHead(&p, k: 1) }    // head tucked in, like its own naps
                 else if family == .bat { p.headDY = 1 }
@@ -2054,7 +2055,7 @@ final class Pet {
             default:                     // reading, following the lines
                 p.eyes = blink ? .closed : .open
                 if quad { p.stance = .lie; p.headDY = 1 }
-                if family == .turtle { p.headDY = 1; p.turn = -1 }              // just reads its little book (no page flipping)
+                if family == .turtle { p.stance = .upright }                     // sits up with the book on its lap
                 if family == .bat { p.eyes = blink ? .closed : .half }          // eyes down on its book
                 if isBird && species == .goose { p.headDY = 3; p.headDX = 2 }
                 if t < pageUntil {

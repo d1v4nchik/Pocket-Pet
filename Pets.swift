@@ -53,6 +53,7 @@ struct Pose {
     var outfit = Outfit()
     var thinking = false     // study mode, thinking very hard: a loading spinner over the head
     var spin = 0.0
+    var onBook = false       // study mode: dozing with its head on the book (otherwise the book is in front of it)
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
 
@@ -800,15 +801,17 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         return drawQuadFront(&c, sp, q, p, cx: cx)
     }
 
-    if p.prop == .book { drawBook(&c, x: cx - 2, y: g - 4, turn: p.turn) }
+    // the book on the floor in front: under the head when it's dozing on it, in front of its chin while it reads
+    if p.prop == .book && p.onBook { drawBook(&c, x: cx - 2, y: g - 4, turn: p.turn) }
+    if q.coat == .redPanda { redPandaHead(&c, hx, ht, p) } else { quadHead(&c, sp, hx, ht, p) }
+    if p.prop == .book && !p.onBook { drawBook(&c, x: cx - 2, y: g - 4, turn: p.turn) }
     if p.prop == .book && p.turn >= 0 && p.turn < 0.7 && p.stance == .lie {
         // turning the page: a front paw reaches out, catches the page and sweeps it over the spine
         let a = Double.pi * min(1, p.turn), sx = cx + 6, sy = g - 3
         let tx = sx + Int((7 * cos(a)).rounded()), ty = sy - Int((6 * sin(a)).rounded())
         c.thick(cx + 3, g - 4, tx, ty, 2, legCol(q, far: false))
         c.set(tx, ty, sk == .body ? .belly : q.coat == .redPanda ? .markShade : sk)
-    }         // on the floor in front; the head stays above it (or rests on it)
-    if q.coat == .redPanda { redPandaHead(&c, hx, ht, p) } else { quadHead(&c, sp, hx, ht, p) }
+    }
 
     if p.stance == .curl {
         c.thick(cx - 9, g, cx + 7, g, 1, q.tail == .fluffy ? .mark : .body)
@@ -1096,6 +1099,69 @@ private let turtleHead = [
     "......DDDDDD...",
 ]
 
+/// Sitting up facing you to read (after the bead turtle): a big round head, the shell peeking out on both sides, a
+/// yellow belly plate, chunky arms and feet. The big book goes on its lap.
+private let turtleSitting = [
+    ".......GGGGG.......",
+    ".....GGGGGGGGG.....",
+    "....GGGGGGGGGGG....",
+    "...GGGGGGGGGGGGG...",
+    "...GGGGGGGGGGGGG...",
+    "...GGGGGGGGGGGGG...",
+    "...GGGGGGGGGGGGG...",
+    "....GGGGGGGGGGG....",
+    ".....DGGGGGGGD.....",
+    "..RR..DDGGGDD..RR..",
+    ".RLMR..GGGGG..RMLR.",
+    ".RLMMGGGGGGGGGMMLR.",
+    ".RLMGGGYYYYYGGGMLR.",
+    ".RMMGGYYYYYYYGGMMR.",
+    ".RLMGGYYYKYYYGGMLR.",
+    "GGLMGGYYYYYYYGGMLGG",
+    "GGGMGGYYYKYYYGGMGGG",
+    "DGGRGGYYYYYYYGGRGGD",
+    ".DGGRGYYYYYYYGRGGD.",
+    "..DD.RGYYYYYGR.DD..",
+    "......RRRRRRR......",
+    "....DGGG...GGGD...."
+]
+
+private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let g = c.h - 2, ox = cx - 9, oy = g - 21
+    let top = oy + p.headDY
+    c.sprite(ox, oy, Array(turtleSitting.prefix(9)).map { $0 }, turtleColors)              // the head (it can nod)
+    if p.headDY != 0 {
+        for y in 0..<max(0, p.headDY) { for x in 0..<19 where turtleSitting[y].dropFirst(x).first != "." { c.set(ox + x, oy + y, .clear) } }
+        c.sprite(ox, top, Array(turtleSitting.prefix(9)), turtleColors)
+    }
+    c.sprite(ox, oy + 9, Array(turtleSitting.dropFirst(9)), turtleColors)                 // shell, body and feet
+    // eyes: big and round like the beads, with a shine
+    let ey = top + 4
+    for ex in [cx - 5, cx + 3] {
+        switch p.eyes {
+        case .closed, .half, .sad: c.hline(ex, ex + 1, ey + 1, .eye)
+        case .happy: c.set(ex - 1, ey + 1, .eye); c.set(ex, ey, .eye); c.set(ex + 1, ey + 1, .eye)
+        case .wide: c.rect(ex, ey - 1, 2, 4, .eye); c.set(ex, ey - 1, .eyeHi)
+        default: c.rect(ex, ey, 2, 3, .eye); c.set(ex, ey, .eyeHi)
+        }
+    }
+    c.set(cx - 1, top + 7, .eye); c.set(cx, top + 7, .eye)                               // a little smile
+    if p.mouth == .open || p.mouth == .tongue { c.set(cx, top + 8, .tongue) }
+    if p.blush { c.set(cx - 6, top + 6, .blush); c.set(cx + 5, top + 6, .blush) }
+    // the big book on its lap, held at the sides; one arm lifts to turn the page
+    if p.prop == .book {
+        drawBook(&c, x: cx - 8, y: g - 4, turn: p.turn)
+        c.rect(cx - 10, g - 5, 3, 3, .body); c.set(cx - 10, g - 3, .bodyShade)
+        if p.turn >= 0 && p.turn < 0.7 {
+            let a = Double.pi * min(1, p.turn), tx = cx + Int((7 * cos(a)).rounded()), ty = g - 3 - Int((6 * sin(a)).rounded())
+            c.thick(cx + 8, g - 7, tx, ty, 2, .body)
+        } else {
+            c.rect(cx + 8, g - 5, 3, 3, .body); c.set(cx + 10, g - 3, .bodyShade)
+        }
+    }
+    return Anchors(headX: cx, headTop: top, headW: 13, eyes: [(cx - 5, ey), (cx + 3, ey)], profile: false, neck: (cx, top + 9))
+}
+
 private let turtleColors: [Character: Col] = ["G": .body, "D": .bodyShade, "M": .mark, "S": .markShade, "L": .mark2, "E": .accent,
     "R": .inner, "P": .belly, "B": .wing, "Y": .ring, "W": .white, "T": .tongue, "K": .outline]
 
@@ -1113,9 +1179,11 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         Anchors(headX: at(8) + dx, headTop: oy + 4 + dy, headW: 9, eyes: [(at(7) + dx, oy + 6 + dy)], profile: true, neck: (at(10) + dx, oy + 11 + dy))
     }
     switch p.stance {
+    case .upright where p.prop == .book:
+        return drawSittingTurtle(&c, p, cx: cx)
     case .curl:
+        if p.prop == .book { drawBook(&c, x: at(10), y: g - 4) }                  // dozed off over its book, in its nightcap
         blit(turtleAsleep.map(Array.init))
-        if p.prop == .book { drawUprightBook(&c, x: at(0) + 1, y: g - 8) }       // dozed off in front of its book
         if p.blush { c.set(at(6), oy + 11, .blush) }
         return headAnchors(0, 6)
     case .squash, .crouch, .held, .umbrella:
@@ -1175,7 +1243,6 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .popcorn { drawPopcorn(&c, bx: front, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: front, y: g - 15) }
     if p.prop == .glass { drawGlass(&c, x: p.arm == .toMouth ? front - 2 : front, y: oy + top + (p.arm == .toMouth ? 1 : 3)) }
-    if p.prop == .book { drawUprightBook(&c, x: front, y: g - 8) }             // a book standing open in front of its nose
     return headAnchors(-hdx, hdy + p.bob)
 }
 

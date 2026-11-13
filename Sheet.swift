@@ -36,10 +36,10 @@ func renderSheet(_ path: String, only: String? = nil) {
     if only == "study" {               // study mode for every pet: reading, thinking hard, dozing off
         for sp in Species.lineup {
             let quad = !sp.isBird && sp != .bat && sp != .turtle
-            add(sanitize(sp.title), sp) { $0.prop = .book; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.headDY = 1 }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
-            add("THINKING", sp) { $0.prop = .book; $0.thinking = true; $0.spin = 3; $0.tailUp = false; if quad { $0.stance = .sit; $0.arm = .tap }; if sp.isBird { $0.stance = .sit } }
-            add("PAGE", sp) { $0.prop = .book; $0.turn = 0.35; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.headDY = 1; $0.turn = -1 }; if sp.isBird { $0.arm = .raised }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
-            add("DOZING", sp) { $0.prop = .book; $0.eyes = .closed; $0.blush = true; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 3; $0.headDX = 2 }; if sp == .turtle { $0.stance = .curl }; if sp.isBird { $0.stance = .sit; $0.headDY = sp == .goose ? 6 : 2 } }
+            add(sanitize(sp.title), sp) { $0.prop = .book; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.stance = .upright }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
+            add("THINKING", sp) { $0.prop = .book; $0.thinking = true; $0.spin = 3; $0.tailUp = false; if quad { $0.stance = .sit; $0.arm = .tap }; if sp == .turtle { $0.stance = .upright }; if sp.isBird { $0.stance = .sit } }
+            add("PAGE", sp) { $0.prop = .book; $0.turn = 0.35; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.stance = .upright }; if sp.isBird { $0.arm = .raised }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
+            add("DOZING", sp) { $0.prop = .book; $0.eyes = .closed; $0.blush = true; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 3; $0.headDX = 2; $0.onBook = true }; if sp == .turtle { $0.stance = .curl }; if sp.isBird { $0.stance = .sit; $0.headDY = sp == .goose ? 6 : 2 } }
         }
     }
     if key {
