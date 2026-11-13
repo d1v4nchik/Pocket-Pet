@@ -1625,6 +1625,14 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
     }
     if p.nightcap {
         let l = a.profile ? hx - 2 : hx - half + 1
+        // pulled down snug: no gap between the brim and the head
+        var gap = 99
+        for x in l...(l + (a.profile ? 5 : 7)) where gap > 0 {
+            var d = 0
+            while d < 6 && c.get(x, top + d) == 0 { d += 1 }
+            gap = min(gap, d)
+        }
+        let top = gap > 0 && gap < 6 ? top + gap : top
         c.hline(l, l + (a.profile ? 5 : 7), top - 1, .white)
         c.hline(l, l + (a.profile ? 4 : 6), top - 2, .cap)
         c.hline(l - 1, l + 3, top - 3, .cap)
@@ -1642,7 +1650,31 @@ private func drawExtras(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
         x0 = (a.profile ? hx - 1 : hx) - w / 2
         y0 = top - rows.count
     }
-    c.sprite(x0 + a.hatDX, y0, rows, map)
+    // seat it: no gap under the hat, and (bows and flowers aside, which sit to one side) centred on the head beneath
+    x0 += a.hatDX
+    let art = rows.map(Array.init)
+    func seat() {
+        var gap = 99
+        for col in 0..<w {
+            guard let r = art.indices.last(where: { col < art[$0].count && art[$0][col] != "." }) else { continue }
+            var d = 0
+            while d < 6 && c.get(x0 + col, y0 + r + 1 + d) == 0 { d += 1 }
+            gap = min(gap, d)
+        }
+        if gap > 0 && gap < 6 { y0 += gap }
+    }
+    seat()
+    if o.hat != .bow && o.hat != .flower {
+        let yb = y0 + art.count, mid = x0 + w / 2
+        if c.get(mid, yb) != 0 {
+            var l = mid, r = mid
+            while l > mid - 12 && c.get(l - 1, yb) != 0 { l -= 1 }
+            while r < mid + 12 && c.get(r + 1, yb) != 0 { r += 1 }
+            let shift = Int((Double(l + r - (2 * x0 + w - 1)) / 2).rounded())
+            if shift != 0 && abs(shift) <= 3 { x0 += shift; seat() }
+        }
+    }
+    c.sprite(x0, y0, rows, map)
 }
 
 // MARK: - Bat
