@@ -167,7 +167,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
         case .cat: return [.fish]
         case .dog: return [.bone, .sausage]
         case .bat: return [.berry, .cookie]           // a fruit bat: fruit first
-        case .turtle: return [.berry]                 // strawberries!
+        case .turtle: return [.fish, .berry]          // fish and strawberries
         }
     }
 
@@ -1131,6 +1131,8 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     case .closed: put(5, 5, "K"); put(6, 5, "K")
     case .open, .tongue: put(5, 5, "K"); put(6, 5, "T"); put(6, 6, "T")
     }
+    let front0 = at(4 + hdx) + 1
+    if p.prop == .book { drawBook(&c, x: front0 - 9, y: g - 4, turn: p.turn) }    // under its chin: it reads over the pages
     blit(grid, dy: p.bob)
     let ex = at(6 + hdx), ey = oy + top + 2 + p.bob
     switch p.eyes {
@@ -1147,7 +1149,6 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .laptop { drawLaptop(&c, lx: front - 1, g: g) }
     if p.prop == .popcorn { drawPopcorn(&c, bx: front, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: front, y: g - 15) }
-    if p.prop == .book { drawBook(&c, x: front - 10, y: g - 4, turn: p.turn) }      // its chin just over the pages
     if p.prop == .glass { drawGlass(&c, x: p.arm == .toMouth ? front - 2 : front, y: oy + top + (p.arm == .toMouth ? 1 : 3)) }
     return headAnchors(-hdx, hdy + p.bob)
 }
@@ -1506,7 +1507,7 @@ private func drawBat(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     c.set(cx - 1, ey + 2, .nose); c.set(cx, ey + 2, .nose)
     if p.mouth == .open || p.mouth == .tongue { c.hline(cx - 1, cx, ey + 3, .mouth) }
     c.set(cx - 2, ey + 4, .white); c.set(cx + 1, ey + 4, .white)          // little fangs
-    if p.prop == .book && !flying { drawBook(&c, x: cx - 8, y: g - 4, turn: p.turn) }     // studying down on the floor, book in its lap
+    if p.prop == .book && !flying { drawBook(&c, x: cx - 8, y: g - 4, turn: p.turn) }     // studying on the floor, its big book in front
     return Anchors(headX: cx, headTop: ht, headW: 9, eyes: eyes, profile: false, neck: (cx, ht + 7))
 }
 

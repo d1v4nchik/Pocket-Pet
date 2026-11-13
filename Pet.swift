@@ -254,7 +254,7 @@ final class Pet {
         if mode == .held || mode == .glide || mode == .drift || hopY > 0 { return 30 }
         if t < scaredUntil { return 20 }                  // the trembling needs the frames
         if stillness == 2 && !inAir && [.idle, .typing, .watching, .listening].contains(mode) { return 2 }     // nothing moves
-        if inAir || running { return 20 }
+        if inAir || running { return family == .bat && inAir ? 30 : 20 }      // a bat's quick wing beats need more frames
         if moving { return 15 }                           // its pixels are 4 pt wide, so walking looks the same at 15
         switch mode {
         case .sleeping, .catnap: return 4                // drifting Zzz read fine at 4
@@ -867,7 +867,7 @@ final class Pet {
         visiting = nil; napWithFriend = false
         if ambientInterrupt() { return }
         // your cursor resting on it: it comes right up to the glass and presses a paw against it
-        if mouseInside && t - cursorMovedAt > 1.0 && act != .press && edge == 0 && !isBird && family != .bat && family != .turtle && chance(dt * 1.5) {
+        if mouseInside && t - cursorMovedAt > 1.0 && act != .press && (edge == 0 || family == .bat) && !isBird && family != .turtle && chance(dt * 1.5) {
             act = .press; actT = 0; actDur = rnd(3, 4.5)
             world.synth.play(family == .cat ? mrrp : "chirp")
             return
@@ -1074,8 +1074,22 @@ final class Pet {
             if frozen { flyTarget = CGPoint(x: x, y: y); nextFlyPick = t + 1; flyTo(flyTarget!, speed: 95, dt); return }   // hover by the open menu
             if ambientInterrupt() && (mode != .fly || flyGoal == .land) { return }
             let b = flyBounds()
+            // a bat plays round your cursor: move it near a flying bat and it circles it
+            if family == .bat {
+                let m = NSEvent.mouseLocation
+                if hypot(m.x - x, m.y - y) < 280 && t - cursorMovedAt < 2.5 {
+                    let a = t * 2.4
+                    flyTo(CGPoint(x: m.x + CGFloat(cos(a)) * 70, y: m.y - 30 + CGFloat(sin(a)) * 45), speed: 170, dt)
+                    flyUntil = max(flyUntil, t + 6)
+                    return
+                }
+            }
             if flyTarget == nil || t > nextFlyPick {
-                if chance(0.3) {
+                if family == .bat {
+                    // short, flowing hops from where it is, not darts across the screen
+                    let ang = Double.random(in: 0..<(2 * .pi)), d = CGFloat(rnd(120, 260))
+                    flyTarget = CGPoint(x: clamp(x + cos(ang) * d, b.minX, b.maxX), y: clamp(y + sin(ang) * d * 0.6, b.minY, b.maxY))
+                } else if chance(0.3) {
                     flyTarget = CGPoint(x: x, y: y)
                 } else {
                     flyTarget = CGPoint(x: CGFloat.random(in: b.minX...b.maxX), y: CGFloat.random(in: min(b.maxY, b.minY + 40)...b.maxY))
@@ -1776,6 +1790,9 @@ final class Pet {
             world.synth.play(species.vocal.sound)
             return
         }
+        if family == .bat && edge == 2 && clicks.count <= 2 && !inPlace && chance(0.6) {      // a hanging bat: off for a little loop
+            say(["WHEE!"], 1); world.synth.play("chirp"); swoop(home: false); return
+        }
         if clicks.count >= 5 {
             clicks.removeAll()
             setMode(.angry)
@@ -2029,14 +2046,16 @@ final class Pet {
                 p.eyes = .closed; p.blush = true
                 if quad { p.stance = .lie; p.headDY = 3; p.headDX = 2 }
                 else if family == .turtle { p.stance = .curl }                 // in its nightcap, head on the pages
-                else if isBird { p.headDY = species == .goose ? 6 : 2 }
+                else if isBird { p.stance = .sit; birdSleepHead(&p, k: 1) }    // head tucked in, like its own naps
+                else if family == .bat { p.headDY = 1 }
             case 3:                      // jolted awake
                 p.eyes = .wide; p.mouth = .open
                 if quad { p.stance = hopY > 0 ? .leap : .sit }
             default:                     // reading, following the lines
                 p.eyes = blink ? .closed : .open
                 if quad { p.stance = .lie; p.headDY = 1 }
-                if family == .turtle { p.stance = .lie }
+                if family == .turtle { p.stance = .lie; p.headDY -= 1 }
+                if family == .bat { p.eyes = blink ? .closed : .half }          // eyes down on its book
                 if isBird && species == .goose { p.headDY = 3; p.headDX = 2 }
                 if t < pageUntil {
                     p.turn = 1 - (pageUntil - t) / 1.1
@@ -2125,6 +2144,7 @@ final class Pet {
             case .hide: p.stance = .squash
             case .press:
                 if family == .turtle || species == .redPanda { p.eyes = .happy; p.blush = true }
+                else if family == .bat { p.stance = .leap; p.phase = 1.2 + sin(t * 3) * 0.6; p.eyes = .happy; p.blush = true; p.mouth = .open }   // opens its wings to say hi
                 else { p.stance = .front; p.bob = 0 }
             case .rear: p.stance = .upright; p.tailUp = true; p.eyes = blink ? .closed : (Int(actT / 1.3) % 2 == 0 ? .open : .up)
             default: break
@@ -2143,7 +2163,7 @@ final class Pet {
             lastStance = pose.stance
         }
         if t < transitionUntil && !isBird && family != .bat { pose.stance = .crouch }
-        if family == .bat { pose.phase = t * 13 }            // wing beats
+        if family == .bat && !(mode == .idle && act == .press) { pose.phase = t * 13 }      // wing beats (held open to say hi)
         var c = Canvas(cw, chh)
         let a = drawPet(&c, species, pose, cx: cx)
         if facing < 0 { c.mirror(around: cx) }

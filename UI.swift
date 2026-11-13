@@ -284,9 +284,7 @@ struct RootView: View {
         // Petting, the calendar and gravity live on the pet itself (click, double-click) and in Settings.
         // These buttons close the menu so you see the pet act on them right away.
         // a red panda gets bamboo instead of fish (it's nearly all they eat)
-        // (and a bat, fruit)
-        let first: (ItemKind, String) = pet.species == .redPanda ? (.bamboo, "Bamboo")
-            : pet.family == .bat || pet.family == .turtle ? (.berry, "Strawberry") : (.fish, "Fish")
+        let first: (ItemKind, String) = pet.species == .redPanda ? (.bamboo, "Bamboo") : (.fish, "Fish")
         let foods: [(ItemKind, String)] = [first, (.bone, "Bone"), (.cookie, "Cookie")]
         let whose = world.companions.isEmpty ? "" : " for \(pet.name)"
         // eight buttons, sized to fit the menu's width

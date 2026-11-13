@@ -1129,11 +1129,18 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
 
     /// Time for a reminder? Every so often, or (adapting to your pace) sooner the further behind you are and not at all
     /// while you're ahead. Never once you reach your goal, or (if you like) outside your waking hours.
+    /// How long after your last drink (real seconds at the computer) the next reminder comes: your fixed interval, or,
+    /// keeping pace, every 45 minutes (30 when you're well behind).
+    var waterInterval: Double {
+        if waterEvery > 0 { return waterEvery }
+        return waterExpected - waterToday >= 600 ? 30 * 60 : 45 * 60
+    }
+    /// Keeping pace, it only asks when you're at least a glass behind, in any unit (counting sips used to make it nag
+    /// over half a sip).
     var waterDue: Bool {
         guard waterEvery != 0, waterToday < waterGoalML, !(quietAtNight && !awakeHours) else { return false }
-        if waterEvery > 0 { return activeSinceDrink >= waterEvery }
-        let behind = waterExpected - waterToday
-        return behind >= servingML / 2 && activeSinceDrink >= (behind >= servingML * 2 ? 20 * 60 : 40 * 60)
+        if waterEvery < 0 && waterExpected - waterToday < 250 { return false }
+        return activeSinceDrink >= waterInterval
     }
 
     static func isoDay(_ d: Date) -> String {
@@ -1185,7 +1192,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         waterCard.hide()
         pet.putAway()
         waterSnoozes += 1
-        activeSinceDrink = max(0, (waterEvery > 0 ? waterEvery : 40 * 60) - 15 * 60)
+        // "Later" really means later: 20 minutes, or 30 once you've put it off twice
+        activeSinceDrink = max(0, waterInterval - (waterSnoozes > 2 ? 30 : 20) * 60)
         if !quietly { pet.say(["OKAY, IN A BIT!"], 1.6) }
     }
 
