@@ -134,10 +134,12 @@ if args.contains("--bat-test") {
         // nap and modes: all pets together, or just the one
         let savedTogether = w.modesTogether
         w.modesTogether = true
+        for q in w.pets where q.isAsleep { q.forcedNap = false; q.setMode(.idle) }      // both awake to start with
         w.toggleNap(for: main); run(4)
         print("together on, nap: main asleep \(main.isAsleep), turtle asleep \(panda.isAsleep)")
         w.toggleNap(for: main); run(4)
         w.modesTogether = false
+        for q in w.pets where q.isAsleep { q.forcedNap = false; q.setMode(.idle) }
         w.toggleNap(for: panda); run(4)
         print("together off, nap the turtle: main asleep \(main.isAsleep), turtle asleep \(panda.isAsleep)")
         w.toggleNap(for: panda); run(4)
