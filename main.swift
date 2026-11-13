@@ -131,6 +131,19 @@ if args.contains("--bat-test") {
         // each pet's meters change on its own
         let before2 = (main.fullness, panda.fullness); run(120)
         print("two minutes later, food: main \(String(format: "%.2f", before2.0 - main.fullness)) down, turtle \(String(format: "%.2f", before2.1 - panda.fullness)) down")
+        // nap and modes: all pets together, or just the one
+        let savedTogether = w.modesTogether
+        w.modesTogether = true
+        w.toggleNap(for: main); run(4)
+        print("together on, nap: main asleep \(main.isAsleep), turtle asleep \(panda.isAsleep)")
+        w.toggleNap(for: main); run(4)
+        w.modesTogether = false
+        w.toggleNap(for: panda); run(4)
+        print("together off, nap the turtle: main asleep \(main.isAsleep), turtle asleep \(panda.isAsleep)")
+        w.toggleNap(for: panda); run(4)
+        w.cycleStillness(for: panda); w.cycleStillness(for: panda); w.cycleStillness(for: panda); run(3)
+        print("together off, turtle to study: turtle \(panda.mode), main \(main.mode)")
+        w.modesTogether = savedTogether
     }
     exit(0)
 }

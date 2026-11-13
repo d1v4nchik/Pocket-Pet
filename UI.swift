@@ -293,15 +293,16 @@ struct RootView: View {
             Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy\(whose)", size: 31) { world.fromMenu { world.throwBall(for: pet) } }
             Tile(img: world.itemImage(.butterfly), help: world.stillness == 2 ? "Your pet is holding completely still, so no butterflies" : "Let a butterfly out", size: 31) { world.fromMenu { world.releaseButterfly() } }
                 .disabled(world.stillness == 2).opacity(world.stillness == 2 ? 0.4 : 1)
-            Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap", size: 31) { world.fromMenu { pet.toggleNap() } }
+            Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: (pet.isAsleep ? "Wake up" : "Nap") + (world.together && !world.companions.isEmpty ? " (all of them)" : ""), size: 31) { world.fromMenu { world.toggleNap(for: pet) } }
             Tile(img: world.iconImage(.pin), help: pet.following ? "Stop following" : "Come here: follows your cursor (press again to stop)",
                  selected: pet.following ? true : nil, size: 31) { world.fromMenu { pet.comeHere() } }
             // stay in place, in four steps: roams, stays put (still grooms), completely still, reading (study mode)
-            Tile(img: world.iconImage(world.studying ? .book : [Icon.roam, .anchor, .still][world.stillness]),
-                 help: world.studying ? "Reading with you (study mode). Click: roam again"
+            let still = world.together ? world.stillness : pet.ownStillness, reading = pet.studying
+            Tile(img: world.iconImage(reading ? .book : [Icon.roam, .anchor, .still][still]),
+                 help: reading ? "Reading with you (study mode). Click: roam again"
                     : ["Roams around. Click: stay put", "Stays put but still grooms. Click: hold completely still",
-                       "Holds completely still. Click: read with you (study mode)"][world.stillness],
-                 selected: world.stillness > 0 || world.studying ? true : nil, size: 31) { world.cycleStillness(); m.refresh() }
+                       "Holds completely still. Click: read with you (study mode)"][still],
+                 selected: still > 0 || reading ? true : nil, size: 31) { world.cycleStillness(for: pet); m.refresh() }
         } }
     }
 
@@ -736,6 +737,8 @@ struct RootView: View {
             if world.multiPets {
                 row("   Play together") { toggle(Binding(get: { world.playTogether }, set: { world.playTogether = $0; world.save(); m.refresh() })) }
                     .help("They visit each other, play tag and nap side by side")
+                row("   Nap and modes for all") { toggle(Binding(get: { world.modesTogether }, set: { world.modesTogether = $0; m.refresh() })) }
+                    .help("On: nap, stay put, freeze and study apply to all your pets. Off: just to the one you're looking after")
             }
             row("Water") {
                 HStack(spacing: 2) {
@@ -1106,6 +1109,8 @@ struct RootView: View {
             Toggle("Several pets at once", isOn: Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() }))
             if world.multiPets {
                 Toggle("They play together", isOn: Binding(get: { world.playTogether }, set: { world.playTogether = $0; save(world) }))
+                Toggle("Nap and modes for all of them", isOn: Binding(get: { world.modesTogether }, set: { world.modesTogether = $0; m.refresh() }))
+                    .help("On: nap, stay put, freeze and study apply to all your pets. Off: just to the one you're looking after")
                 caption("Pick extra pets in the menu's Pets tab: up to five on your desktop together. Playing together, they visit each other to say hi, play tag, and curl up next to a friend that's napping.")
             }
         }

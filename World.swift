@@ -414,6 +414,12 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     /// Several pets at once (a setting): your pet, plus up to four companions picked in the Pets tab.
     var multiPets = false
     var playTogether = true              // several pets visit each other, play tag and nap together
+    /// Several pets: nap, wake, stay put, freeze and study apply to all of them (on), or just the one you're looking after.
+    var modesTogether = UserDefaults.standard.object(forKey: "modesTogether") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(modesTogether, forKey: "modesTogether") }
+    }
+    /// Modes act on every pet: the setting is on, or there's only one pet anyway.
+    var together: Bool { modesTogether || companions.isEmpty }
     var companions: [Pet] = []
     var pets: [Pet] { [pet] + companions }
     static let maxCompanions = 4
@@ -1412,6 +1418,30 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
 
     /// The menu's stay-in-place button: roams, then stays put, then holds completely still, then roams again.
     /// The paw button, in four steps: roams, stays put, holds completely still, reads (study mode), then roams again.
+    /// The paw button for one pet (when modes aren't shared): roam, stay put, freeze, read.
+    func cycleStillness(for p: Pet) {
+        guard !together else { cycleStillness(); return }
+        if p.ownStudying {
+            p.ownStudying = false; p.ownStillness = 0
+            if p.mode == .study { p.setMode(.idle); if p.family == .bat && p.edge == 0 { p.swoop(home: true) } }
+            p.say(["BREAK TIME!"], 1.6); p.hearts(2)
+        } else if p.ownStillness == 2 {
+            p.ownStillness = 0; p.ownStudying = true
+            if !p.inAir && p.mode != .held { p.forcedNap = false; p.begin(.study) }
+            p.say(["STUDY TIME!"], 1.8)
+        } else {
+            p.ownStillness += 1
+            p.say([["I'LL STAY HERE"], ["FREEZE!"]][p.ownStillness - 1], 1.8)
+        }
+    }
+
+    /// The nap button: all of them doze off (or wake up) together, or just this one.
+    func toggleNap(for p: Pet) {
+        guard together else { p.toggleNap(); return }
+        let wake = p.isAsleep
+        for q in pets where q.isAsleep == wake { q.toggleNap() }
+    }
+
     func cycleStillness() {
         if studying { toggleStudy(); stillness = 0; save(); return }          // reading -> free to roam
         if stillness == 2 { stillness = 0; save(); toggleStudy(); return }    // completely still -> reading

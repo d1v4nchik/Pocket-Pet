@@ -929,14 +929,16 @@ private func drawThinking(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
 }
 
 /// A dark line along the book's edge wherever it touches the pet, so a white face never runs into white pages.
-private func lineBook(_ c: inout Canvas, _ b: (x: Int, y: Int, w: Int, h: Int)) {
+/// While it reads, the book is in front and stays whole: the line goes on the pet's side. Dozing with its head on the
+/// book, the line goes on the book's side, under the head.
+private func lineBook(_ c: inout Canvas, _ b: (x: Int, y: Int, w: Int, h: Int), inFront: Bool) {
     let book: Set<UInt8> = [Col.page.rawValue, Col.lapLight.rawValue, Col.bookCover.rawValue]
     var edge: [(Int, Int)] = []
     for y in max(0, b.y)..<min(c.h, b.y + b.h) {
         for x in max(0, b.x)..<min(c.w, b.x + b.w) where book.contains(c.get(x, y)) {
             for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
                 let v = c.get(x + dx, y + dy)
-                if v != 0 && !book.contains(v) && v != Col.outline.rawValue { edge.append((x, y)); break }
+                if v != 0 && !book.contains(v) && v != Col.outline.rawValue { edge.append(inFront ? (x + dx, y + dy) : (x, y)); if !inFront { break } }
             }
         }
     }
@@ -986,7 +988,35 @@ private let glassPress = [
     "WVVVVVVWKPVVVVVVVVVVVWWWWWWWKWPPPPPWK..."
 ]
 
+/// The close-up at 60%, about the size of the pet itself: drawn full size in the pet's colours, then shrunk, each new
+/// pixel keeping the lines and the eye's shine where they fall.
 private func drawGlassPress(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchors {
+    let w = glassPress[0].count, h = glassPress.count
+    var big = Canvas(w, h + 2)
+    _ = drawGlassPressFull(&big, sp, cx: w / 2)
+    let f = 0.6, nw = Int(Double(w) * f + 0.5), nh = Int(Double(h) * f + 0.5)
+    let ox = cx - nw / 2, oy = c.h - 2 - (nh - 1)
+    let line = Col.outline.rawValue, shine = Col.eyeHi.rawValue
+    for y in 0..<nh {
+        for x in 0..<nw {
+            let y0 = Int(Double(y) / f), y1 = max(y0 + 1, Int(Double(y + 1) / f)), x0 = Int(Double(x) / f), x1 = max(x0 + 1, Int(Double(x + 1) / f))
+            var count: [UInt8: Int] = [:], n = 0
+            for yy in y0..<min(h, y1) { for xx in x0..<min(w, x1) { count[big.get(xx, yy + 1), default: 0] += 1; n += 1 } }
+            let pick: UInt8
+            if count[shine] != nil { pick = shine }
+            else if (count[line] ?? 0) >= 2 || ((count[line] ?? 0) >= 1 && n <= 2) { pick = line }
+            else { pick = count.max { a, b in a.value != b.value ? a.value < b.value : a.key < b.key }!.key }
+            if pick != 0 { c.px[(oy + y) * c.w + ox + x] = pick }
+        }
+    }
+    // the eyes, redrawn crisp after shrinking: a dark oval with a white shine, and the small one beside the patch
+    for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14)] { c.set(ox + x, oy + y, .eye) }
+    c.set(ox + 18, oy + 12, .eyeHi)                 // the shine inside the eye, so it shows on white fur too
+    for (x, y) in [(12, 8), (13, 8), (12, 9), (13, 9)] { c.set(ox + x, oy + y, .eye) }
+    return Anchors(headX: ox + 12, headTop: oy + 4, headW: 11, eyes: [(ox + 12, oy + 8), (ox + 17, oy + 12)], profile: false, neck: (ox + 12, oy + 18))
+}
+
+private func drawGlassPressFull(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchors {
     let g = c.h - 2
     let w = glassPress[0].count, h = glassPress.count
     let ox = cx - w / 2, oy = g - (h - 1)
@@ -1112,10 +1142,10 @@ private let turtleSitting = [
     "....DKWGGGGGKWGG...",
     "....DKKGGGGGKKGG...",
     "....DKKGGGGGKKGG...",
-    "....DDGGGGGGGGGG...",
-    ".....DDGGGGGGGG....",
-    ".....KDDGGGGGGK....",
-    ".BT.GGKKKKKKKGGKTB.",
+    "...BDDGGGGGGGGGGB..",
+    "..BTKDDGGGGGGGGKTB.",
+    ".BTBKKDDGGGGGGKBTB.",
+    ".BTKGGKKKKKKKGGKTB.",
     ".TBKGGKYYYYYKGGKBT.",
     ".BTKGGGKYYYKDGGKTB.",
     ".TBKDGGGKCKDDGGKBT.",
@@ -1151,10 +1181,17 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
     if dozing {
         // the sleepy face: a little open mouth with its tongue
         c.set(cx, hy + 9, .outline); c.set(cx, hy + 10, .tongue)
-        // the blue polka-dot nightcap, its white brim, flopping over to one side with the pompom
-        c.sprite(ox + 3, hy - 3, ["....BBBBB......", "..BBYBBBYBB....", ".BBBBBYBBBBBB..", "BYBBBBBBBYBBBB.", "WWWWWWWWWWWWWBB",
-                                  "............BB.", ".............WW", ".............WW"],
-                 ["B": .wing, "Y": .ring, "W": .white])
+        // the blue polka-dot nightcap, fitted to the top of its head: white brim just above the eyes, the tip flopping
+        // over to one side with its pompom
+        for (y, row) in turtleSitting.prefix(5).enumerated() {
+            for (x, ch) in row.enumerated() where ch != "." && y >= 1 {
+                c.set(ox + x, hy + y, (x * 3 + y * 5) % 7 == 0 ? .ring : .wing)
+            }
+        }
+        c.hline(ox + 8, ox + 10, hy, .wing)                                             // the cap's rounded crown
+        for x in 4...15 { c.set(ox + x, hy + 5, .white) }                               // the brim
+        c.set(ox + 16, hy + 5, .wing); c.set(ox + 16, hy + 6, .wing); c.set(ox + 17, hy + 6, .wing)
+        c.rect(ox + 16, hy + 7, 2, 2, .white)                                           // the pompom
     }
     if p.blush { c.set(ox + 4, oy + 9, .blush); c.set(ox + 14, oy + 9, .blush) }
     // the big book on its lap, the hands at its sides; one hand lifts to turn the page
@@ -1633,7 +1670,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     case .turtle: a = drawTurtle(&c, p, cx: cx)
     default: a = drawQuad(&c, sp, p, cx: cx)
     }
-    if let b = lastBook { lineBook(&c, b) }
+    if let b = lastBook { lineBook(&c, b, inFront: !p.onBook) }
     drawExtras(&c, p, a)
     return a
 }

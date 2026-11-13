@@ -185,7 +185,10 @@ final class Pet {
     var followUntil = 0.0             // "come here": tags along after the cursor until then (forever = until you stop it)
     var following: Bool { t < followUntil }
     /// "Stay in place": 0 moves around, 1 stays put but still grooms and looks around, 2 holds still. Following wins.
-    var stillness: Int { following ? 0 : world.stillness }
+    var stillness: Int { following ? 0 : (world.together ? world.stillness : ownStillness) }
+    /// This pet's own mode, when modes aren't shared between several pets.
+    var ownStillness = 0, ownStudying = false
+    var studying: Bool { world.together ? world.studying : ownStudying }
     var inPlace: Bool { stillness > 0 }
     /// Staying put, it types along, watches and listens only if you said so in Settings.
     func allowed(_ m: Mode) -> Bool {
@@ -693,7 +696,7 @@ final class Pet {
         }
         // notice typing and videos whatever it's busy with, except moments it can't stop (held, falling, landing, eating)
         // study mode: nothing else, until it's switched off (typing and videos don't pull it away from its book)
-        if world.studying && !inAir && ![.held, .glide, .drift, .landing, .dizzy, .study].contains(mode) && !forcedNap {
+        if studying && !inAir && ![.held, .glide, .drift, .landing, .dizzy, .study].contains(mode) && !forcedNap {
             begin(.study); return
         }
         let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking, .study,
@@ -801,7 +804,7 @@ final class Pet {
     /// Study mode: reads, turns a page now and then, sometimes thinks very hard (never while music's on), and
     /// eventually dozes off over the book; a tap jolts it awake and back to work.
     func studyThink(_ dt: Double) {
-        guard world.studying else { setMode(.idle); act = isBird ? .stand : .sit; actT = 0; actDur = 2; return }
+        guard studying else { setMode(.idle); act = isBird ? .stand : .sit; actT = 0; actDur = 2; return }
         moving = false
         if family == .bat && (edge != 0 || inAir) {
             // a bat comes down off the ceiling to read on the floor with everyone else
