@@ -247,7 +247,11 @@ func drawPopcorn(_ c: inout Canvas, bx: Int, g: Int) {
 /// A big open book lying on the floor, pages curling up at the ends, navy cover underneath; now and then a page lifts,
 /// arcs over the spine and settles on the other side (study mode).
 /// x, y: its top-left; it's 17 wide and 5 tall, so y = the floor row - 4.
+/// Where the last book went, so its edge can be lined where it meets the pet (white fur and white pages would merge).
+var lastBook: (x: Int, y: Int, w: Int, h: Int)?
+
 func drawBook(_ c: inout Canvas, x: Int, y: Int, turn: Double = -1) {
+    lastBook = (x, y - 7, 17, 12)            // the turning page reaches up above it
     c.sprite(x, y, ["..PPP.......PPP..", ".PPPPPPPKPPPPPPP.", "PPLLLPPPKPPLLLPPP", "NNNNNNNNNNNNNNNNN", ".NNNNNNNNNNNNNNN."],
              ["P": .page, "K": .lapLight, "L": .lapLight, "N": .bookCover])
     if turn >= 0 {
@@ -256,6 +260,14 @@ func drawBook(_ c: inout Canvas, x: Int, y: Int, turn: Double = -1) {
         let mx = sx + Int((4 * cos(a)).rounded()), my = sy - Int((5 * sin(a)).rounded()) - 1     // the page bows as it goes over
         c.thick(sx, sy, mx, my, 1, .page); c.thick(mx, my, ex, ey, 1, .page)
     }
+}
+
+/// A book standing open on the floor in front of the turtle, both pages showing, a spine down the middle.
+/// 9 wide and 9 tall: y = the floor row - 8.
+func drawUprightBook(_ c: inout Canvas, x: Int, y: Int) {
+    lastBook = (x, y, 9, 9)
+    c.sprite(x, y, [".NNNNNNN.", "NPPPKPPPN", "NPLLKLLPN", "NPPPKPPPN", "NPLLKLLPN", "NPPPKPPPN", "NPLLKLLPN", "NPPPKPPPN", "NNNNNNNNN"],
+             ["P": .page, "L": .lapLight, "K": .lapLight, "N": .bookCover])
 }
 
 func drawCalendar(_ c: inout Canvas, x: Int, y: Int) {
@@ -913,6 +925,21 @@ private func drawThinking(_ c: inout Canvas, _ p: Pose, _ a: Anchors) {
     }
 }
 
+/// A dark line along the book's edge wherever it touches the pet, so a white face never runs into white pages.
+private func lineBook(_ c: inout Canvas, _ b: (x: Int, y: Int, w: Int, h: Int)) {
+    let book: Set<UInt8> = [Col.page.rawValue, Col.lapLight.rawValue, Col.bookCover.rawValue]
+    var edge: [(Int, Int)] = []
+    for y in max(0, b.y)..<min(c.h, b.y + b.h) {
+        for x in max(0, b.x)..<min(c.w, b.x + b.w) where book.contains(c.get(x, y)) {
+            for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
+                let v = c.get(x + dx, y + dy)
+                if v != 0 && !book.contains(v) && v != Col.outline.rawValue { edge.append((x, y)); break }
+            }
+        }
+    }
+    for (x, y) in edge { c.set(x, y, .outline) }
+}
+
 // MARK: - Paw on the glass
 
 /// Right up against your screen, after the reference picture: a big close-up of the face, one eye squeezed shut, a
@@ -1087,8 +1114,8 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     }
     switch p.stance {
     case .curl:
-        if p.prop == .book { drawBook(&c, x: at(10), y: g - 4) }      // dozed off over its book (its head rests on the pages)
         blit(turtleAsleep.map(Array.init))
+        if p.prop == .book { drawUprightBook(&c, x: at(0) + 1, y: g - 8) }       // dozed off in front of its book
         if p.blush { c.set(at(6), oy + 11, .blush) }
         return headAnchors(0, 6)
     case .squash, .crouch, .held, .umbrella:
@@ -1131,8 +1158,6 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     case .closed: put(5, 5, "K"); put(6, 5, "K")
     case .open, .tongue: put(5, 5, "K"); put(6, 5, "T"); put(6, 6, "T")
     }
-    let front0 = at(4 + hdx) + 1
-    if p.prop == .book { drawBook(&c, x: front0 - 9, y: g - 4, turn: p.turn) }    // under its chin: it reads over the pages
     blit(grid, dy: p.bob)
     let ex = at(6 + hdx), ey = oy + top + 2 + p.bob
     switch p.eyes {
@@ -1150,6 +1175,7 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .popcorn { drawPopcorn(&c, bx: front, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: front, y: g - 15) }
     if p.prop == .glass { drawGlass(&c, x: p.arm == .toMouth ? front - 2 : front, y: oy + top + (p.arm == .toMouth ? 1 : 3)) }
+    if p.prop == .book { drawUprightBook(&c, x: front, y: g - 8) }             // a book standing open in front of its nose
     return headAnchors(-hdx, hdy + p.bob)
 }
 
@@ -1524,6 +1550,7 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     var p = p
     if sp == .turtle && p.stance == .curl { p.nightcap = false; p.outfit.hat = .none }    // it has its own nightcap
+    lastBook = nil
     if p.stance == .front { p.outfit = Outfit(); p.nightcap = false; p.phones = false }   // the close-up: just the face
     let a: Anchors
     switch sp {
@@ -1533,6 +1560,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     case .turtle: a = drawTurtle(&c, p, cx: cx)
     default: a = drawQuad(&c, sp, p, cx: cx)
     }
+    if let b = lastBook { lineBook(&c, b) }
     drawExtras(&c, p, a)
     return a
 }

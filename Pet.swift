@@ -2054,14 +2054,14 @@ final class Pet {
             default:                     // reading, following the lines
                 p.eyes = blink ? .closed : .open
                 if quad { p.stance = .lie; p.headDY = 1 }
-                if family == .turtle { p.stance = .lie; p.headDY -= 1 }
+                if family == .turtle { p.headDY = 1; p.turn = -1 }              // just reads its little book (no page flipping)
                 if family == .bat { p.eyes = blink ? .closed : .half }          // eyes down on its book
                 if isBird && species == .goose { p.headDY = 3; p.headDX = 2 }
                 if t < pageUntil {
                     p.turn = 1 - (pageUntil - t) / 1.1
                     if p.turn > 0.15 && p.turn < 0.8 { p.headDX -= 1 }          // follows the page over with its eyes
                     if isBird { p.arm = .raised }                                  // birds flip it with a wing
-                    if family == .turtle && p.turn < 0.5 { p.headDX += 1; p.headDY += 1 }     // the turtle nudges it with its nose
+
                 }
             }
         case .hunt:
