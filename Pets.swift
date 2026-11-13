@@ -53,6 +53,7 @@ struct Pose {
     var outfit = Outfit()
     var thinking = false     // study mode, thinking very hard: a loading spinner over the head
     var spin = 0.0
+    var glassT = 0.0, glassIn = 1.0, highFive = -1.0     // paw on the glass: how long it's been there, how far in view, a high five
     var tuck = 0.0           // the turtle: how far it has pulled into its shell (0 out, 1 in)
     var onBook = false       // study mode: dozing with its head on the book (otherwise the book is in front of it)
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
@@ -796,7 +797,7 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         ht = r0 - 6 + p.headDY
 
     case .front:
-        return drawGlassPress(&c, sp, cx: cx)
+        return drawGlassPress(&c, sp, p, cx: cx)
 
     case .umbrella, .held:
         return drawQuadFront(&c, sp, q, p, cx: cx)
@@ -991,12 +992,12 @@ private let glassPress = [
 
 /// The close-up at 60%, about the size of the pet itself: drawn full size in the pet's colours, then shrunk, each new
 /// pixel keeping the lines and the eye's shine where they fall.
-private func drawGlassPress(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchors {
+private func drawGlassPress(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     let w = glassPress[0].count, h = glassPress.count
     var big = Canvas(w, h + 2)
     _ = drawGlassPressFull(&big, sp, cx: w / 2)
     let f = 0.6, nw = Int(Double(w) * f + 0.5), nh = Int(Double(h) * f + 0.5)
-    let ox = cx - nw / 2, oy = c.h - 2 - (nh - 1)
+    var small = Canvas(nw, nh)
     let line = Col.outline.rawValue, shine = Col.eyeHi.rawValue
     for y in 0..<nh {
         for x in 0..<nw {
@@ -1007,14 +1008,44 @@ private func drawGlassPress(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchor
             if count[shine] != nil { pick = shine }
             else if (count[line] ?? 0) >= 2 || ((count[line] ?? 0) >= 1 && n <= 2) { pick = line }
             else { pick = count.max { a, b in a.value != b.value ? a.value < b.value : a.key < b.key }!.key }
-            if pick != 0 { c.px[(oy + y) * c.w + ox + x] = pick }
+            small.px[y * nw + x] = pick
         }
     }
-    // the eyes, redrawn crisp after shrinking: a dark oval with a white shine, and the small one beside the patch
-    for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14)] { c.set(ox + x, oy + y, .eye) }
-    c.set(ox + 18, oy + 12, .eyeHi)                 // the shine inside the eye, so it shows on white fur too
-    for (x, y) in [(12, 8), (13, 8), (12, 9), (13, 9)] { c.set(ox + x, oy + y, .eye) }
-    return Anchors(headX: ox + 12, headTop: oy + 4, headW: 11, eyes: [(ox + 12, oy + 8), (ox + 17, oy + 12)], profile: false, neck: (ox + 12, oy + 18))
+    // the eyes, redrawn crisp after shrinking: a dark oval with a white shine, and the small one beside the patch;
+    // now and then a blink
+    let settled = p.glassIn >= 1
+    let blink = settled && p.glassT.truncatingRemainder(dividingBy: 2.6) > 2.42
+    if blink {
+        for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14), (12, 8), (13, 8), (12, 9), (13, 9)] {
+            small.set(x, y, .body)
+        }
+        small.hline(17, 19, 13, .eye); small.hline(12, 13, 9, .eye)
+    } else {
+        for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14)] { small.set(x, y, .eye) }
+        small.set(18, 12, .eyeHi)                 // the shine inside the eye, so it shows on white fur too
+        for (x, y) in [(12, 8), (13, 8), (12, 9), (13, 9)] { small.set(x, y, .eye) }
+    }
+    // it moves: rises into view (and sinks away at the end), breathes, presses one paw then the other on the glass;
+    // a high five pushes the right paw up to meet you with a little squish
+    let g = c.h - 2
+    let ox = cx - nw / 2, oy = g - (nh - 1)
+    let drop = Int(((1 - max(0, min(1, p.glassIn))) * Double(nh + 1)).rounded())
+    let hf = p.highFive
+    let breathe = settled && hf < 0 && Int(p.glassT / 0.7) % 2 == 1 ? 1 : 0
+    let squish = hf >= 0 && hf < 0.18 ? 1 : 0
+    let turn = Int(p.glassT / 0.5) % 2
+    let rightLift = hf >= 0 ? (hf < 0.4 ? 3 : hf < 0.65 ? 2 : 1) : (settled && turn == 0 ? 1 : 0)
+    let leftLift = hf >= 0 ? 0 : (settled && turn == 1 ? 1 : 0)
+    for y in 0..<nh {
+        for x in 0..<nw {
+            let v = small.px[y * nw + x]
+            guard v != 0 else { continue }
+            let rightPaw = x >= 15 && y >= 15, leftPaw = x <= 6 && y >= 11
+            let ty = oy + y + drop + breathe + squish - (rightPaw ? rightLift : leftPaw ? leftLift : 0)
+            if ty <= g && ty >= 0 { c.px[ty * c.w + ox + x] = v }
+        }
+    }
+    return Anchors(headX: ox + 12, headTop: oy + 4 + drop, headW: 11, eyes: [(ox + 12, oy + 8 + drop), (ox + 17, oy + 12 + drop)], profile: false, neck: (ox + 12, oy + 18 + drop))
 }
 
 private func drawGlassPressFull(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchors {

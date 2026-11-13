@@ -33,6 +33,11 @@ func renderSheet(_ path: String, only: String? = nil) {
             add(sanitize(sp.title), sp) { $0.stance = .front }
         }
     }
+    if only == "paw" {                 // paw on the glass, frame by frame: rising in, pressing, a high five
+        let frames: [(String, Double, Double, Double)] = [("IN 1", 0.1, 0.25, -1), ("IN 2", 0.25, 0.6, -1), ("PRESS L", 0.6, 1, -1), ("PRESS R", 1.1, 1, -1),
+                                                            ("BLINK", 2.5, 1, -1), ("HIGH FIVE", 1.0, 1, 0.1), ("HIGH FIVE 2", 1.0, 1, 0.5), ("OUT", 3.5, 0.3, -1)]
+        for (name, gt, gin, hf) in frames { add(name, .calico) { $0.stance = .front; $0.glassT = gt; $0.glassIn = gin; $0.highFive = hf } }
+    }
     if only == "tuck" {                // the turtle pulling into its shell, frame by frame
         for (i, k) in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0].enumerated() {
             add("TUCK \(i + 1)", .turtle) { $0.tuck = k; $0.stance = k >= 0.95 ? .squash : .stand }
@@ -54,7 +59,7 @@ func renderSheet(_ path: String, only: String? = nil) {
             add("HAPPY", sp) { $0.eyes = .happy; $0.mouth = sp.family == .dog ? .tongue : .open; $0.blush = true; if !sp.isBird { $0.stance = .sit } }
         }
     }
-    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" && only != "tuck" {
+    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" && only != "tuck" && only != "paw" {
         add(sanitize(sp.title), sp) { _ in }
         add("WALK", sp) { $0.stance = .walk; $0.phase = 1.2 }
         add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }

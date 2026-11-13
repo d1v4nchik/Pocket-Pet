@@ -181,6 +181,7 @@ final class Pet {
     var sliding = false           // dragged along the top edge in fullscreen
     var flyUntil = 0.0                // a bat's free flight: when it heads home to hang again
     var seatLeft: Bool?               // watching a video: sitting at its bottom-left corner (or bottom-right)
+    var highFiveAt = -10.0            // paw on the glass: when you last high-fived it
     var tuck = 0.0, lastTuckT = 0.0   // the turtle: how far into its shell (0 out, 1 all the way in)
     // study mode: 0 reading, 1 thinking very hard, 2 dozing over the book, 3 jolted awake
     var studyState = 0, studyUntil = 0.0, nextThink = 0.0, nextPage = 0.0, pageUntil = 0.0, dozeAt = 0.0
@@ -268,6 +269,7 @@ final class Pet {
         }
         if !particles.isEmpty { return 12 }               // hearts and notes float slowly
         switch mode {
+        case .idle where act == .press: return 15            // the paw on the glass is animated
         case .idle, .listening, .watching, .agenda, .beg: return 8
         case .typing: return 12
         default: return 16
@@ -1772,8 +1774,9 @@ final class Pet {
         clicks.append(t)
         clicks.removeAll { t - $0 > 2.5 }
         if mode == .idle && act == .press {                // its paw was up against the glass: a high five
-            hearts(3); say(["HIGH FIVE!"], 1.4); world.synth.play(family == .cat ? mrrp : "chirp")
-            happiness = min(100, happiness + 4); actDur = actT + 1.2
+            hearts(3); stars(4); say(["HIGH FIVE!"], 1.2); world.synth.play(family == .cat ? mrrp : "chirp")
+            highFiveAt = t
+            happiness = min(100, happiness + 4); actDur = actT + 1.6
             return
         }
         switch mode {
@@ -2157,7 +2160,12 @@ final class Pet {
             case .press:
                 if family == .turtle || species == .redPanda { p.eyes = .happy; p.blush = true }
                 else if family == .bat { p.stance = .leap; p.phase = 1.2 + sin(t * 3) * 0.6; p.eyes = .happy; p.blush = true; p.mouth = .open }   // opens its wings to say hi
-                else { p.stance = .front; p.bob = 0 }
+                else {
+                    p.stance = .front; p.bob = 0
+                    p.glassT = actT
+                    p.glassIn = min(1, actT / 0.4, max(0, actDur - actT) / 0.4)          // rises into view, sinks away at the end
+                    p.highFive = t - highFiveAt < 0.9 ? t - highFiveAt : -1
+                }
             case .rear: p.stance = .upright; p.tailUp = true; p.eyes = blink ? .closed : (Int(actT / 1.3) % 2 == 0 ? .open : .up)
             default: break
             }
