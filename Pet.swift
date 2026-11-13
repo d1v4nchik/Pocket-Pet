@@ -180,6 +180,8 @@ final class Pet {
     var playUntil = -10.0           // playing with a toy you just gave it: typing waits a moment
     var sliding = false           // dragged along the top edge in fullscreen
     var flyUntil = 0.0                // a bat's free flight: when it heads home to hang again
+    var seatLeft: Bool?               // watching a video: sitting at its bottom-left corner (or bottom-right)
+    var tuck = 0.0, lastTuckT = 0.0   // the turtle: how far into its shell (0 out, 1 all the way in)
     // study mode: 0 reading, 1 thinking very hard, 2 dozing over the book, 3 jolted awake
     var studyState = 0, studyUntil = 0.0, nextThink = 0.0, nextPage = 0.0, pageUntil = 0.0, dozeAt = 0.0
     var followUntil = 0.0             // "come here": tags along after the cursor until then (forever = until you stop it)
@@ -594,7 +596,7 @@ final class Pet {
             spawnBang()
             world.synth.play("yawn")
         case .watching:
-            seated = false
+            seated = false; seatLeft = nil
             nextReact = t + rnd(30, 60)
         case .ball:
             kicks = 0
@@ -1223,8 +1225,13 @@ final class Pet {
         }
         if let f = world.videoFrame {
             let r = world.xRange(margin)
-            // several pets: a row of seats along the bottom of the video, so nobody sits on anybody
-            let seatX = clamp(f.maxX - 60 * s / 4 - CGFloat(petIndex) * 28 * s, r.lowerBound, r.upperBound)
+            // the bottom corner of the video nearest to it (chosen once, so it doesn't change its mind); several pets on
+            // the same side sit in a row from that corner, so nobody sits on anybody
+            if seatLeft == nil { seatLeft = abs(x - f.minX) < abs(x - f.maxX) }
+            let left = seatLeft!
+            let ahead = world.pets.prefix(petIndex).filter { $0.mode == .watching && $0.seatLeft == left }.count
+            let corner = left ? f.minX + 60 * s / 4 : f.maxX - 60 * s / 4
+            let seatX = clamp(corner + (left ? 1 : -1) * CGFloat(ahead) * 28 * s, r.lowerBound, r.upperBound)
             let target = floorTarget(seatX, area().minY)
             if seated && abs(trackDelta(target)) > 140 { seated = false }
             if !seated {
@@ -1881,6 +1888,7 @@ final class Pet {
             default: p.headDY = tapping ? 1 : 0; if family == .dog { p.mouth = .closed }
             }
             if species == .parrot { p.blush = true; p.eyes = tapping ? .happy : .open }        // a happy little typist
+            if family == .turtle { p.stance = .upright; p.phase = t; p.headDY = 0 }             // sits up with its laptop on its lap
             if t < celebrateUntil {
                 p.arm = isBird ? (flapFast ? .raised : .rest) : .raised
                 p.eyes = .happy; p.mouth = .open; p.headDY = 0
@@ -2166,7 +2174,16 @@ final class Pet {
             }
             lastStance = pose.stance
         }
-        if t < transitionUntil && !isBird && family != .bat { pose.stance = .crouch }
+        if t < transitionUntil && !isBird && family != .bat && family != .turtle { pose.stance = .crouch }
+        if family == .turtle {
+            // tucking into its shell (or coming out) takes about a second, never a sudden blink
+            let tucked = [.squash, .crouch, .held, .umbrella].contains(pose.stance)
+            let dt = min(0.25, max(0, t - lastTuckT)); lastTuckT = t
+            tuck += ((tucked ? 1 : 0) - tuck) * min(1, dt * 2.2)
+            if abs(tuck - (tucked ? 1 : 0)) < 0.02 { tuck = tucked ? 1 : 0 }
+            pose.tuck = tuck
+            if tucked && tuck < 0.95 && pose.stance != .held && pose.stance != .umbrella { pose.stance = .stand }   // still pulling in
+        }
         if family == .bat && !(mode == .idle && act == .press) { pose.phase = t * 13 }      // wing beats (held open to say hi)
         var c = Canvas(cw, chh)
         let a = drawPet(&c, species, pose, cx: cx)

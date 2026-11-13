@@ -53,6 +53,7 @@ struct Pose {
     var outfit = Outfit()
     var thinking = false     // study mode, thinking very hard: a loading spinner over the head
     var spin = 0.0
+    var tuck = 0.0           // the turtle: how far it has pulled into its shell (0 out, 1 in)
     var onBook = false       // study mode: dozing with its head on the book (otherwise the book is in front of it)
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
@@ -1165,7 +1166,7 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
     let ox = cx - w / 2, oy = g - (h - 1)
     let map: [Character: Col] = ["G": .body, "D": .bodyShade, "Y": .ring, "C": .white, "B": .inner, "T": .mark2, "K": .outline, "W": .white]
     let dozing = p.onBook                    // asleep over its book: head sunk a little, sleepy face, nightcap
-    let hy = oy + (dozing ? 1 : 0)
+    let hy = oy + (dozing || (p.prop == .laptop && p.headDY != 99) ? 1 : 0)     // typing: head bent to the screen
     c.sprite(ox, oy + 11, Array(turtleSitting.dropFirst(11)), map)
     c.sprite(ox, hy, Array(turtleSitting.prefix(11)), map)
     // eyes other than wide open: covered with skin, then drawn as lines
@@ -1194,6 +1195,16 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
         c.rect(ox + 16, hy + 7, 2, 2, .white)                                           // the pompom
     }
     if p.blush { c.set(ox + 4, oy + 9, .blush); c.set(ox + 14, oy + 9, .blush) }
+    // typing: a laptop on its lap, the back of its screen towards you; it peeks over and taps with both hands
+    // (headDY 99: just the face, for the Pets tab's picture)
+    if p.prop == .laptop && p.headDY != 99 {
+        let tap = p.arm == .tap
+        c.rect(cx - 6, g - 9, 13, 7, .lapDark)                                         // the lid
+        c.hline(cx - 6, cx + 6, g - 9, .lapLight); c.set(cx, g - 6, .lapLight)          // its edge and a little logo
+        c.rect(cx - 8, g - 2, 17, 2, .lapLight)                                        // the keyboard
+        let up = Int(p.phase * 10) % 2 == 0
+        c.rect(cx - 9, g - 4 - (tap && up ? 1 : 0), 3, 2, .body); c.rect(cx + 7, g - 4 - (tap && !up ? 1 : 0), 3, 2, .body)
+    }
     // the big book on its lap, the hands at its sides; one hand lifts to turn the page
     if p.prop == .book {
         drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
@@ -1222,7 +1233,7 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         Anchors(headX: at(8) + dx, headTop: oy + 4 + dy, headW: 9, eyes: [(at(7) + dx, oy + 6 + dy)], profile: true, neck: (at(10) + dx, oy + 11 + dy))
     }
     switch p.stance {
-    case .upright where p.prop == .book:
+    case .upright where p.prop == .book || p.prop == .laptop:
         return drawSittingTurtle(&c, p, cx: cx)
     case .curl:
         if p.prop == .book { drawBook(&c, x: at(10), y: g - 5) }                  // dozed off over its book, in its nightcap
@@ -1241,13 +1252,17 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         break
     }
     var grid = turtleBody.map { Array($0) }
+    // part-way into its shell: legs drawn in (the lowest rows go first), the shell settling lower
+    let k = p.tuck
+    if k > 0.3 { for x in 0..<w where grid[h - 1][x] != "." { grid[h - 1][x] = "." } }
+    if k > 0.65 { for x in 0..<w where grid[h - 2][x] != "." && x != 0 { grid[h - 2][x] = "." } }
     if p.stance == .walk {
         // one foot up, then the other; slow and steady
         let front = sin(p.phase) > 0
         for x in (front ? 14...19 : 24...30) where x < w { grid[h - 1][x] = "." }
     }
     // the head: up and looking, down to eat or rest, stretched up high
-    var hdx = -p.headDX, hdy = p.headDY
+    var hdx = -p.headDX + Int((k * 7).rounded()), hdy = p.headDY + Int((k * 2).rounded())   // the head draws back in
     switch p.stance {
     case .eat: hdx -= 2; hdy += 3
     case .lie: hdy += 2
@@ -1269,8 +1284,9 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     case .closed: put(5, 5, "K"); put(6, 5, "K")
     case .open, .tongue: put(5, 5, "K"); put(6, 5, "T"); put(6, 6, "T")
     }
-    blit(grid, dy: p.bob)
-    let ex = at(6 + hdx), ey = oy + top + 2 + p.bob
+    blit(grid, dy: p.bob + Int((k * 4).rounded()))
+    let sink = Int((k * 4).rounded())
+    let ex = at(6 + hdx), ey = oy + top + 2 + p.bob + sink
     switch p.eyes {
     case .open, .up: c.rect(ex - 1, ey + (p.eyes == .up ? -1 : 0), 2, 2, .eye); c.set(ex - 1, ey + (p.eyes == .up ? -1 : 0), .eyeHi)
     case .wide: c.rect(ex - 1, ey - 1, 2, 3, .eye); c.set(ex - 1, ey - 1, .eyeHi)
@@ -1279,7 +1295,7 @@ private func drawTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     case .angry: c.hline(ex - 1, ex, ey + 1, .eye); c.set(ex, ey, .eye)
     case .dizzy: for (dx, dy) in [(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)] { c.set(ex + dx, ey + dy, .eye) }
     }
-    if p.blush { c.set(at(8 + hdx), oy + top + 5, .blush) }
+    if p.blush { c.set(at(8 + hdx), oy + top + 5 + sink, .blush) }
     // props, out in front of the face
     let front = at(4 + hdx) + 1
     if p.prop == .laptop { drawLaptop(&c, lx: front - 1, g: g) }

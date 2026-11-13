@@ -33,6 +33,11 @@ func renderSheet(_ path: String, only: String? = nil) {
             add(sanitize(sp.title), sp) { $0.stance = .front }
         }
     }
+    if only == "tuck" {                // the turtle pulling into its shell, frame by frame
+        for (i, k) in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0].enumerated() {
+            add("TUCK \(i + 1)", .turtle) { $0.tuck = k; $0.stance = k >= 0.95 ? .squash : .stand }
+        }
+    }
     if only == "study" {               // study mode for every pet: reading, thinking hard, dozing off
         for sp in Species.lineup {
             let quad = !sp.isBird && sp != .bat && sp != .turtle
@@ -49,12 +54,12 @@ func renderSheet(_ path: String, only: String? = nil) {
             add("HAPPY", sp) { $0.eyes = .happy; $0.mouth = sp.family == .dog ? .tongue : .open; $0.blush = true; if !sp.isBird { $0.stance = .sit } }
         }
     }
-    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" {
+    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" && only != "tuck" {
         add(sanitize(sp.title), sp) { _ in }
         add("WALK", sp) { $0.stance = .walk; $0.phase = 1.2 }
         add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }
-        add("TYPE", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .tap; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 } else { $0.headDY = 1 } }
-        add("TYPE 2", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .forward; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 } }
+        add("TYPE", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .tap; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 } else { $0.headDY = 1 }; if sp == .turtle { $0.stance = .upright; $0.headDY = 0 } }
+        add("TYPE 2", sp) { $0.stance = .sit; $0.prop = .laptop; $0.arm = .forward; $0.tailUp = false; if sp == .goose { $0.headDX = 2; $0.headDY = 7 }; if sp == .turtle { $0.stance = .upright; $0.arm = .tap; $0.phase = 0.15 } }
         add("POPCORN", sp) { $0.stance = .sit; $0.prop = .popcorn; $0.arm = sp.isBird ? .forward : .scoop; $0.eyes = .up; $0.tailUp = false }
         add("MUSIC", sp) { $0.stance = sp.isBird ? .stand : .sit; $0.phones = true; $0.eyes = .happy; $0.tailUp = false }
         add("CALENDAR", sp) { $0.stance = .sit; $0.prop = .calendar; $0.arm = .hold; $0.tailUp = false }
