@@ -25,7 +25,9 @@ enum Col: UInt8, CaseIterable {
          yarn, yarnDark, yarnLight, bfA, bfB, bfC, bfD, bfE, bfBody,
          bone, boneShade, boneLight, moon, moonShade, pin, pinDark, sun, sunDark,
          hatShine, glass, glassEdge, water, waterLight,
-         whisker                 // drawn like the outline, but gets no outline of its own (thin whiskers)
+         whisker,                // drawn like the outline, but gets no outline of its own (thin whiskers)
+         bamboo, bambooLight, bambooDark,
+         bookCover, spin1, spin2, spin3          // study mode: the book's cover; the thinking spinner (no outline)
 }
 
 private let baseHex: [Col: UInt32] = [
@@ -57,7 +59,8 @@ private let baseHex: [Col: UInt32] = [
     .bone: 0xf4ecdc, .boneShade: 0xcfc2a8, .boneLight: 0xffffff, .moon: 0xfff0b0, .moonShade: 0xe2c56a,
     .pin: 0xe5534b, .pinDark: 0xb03a3a, .sun: 0xffd04a, .sunDark: 0xf0a030,
     .hatShine: 0x6c6378, .whisker: 0x2b2738, .glass: 0xeef7ff, .glassEdge: 0x9cc6ea, .water: 0x3d9bf0,
-    .waterLight: 0x8fd0ff,
+    .waterLight: 0x8fd0ff, .bamboo: 0x9cc95a, .bambooLight: 0xcde68f, .bambooDark: 0x6b9a3c,
+    .bookCover: 0x3b3a6e, .spin1: 0x6e52d0, .spin2: 0xa48fe8, .spin3: 0xd2c8f4,     // pastel lavender spinner
 ]
 
 func cgColor(_ h: UInt32) -> CGColor {
@@ -257,8 +260,8 @@ struct Canvas {
     /// Adds a 1-cell outline around everything drawn (whiskers excepted, so they stay one cell thin).
     mutating func outline(_ c: Col = .outline) {
         var out = px
-        let wh = Col.whisker.rawValue
-        func solid(_ x: Int, _ y: Int) -> Bool { let v = get(x, y); return v != 0 && v != wh }
+        let thin: Set<UInt8> = [Col.whisker.rawValue, Col.spin1.rawValue, Col.spin2.rawValue, Col.spin3.rawValue]
+        func solid(_ x: Int, _ y: Int) -> Bool { let v = get(x, y); return v != 0 && !thin.contains(v) }
         for y in 0..<h {
             for x in 0..<w where px[y * w + x] == 0 {
                 if solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1) {
@@ -389,6 +392,7 @@ func sanitize(_ s: String) -> String {
     for raw in s.uppercased() {
         let ch = alike[raw] ?? raw
         if glyphs[ch] != nil { flush(); out.append(ch); continue }
+        if isWide(ch) { flush(); out.append(ch); continue }        // Chinese, Japanese, Korean, Thai, Arabic...: kept as they are
         let plain = String(ch).folding(options: [.diacriticInsensitive], locale: nil)          // É -> E, Ё -> Е
         if plain.count == 1, let c = plain.first, glyphs[c] != nil { flush(); out.append(c) } else { run.append(ch) }
     }
@@ -396,9 +400,40 @@ func sanitize(_ s: String) -> String {
     return out
 }
 
+/// Scripts the pixel font can't spell out (Chinese, Japanese, Korean, Thai, Arabic, Hebrew, Indic...). They're drawn
+/// from the Mac's own fonts on a half-size pixel grid instead of being turned into Latin letters.
+func isWide(_ ch: Character) -> Bool {
+    guard let v = ch.unicodeScalars.first?.value else { return false }
+    return (0x0590...0x1FFF).contains(v) || (0x2E80...0x9FFF).contains(v) || (0xAC00...0xD7AF).contains(v)
+        || (0xF900...0xFAFF).contains(v) || (0xFF00...0xFFEF).contains(v)
+}
+
+private let wideSize = 16                       // a wide character is 16 x 16 half-pixels: 8 x 8 pixels of the font
+private var wideCache: [Character: [[Bool]]] = [:]
+
+/// The character drawn by the system font at 12 px, then cut to hard pixels.
+func wideGlyph(_ ch: Character) -> [[Bool]] {
+    if let g = wideCache[ch] { return g }
+    let n = wideSize
+    var data = [UInt8](repeating: 0, count: n * n)
+    if let ctx = CGContext(data: &data, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n, space: CGColorSpaceCreateDeviceGray(),
+                           bitmapInfo: CGImageAlphaInfo.none.rawValue) {
+        ctx.setFillColor(gray: 0, alpha: 1); ctx.fill(CGRect(x: 0, y: 0, width: n, height: n))
+        let font = CTFontCreateUIFontForLanguage(.system, CGFloat(n) - 0.5, nil) ?? CTFontCreateWithName("Helvetica" as CFString, CGFloat(n), nil)
+        let str = NSAttributedString(string: String(ch), attributes: [.font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)])
+        let line = CTLineCreateWithAttributedString(str)
+        let w = CTLineGetTypographicBounds(line, nil, nil, nil)
+        ctx.textPosition = CGPoint(x: max(0, (CGFloat(n) - CGFloat(w)) / 2), y: 2)
+        CTLineDraw(line, ctx)
+    }
+    let g = (0..<n).map { r in (0..<n).map { c in data[r * n + c] > 150 } }     // memory starts at the top row
+    wideCache[ch] = g
+    return g
+}
+
 func textWidth(_ s: String) -> Int {
     var w = 0
-    for ch in s { w += (glyphs[ch]?.first?.count ?? 3) + 1 }
+    for ch in s { w += isWide(ch) && glyphs[ch] == nil ? wideSize / 2 + 1 : (glyphs[ch]?.first?.count ?? 3) + 1 }
     return max(0, w - 1)
 }
 
@@ -406,6 +441,17 @@ func drawText(_ s: String, _ ctx: CGContext, _ x: CGFloat, _ y: CGFloat, _ px: C
     ctx.setFillColor(col)
     var cx = x
     for ch in s {
+        if glyphs[ch] == nil && isWide(ch) {
+            // half-size pixels, a little taller than the pixel letters (centred on them)
+            let hp = px / 2
+            var rects: [CGRect] = []
+            for (r, row) in wideGlyph(ch).enumerated() {        // on a taller line: 8 rows, with the pixel letters in the middle
+                for (i, on) in row.enumerated() where on { rects.append(CGRect(x: cx + CGFloat(i) * hp, y: y - 2 * px + CGFloat(r) * hp, width: hp, height: hp)) }
+            }
+            ctx.fill(rects)
+            cx += CGFloat(wideSize / 2 + 1) * px
+            continue
+        }
         let g = glyphs[ch] ?? glyphs["?"]!
         var rects: [CGRect] = []
         for (r, row) in g.enumerated() {
@@ -418,10 +464,14 @@ func drawText(_ s: String, _ ctx: CGContext, _ x: CGFloat, _ y: CGFloat, _ px: C
     }
 }
 
+/// A line's height in pixels: 5 for the pixel letters, 8 when it has Chinese, Japanese, Korean... characters.
+func lineRows(_ s: String) -> Int { s.contains { glyphs[$0] == nil && isWide($0) } ? 8 : 5 }
+
 /// Size of a bubble (without its tail) in points.
 func bubbleSize(_ lines: [String], px: CGFloat) -> CGSize {
     let tw = lines.map { textWidth($0) }.max() ?? 0
-    return CGSize(width: CGFloat(tw + 8) * px, height: CGFloat(lines.count * 5 + (lines.count - 1) * 2 + 6) * px)
+    let rows = lines.reduce(0) { $0 + lineRows($1) }
+    return CGSize(width: CGFloat(tw + 8) * px, height: CGFloat(rows + (lines.count - 1) * 2 + 6) * px)
 }
 
 /// Draws a bubble at (bx, by) with its tail at tipX, pointing down (or up when `tailUp`).
@@ -443,9 +493,11 @@ func drawBubble(_ ctx: CGContext, _ lines: [String], bx: CGFloat, by: CGFloat, t
     ctx.fill([CGRect(x: bx + px, y: by + px, width: bw - 2 * px, height: bh - 2 * px),
               CGRect(x: tx - px, y: t0, width: 3 * px, height: px),
               CGRect(x: tx, y: t0 + dir * px, width: px, height: px)])
+    var row = 3
     for (i, l) in lines.enumerated() {
-        let w = CGFloat(textWidth(l)) * px
-        drawText(l, ctx, snap(bx + (bw - w) / 2), by + 3 * px + CGFloat(i * 7) * px, px,
+        let w = CGFloat(textWidth(l)) * px, tall = lineRows(l) > 5
+        drawText(l, ctx, snap(bx + (bw - w) / 2), by + CGFloat(row + (tall ? 2 : 0)) * px, px,
                  i == 0 ? ink : basePalette[Int(Col.ink2.rawValue)])
+        row += lineRows(l) + 2
     }
 }

@@ -68,7 +68,7 @@ final class Item {
     var refusedBy = false
     var held = false, onGround = false, gone = false, leaving = false, landed = false
     let born: Double
-    var life: Double                       // snacks disappear when nobody eats them
+    var life: Double                       // snacks disappear when nobody eats them (sooner once refused)
     var spin = 0.0, flap = 0.0
     let variant = Int.random(in: 0..<4)       // a butterfly's wing pattern
     var target: CGPoint?
@@ -132,7 +132,10 @@ final class Item {
             fly(dt, world: world)
         } else if !held {
             let a = world.area(near: CGPoint(x: x, y: y + 4))
-            if world.gravity && !(world.pet?.wallMode ?? false) {   // a pet up on the edges gets its food floated over
+            // a pet up on the edges gets its food floated over (decided by the pet it's for, not always your main pet;
+            // a bat flies down for it instead)
+            let floats = claim.map { $0.wallMode && $0.family != .bat } ?? false
+            if world.gravity && !floats {
                 if !(onGround && abs(vx) < 1) {
                     vy -= 2100 * fdt * s / 4
                     x += vx * fdt; y += vy * fdt
@@ -197,8 +200,13 @@ final class Item {
             target = CGPoint(x: x + (Bool.random() ? 1400 : -1400), y: a.minY + 700)
         }
         let near = hypot(pet.x - x, pet.y - y) < 90 * s / 4
-        if !leaving && (target == nil || world.t > retarget || near) {
-            if near {
+        let hover = world.stillness == 1               // your pet is staying put: the butterfly flutters about right by it
+        if !leaving && (target == nil || world.t > retarget || (near && !hover)) {
+            if hover {
+                let base = world.gravity && !pet.wallMode ? a.minY : pet.y
+                target = CGPoint(x: clamp(pet.x + CGFloat(rnd(-90, 90)) * s / 4, a.minX + 30, a.maxX - 30),
+                                 y: clamp(base + CGFloat(rnd(40, 120)) * s / 4, a.minY + 30, a.maxY - 40))
+            } else if near {
                 let tx = x + (x > pet.x ? 1 : -1) * CGFloat(rnd(140, 240))
                 target = CGPoint(x: clamp(tx, a.minX + 30, a.maxX - 30), y: clamp(y + CGFloat(rnd(60, 160)) * s / 4, a.minY + 40, a.maxY - 40))
             } else {
@@ -291,6 +299,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     let google = Google()
     let macCal = MacCalendar()
     let ics = ICSCalendar()
+    /// ManageBac's tasks and deadlines, from its calendar link: reminders the evening before and the morning of.
+    let tasks = ICSCalendar(key: "managebacURL", days: 8)
     let agendaCard = FloatingCard()
     let musicCard = FloatingCard()
     private let musicModel = MusicCardModel()
@@ -346,6 +356,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     private var recentKeys: [Double] = []
     var lastKeyT = -1000.0, tapUntil = 0.0
     var videoPID: pid_t?, videoFrame: CGRect?, lastVideoSeen = -1000.0
+    /// Apps making sound right now (asked off the main thread), so a muted clip in a document isn't taken for a video.
+    private var soundingNow: [String] = [], videoScanning = false
     var fullscreen = false
     /// Fullscreen for anything but a video: pets head for the top edge. Fullscreen videos (YouTube...) keep them at the
     /// bottom, sitting in the black bar to watch; a short pause in the video doesn't send them back up.
@@ -367,6 +379,20 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     var followFor = 60.0                 // "come here": seconds, 0 = until you press the pin again
     var followSpeed = 1                  // 0 slow, 1 normal, 2 fast
     var showName = false
+    /// Study mode: every pet sits and reads until you switch it off.
+    var studying = UserDefaults.standard.bool(forKey: "studying") { didSet { UserDefaults.standard.set(studying, forKey: "studying") } }
+
+    func toggleStudy() {
+        studying.toggle()
+        lastPlay = t
+        if studying {
+            for p in pets where !p.inAir && p.mode != .held { p.forcedNap = false; p.begin(.study) }
+            pet.say(["STUDY TIME!"], 1.8)
+        } else {
+            for p in pets where p.mode == .study { p.setMode(.idle); if p.family == .bat && p.edge == 0 { p.swoop(home: true) } }     // the bat flies back up
+            pet.say(["BREAK TIME!"], 1.6); pet.hearts(2)
+        }
+    }
     var volumes: [String: Double] = [:]  // Synth.categories (and "all") -> 0...1
     let habitCard = FloatingCard()
     var habits: [Habit] = []
@@ -391,6 +417,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     var companions: [Pet] = []
     var pets: [Pet] { [pet] + companions }
     static let maxCompanions = 4
+    /// Pets you sent home: their names, outfits and moods, for when they come back.
+    var resting: [PetRecord] = []
     private var uiTimer: Timer?
     private var imageCache: [String: NSImage] = [:]
 
@@ -435,7 +463,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             Secrets.load()
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.google.loadSecrets(); self.ics.loadSecrets(); self.player.loadSecrets()
+                self.google.loadSecrets(); self.ics.loadSecrets(); self.tasks.loadSecrets(); self.player.loadSecrets()
                 self.nextCalendar = self.t        // fetch the calendar now that we can sign in
                 self.ui.refresh()
             }
@@ -531,7 +559,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         items.removeAll { $0.gone }
         if t > nextButterfly {
             nextButterfly = t + rnd(600, 1500)
-            if chance(0.6) && !hidden && (pet.mode == .idle || pet.mode == .walk || pet.mode == .fly) { releaseButterfly() }
+            if chance(0.6) && !hidden && stillness < 2 && !studying && (pet.mode == .idle || pet.mode == .walk || pet.mode == .fly) { releaseButterfly() }
         }
         if t > nextReminderCheck { nextReminderCheck = t + 20; checkReminders() }
         if agendaCard.visible && (t > agendaCard.until || (typingNow && lastKeyT > agendaShownAt + 0.5) || hidden || pet.mode == .held) { agendaCard.hide() }
@@ -577,7 +605,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             if musicCard.isKey || musicCard.frame.insetBy(dx: -12, dy: -12).contains(NSEvent.mouseLocation) { musicCard.until = t + 3 }   // stays while you use it
             if t > musicCard.until || hidden || pet.mode == .held { musicCard.hide() }
         }
-        if t > nextCalendar { nextCalendar = t + 600; google.refreshEvents(nil); ics.refresh(nil); macCal.refresh() }
+        if t > nextCalendar { nextCalendar = t + 600; google.refreshEvents(nil); ics.refresh(nil); tasks.refresh(nil); macCal.refresh() }
         if t > nextSave {
             nextSave = t + 30
             save()
@@ -597,17 +625,19 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         isNight = h >= 22 || h < 7
     }
 
+    /// Every pet gets hungry, tired and bored on its own (it used to be only your main pet).
     func updateStats(_ dt: Double) {
-        let p = pet!
-        let asleep = p.mode == .sleeping || p.mode == .catnap
-        p.fullness -= dt * (asleep ? 0.5 : 1) * 100 / (6 * 3600)
-        p.energy += asleep ? dt * 100 / (15 * 60) : -dt * 100 / (10 * 3600)
-        var hap = -dt * 100 / (8 * 3600) * (p.fullness < 20 ? 2 : 1)
-        if p.mode == .typing || p.mode == .watching || p.mode == .listening { hap += dt * 100 / (3 * 3600) }
-        p.happiness += hap
-        p.fullness = clamp(p.fullness, 0, 100)
-        p.energy = clamp(p.energy, 0, 100)
-        p.happiness = clamp(p.happiness, 0, 100)
+        for p in pets {
+            let asleep = p.mode == .sleeping || p.mode == .catnap
+            p.fullness -= dt * (asleep ? 0.5 : 1) * 100 / (6 * 3600)
+            p.energy += asleep ? dt * 100 / (15 * 60) : -dt * 100 / (10 * 3600)
+            var hap = -dt * 100 / (8 * 3600) * (p.fullness < 20 ? 2 : 1)
+            if p.mode == .typing || p.mode == .watching || p.mode == .listening { hap += dt * 100 / (3 * 3600) }
+            p.happiness += hap
+            p.fullness = clamp(p.fullness, 0, 100)
+            p.energy = clamp(p.energy, 0, 100)
+            p.happiness = clamp(p.happiness, 0, 100)
+        }
     }
 
     func poof(at pt: CGPoint) {
@@ -671,6 +701,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         // Video players hold a "keep the display awake" power assertion while playing.
         var u: Unmanaged<CFDictionary>?
         var found: pid_t?
+        var candidates: [(pid: pid_t, name: String)] = []
         if IOPMCopyAssertionsByProcess(&u) == kIOReturnSuccess, let dict = u?.takeRetainedValue() as NSDictionary? {
             let skip = ["caffeinate", "amphetamine", "keepingyouawake", "lungo", "theine", "powerd", "coreaudiod", "claude", "honk"]
             for (k, v) in dict {
@@ -681,9 +712,30 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
                     let pname = (a["Process Name"] as? String ?? "").lowercased()
                     let aname = (a["AssertName"] as? String ?? "").lowercased()
                     if skip.contains(where: { pname.contains($0) || aname.contains($0) }) { continue }
-                    found = (a["AssertionOnBehalfOfPID"] as? NSNumber)?.int32Value ?? pid
+                    candidates.append(((a["AssertionOnBehalfOfPID"] as? NSNumber)?.int32Value ?? pid, aname))
                 }
             }
+        }
+        // Keeping the screen awake isn't enough on its own: browsers do it for a muted clip in a document, and so do some
+        // reading and presenting apps. It's a video when that app is making sound, or when it's clearly a video player
+        // in front of you and you've sat back for a while.
+        if #available(macOS 14.2, *) {
+            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            found = candidates.first { c in
+                let bid = NSRunningApplication(processIdentifier: c.pid)?.bundleIdentifier ?? ""
+                let heard = !bid.isEmpty && soundingNow.contains { $0.hasPrefix(bid) || bid.hasPrefix($0) }
+                let videoish = ["video", "movie", "film", "media playback"].contains { c.name.contains($0) }
+                return heard || (videoish && c.pid == front && idleSecs > 45)
+            }?.pid
+            if !candidates.isEmpty && !videoScanning {
+                videoScanning = true
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    let s = Self.soundingApps()
+                    DispatchQueue.main.async { self?.soundingNow = s; self?.videoScanning = false }
+                }
+            } else if candidates.isEmpty { soundingNow = [] }
+        } else {
+            found = candidates.first?.pid
         }
         videoPID = found
         if found != nil { lastVideoSeen = t }
@@ -1049,17 +1101,30 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     }
     var awakeHours: Bool { let h = wakingHours, now = Date(); return now >= h.start && now < h.end }
     /// What you'd have had by now, spreading your goal evenly over your waking hours.
-    var waterExpected: Int {
-        let h = wakingHours
-        let f = min(1, max(0, Date().timeIntervalSince(h.start) / h.end.timeIntervalSince(h.start)))
+    /// How much you'd have had by now on an even pace through your waking hours (an hour after you wake to bedtime: nobody
+    /// drinks the moment they're up).
+    func waterExpected(at d: Date) -> Int {
+        let h = wakingHours, start = h.start.addingTimeInterval(3600)
+        guard h.end > start else { return 0 }
+        let f = min(1, max(0, d.timeIntervalSince(start) / h.end.timeIntervalSince(start)))
         return Int(Double(waterGoalML) * f)
     }
-    /// "On track", "About 1 glass behind", "Ahead of schedule"...
+    var waterExpected: Int { waterExpected(at: Date()) }
+    /// "On track", "Ahead of schedule", or something to aim for in the next couple of hours ("Aim for 2 more glasses by
+    /// 3 PM") rather than a running tally of how far behind you are.
     var paceText: String {
-        let today = waterToday, goal = waterGoalML, behind = waterExpected - today
+        let today = waterToday, goal = waterGoalML
         if today >= goal { return "Goal reached!" }
-        if behind <= servingML / 2 { return today > waterExpected + servingML ? "Ahead of schedule" : "On track" }
-        return "About \(waterText(max(servingML, (behind / servingML) * servingML))) behind"
+        let slack = max(servingML / 2, 200)
+        if waterExpected - today <= slack { return today > waterExpected + servingML ? "Ahead of schedule" : "On track" }
+        let cal = Calendar.current, h = wakingHours
+        var by = cal.date(bySetting: .minute, value: 0, of: Date().addingTimeInterval(2 * 3600)) ?? Date().addingTimeInterval(2 * 3600)
+        if by > h.end { by = h.end }
+        let need = min(goal - today, max(servingML, waterExpected(at: by) - today))
+        let rounded = min(goal - today, ((need + servingML - 1) / servingML) * servingML)
+        let tf = DateFormatter()
+        tf.setLocalizedDateFormatFromTemplate(by.timeIntervalSince(cal.date(bySetting: .minute, value: 0, of: by) ?? by) > 60 ? "jmm" : "j")
+        return "Aim for \(waterText(rounded)) more by \(tf.string(from: by))"
     }
 
     /// Time for a reminder? Every so often, or (adapting to your pace) sooner the further behind you are and not at all
@@ -1216,7 +1281,28 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         return String(cut) + ".."
     }
 
+    /// ManageBac tasks: the evening before a task is due (from 4 PM) and the morning it's due (from 8 AM), once each.
+    func checkTasks() {
+        guard tasks.connected, !hidden else { return }
+        let cal = Calendar.current, nowD = Date()
+        let hour = cal.component(.hour, from: nowD)
+        for e in tasks.events where e.end > nowD || e.allDay {
+            let due = cal.startOfDay(for: e.allDay ? e.start : e.end.addingTimeInterval(-1))
+            let today = cal.startOfDay(for: nowD)
+            let daysLeft = cal.dateComponents([.day], from: today, to: due).day ?? 99
+            let kind = daysLeft == 1 && hour >= 16 ? "eve" : daysLeft == 0 && hour >= 8 ? "day" : nil
+            guard let kind, !reminded.contains("task" + e.id + kind) else { continue }
+            reminded.insert("task" + e.id + kind)
+            let name = shortTitle(e.title)
+            pet.say(["HOMEWORK!", name.isEmpty ? "A TASK" : name, kind == "eve" ? "DUE TOMORROW" : "DUE TODAY"], 7)
+            pet.spawnBang()
+            synth.play("chime")
+            return                                   // one at a time; the next one comes a little later
+        }
+    }
+
     func checkReminders() {
+        checkTasks()
         guard calendarConnected else { return }
         let nowD = Date()
         for e in calendarEvents where !e.allDay {
@@ -1240,27 +1326,31 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
 
     // MARK: Actions
 
-    func feed(_ kind: ItemKind) {
+    /// Food for one pet (your main pet unless you say which): it lands by that pet and it's saved for it.
+    func feed(_ kind: ItemKind, for target: Pet? = nil) {
         lastPlay = t
         showIfHidden()
-        let p = pet!
+        let p = target ?? pet!
         let a = area(near: CGPoint(x: p.x, y: p.y))
         if gravity {
             let fx = clamp(p.x + CGFloat(p.facing) * CGFloat(rnd(110, 240)) * scale / 4, a.minX + 40, a.maxX - 40)
-            items.append(Item(kind: kind, x: fx, y: area(near: CGPoint(x: fx, y: p.y)).maxY - 14 * scale, scale: scale, t: t, hidden: hidden))
+            let it = Item(kind: kind, x: fx, y: area(near: CGPoint(x: fx, y: p.y)).maxY - 14 * scale, scale: scale, t: t, hidden: hidden)
+            items.append(it)
+            if !p.hungry { if !p.isAsleep { p.say(["I'M FULL!"], 2) } }           // it stays put for whoever's hungry, then vanishes
+            else if !companions.isEmpty && !p.isAsleep { p.releaseFood(); it.claim = p; p.food = it; p.spawnBang(); p.begin(.eating) }   // nobody else gets it
         } else {
             let it = Item(kind: kind, x: a.midX + CGFloat(rnd(-200, 200)), y: a.midY + CGFloat(rnd(-100, 100)), scale: scale, t: t, hidden: hidden)
             it.vx = CGFloat(rnd(-80, 80)); it.vy = CGFloat(rnd(-80, 80))
-            it.claim = p; p.food = it; p.begin(.eating)
+            if p.hungry { it.claim = p; p.food = it; p.begin(.eating) } else if !p.isAsleep { p.say(["I'M FULL!"], 2) }
             items.append(it)
         }
         p.panel.orderFrontRegardless()
     }
 
-    func throwBall() {
+    func throwBall(for target: Pet? = nil) {
         lastPlay = t
         showIfHidden()
-        let p = pet!
+        let p = target ?? pet!
         if let old = items.first(where: { $0.isBall }) {        // already out: bring it back instead of ignoring the press
             old.close()
             items.removeAll { $0 === old }
@@ -1281,10 +1371,12 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     func releaseButterfly() {
         lastPlay = t
         showIfHidden()
-        guard !items.contains(where: { $0.kind == .butterfly }), let p = pet else { return }
+        // holding completely still: no butterflies. Staying put: it turns up right beside your pet
+        guard stillness < 2, !items.contains(where: { $0.kind == .butterfly }), let p = pet else { return }
         let vf = area(near: CGPoint(x: p.x, y: p.y))
         let left = p.x - vf.minX > vf.maxX - p.x
-        items.append(Item(kind: .butterfly, x: left ? vf.minX + 10 : vf.maxX - 10, y: vf.minY + 160 * scale / 4, scale: scale, t: t, hidden: hidden))
+        let bx = stillness == 1 ? clamp(p.x + (left ? -1 : 1) * 110 * scale / 4, vf.minX + 30, vf.maxX - 30) : (left ? vf.minX + 10 : vf.maxX - 10)
+        items.append(Item(kind: .butterfly, x: bx, y: vf.minY + 160 * scale / 4, scale: scale, t: t, hidden: hidden))
     }
 
     func setGravity(_ on: Bool) {
@@ -1311,8 +1403,11 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     }
 
     /// The menu's stay-in-place button: roams, then stays put, then holds completely still, then roams again.
+    /// The paw button, in four steps: roams, stays put, holds completely still, reads (study mode), then roams again.
     func cycleStillness() {
-        stillness = (stillness + 1) % 3
+        if studying { toggleStudy(); stillness = 0; save(); return }          // reading -> free to roam
+        if stillness == 2 { stillness = 0; save(); toggleStudy(); return }    // completely still -> reading
+        stillness += 1
         save()
         pet.say([["FREE TO ROAM!"], ["I'LL STAY HERE"], ["FREEZE!"]][stillness], 1.8)
     }
@@ -1443,9 +1538,13 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             c.say(["BYE!"], 1)
             c.panel.orderOut(nil); c.bubble.hide(); c.nameTag.hide()
             companions.removeAll { $0 === c }
+            resting.removeAll { $0.species == sp }; resting.append(c.record)      // its name and outfit wait for it
         } else if sp != pet.species && companions.count < Self.maxCompanions {
-            let r = PetRecord(id: UUID().uuidString, species: sp, name: sp.defaultName, outfit: Outfit(), fullness: 80, happiness: 85, energy: 90,
-                              x: Double(pet.x) + Double.random(in: -160...160))
+            // back again: with the name and outfit it had
+            var r = resting.first { $0.species == sp }
+                ?? PetRecord(id: UUID().uuidString, species: sp, name: sp.defaultName, outfit: Outfit(), fullness: 80, happiness: 85, energy: 90, x: 0)
+            resting.removeAll { $0.species == sp }
+            r.x = Double(pet.x) + Double.random(in: -160...160)
             let c = Pet(world: self, record: r)
             companions.append(c)
             if !hidden { c.spawnIn() } else { c.panel.orderOut(nil) }
@@ -1453,9 +1552,21 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         save()
     }
 
+    /// Off: the other pets go home, but they're remembered (names, outfits, moods) and come back when it's on again.
     func setMultiPets(_ on: Bool) {
-        multiPets = on
-        if !on { for c in companions { c.panel.orderOut(nil); c.bubble.hide() }; companions = [] }
+        guard on != multiPets else { return }
+        if !on {
+            save()                                           // remember who was out, then send them home
+            for c in companions { c.panel.orderOut(nil); c.bubble.hide(); c.nameTag.hide() }
+            companions = []
+            multiPets = false
+        } else {
+            multiPets = true
+            if let data = defaults.data(forKey: "companions"), let recs = try? JSONDecoder().decode([PetRecord].self, from: data) {
+                companions = recs.filter { $0.species != pet.species }.prefix(Self.maxCompanions).map { Pet(world: self, record: $0) }
+                for c in companions { if !hidden { c.spawnIn() } else { c.panel.orderOut(nil) } }
+            }
+        }
         save()
     }
 
@@ -1472,10 +1583,11 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         save()
     }
 
-    func setOutfit(_ o: Outfit) {
-        guard pet.outfit != o else { return }
-        pet.outfit = o
-        pet.admire()
+    func setOutfit(_ o: Outfit, for target: Pet? = nil) {
+        let p = target ?? pet!
+        guard p.outfit != o else { return }
+        p.outfit = o
+        p.admire()
         save()
     }
 
@@ -1696,6 +1808,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if multiPets, let data = d.data(forKey: "companions"), let recs = try? JSONDecoder().decode([PetRecord].self, from: data) {
             companions = recs.prefix(Self.maxCompanions).map { Pet(world: self, record: $0) }
         }
+        if let data = d.data(forKey: "restingPets"), let recs = try? JSONDecoder().decode([PetRecord].self, from: data) { resting = recs }
     }
 
     func save() {
@@ -1726,7 +1839,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
         d.set(multiPets, forKey: "multiPets")
         d.set(playTogether, forKey: "playTogether")
-        if let data = try? JSONEncoder().encode(companions.map(\.record)) { d.set(data, forKey: "companions") }
+        if multiPets, let data = try? JSONEncoder().encode(companions.map(\.record)) { d.set(data, forKey: "companions") }    // kept while it's off
+        if let data = try? JSONEncoder().encode(resting) { d.set(data, forKey: "restingPets") }
         d.set(Date().timeIntervalSince1970, forKey: "savedAt")
     }
 
@@ -1757,6 +1871,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             return
         }
         guard let b = statusItem.button else { return }
+        ui.focus = nil
         open(from: b, rect: b.bounds, edge: .minY)
     }
 
@@ -1767,6 +1882,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             return
         }
         popoverPet = p
+        ui.focus = p === pet ? nil : p.id          // the menu looks after the pet you clicked
         p.freeze()
         let f = p.panel.frame
         open(from: p.view, rect: NSRect(x: r.minX - f.minX, y: f.maxY - r.maxY, width: r.width, height: r.height), edge: .maxY)

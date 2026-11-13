@@ -6,16 +6,20 @@ enum Mode {
     case fly, glide, drift, landing, dizzy, held,
          idle, walk, typing, watching, listening, yawning, sleeping, waking, catnap,
          eating, refusing, ball, tired, butterfly, vocal, angry, petted, beg, zoomies, hunt, agenda,
-         social                                  // doing something with another pet (Social.swift)
+         social,                                 // doing something with another pet (Social.swift)
+         study                                   // study mode: reading a book (thinking hard now and then, dozing off)
 }
-enum IdleAct { case stand, look, preen, peck, sit, vocal, yawn, flap, hop, gaze, lie, groom, stretch, beg }
+enum IdleAct { case stand, look, preen, peck, sit, vocal, yawn, flap, hop, gaze, lie, groom, stretch, beg,
+                rear,       // a red panda standing up on its hind legs for a look around
+                hide,       // a turtle pulling into its shell for a moment
+                press }     // facing you, a paw pressed against the screen (click it for a high five)
 enum FlyGoal { case wander, land }
 
 /// Things a pet has to be on the floor for.
 private let edgeAngle: [CGFloat] = [0, -.pi / 2, .pi, .pi / 2]
 
 private let groundModes: Set<Mode> = [.typing, .watching, .listening, .yawning, .sleeping, .waking, .catnap,
-                                      .tired, .beg, .zoomies, .hunt, .walk, .refusing, .agenda, .social]
+                                      .tired, .beg, .zoomies, .hunt, .walk, .refusing, .agenda, .social, .study]
 
 struct PetRecord: Codable {
     var id: String
@@ -175,6 +179,9 @@ final class Pet {
     var noticedUntil = -10.0
     var playUntil = -10.0           // playing with a toy you just gave it: typing waits a moment
     var sliding = false           // dragged along the top edge in fullscreen
+    var flyUntil = 0.0                // a bat's free flight: when it heads home to hang again
+    // study mode: 0 reading, 1 thinking very hard, 2 dozing over the book, 3 jolted awake
+    var studyState = 0, studyUntil = 0.0, nextThink = 0.0, nextPage = 0.0, pageUntil = 0.0, dozeAt = 0.0
     var followUntil = 0.0             // "come here": tags along after the cursor until then (forever = until you stop it)
     var following: Bool { t < followUntil }
     /// "Stay in place": 0 moves around, 1 stays put but still grooms and looks around, 2 holds still. Following wins.
@@ -221,10 +228,20 @@ final class Pet {
     }
 
     var family: Family { species.family }
+    /// Only goes for food when it has room for it; a full pet leaves snacks alone (they vanish after a while).
+    var hungry: Bool { fullness < 85 }
+    /// Its place in the line-up: 0 your main pet, then the others in the order they came along.
+    var petIndex: Int { world.pets.firstIndex { $0 === self } ?? 0 }
+    /// A red panda is cat-like in this app, but it twitters instead of mrrping, never purrs, and squeaks instead of shrieking.
+    var mrrp: String { species == .redPanda ? "chirp" : "mrrp" }
+    var purr: String { species == .redPanda ? "chirp" : "purr" }
+    var eek: String { species == .redPanda ? "EEP!" : "EEK!" }
     var isBird: Bool { species.isBird }
     /// Walking the screen edges instead of the floor: zero gravity, or a fullscreen app (then only the top edge).
     var wallMode: Bool { !isBird && (!world.gravity || world.fullscreenUp || family == .bat) }
-    var flyMode: Bool { isBird && (!world.gravity || world.fullscreenUp) }
+    var flyMode: Bool { isBird ? (!world.gravity || world.fullscreenUp) : batFlies }
+    /// Gravity off: the bat goes on long free flights round the screen, and hangs from the top edge to rest.
+    var batFlies: Bool { family == .bat && !world.gravity && !world.fullscreenUp }
     /// A fullscreen app: four-legged pets get spooked, leap to the top edge and hang out there upside down.
     /// Bats always live up there, hanging.
     var ceilingMode: Bool { !isBird && (world.fullscreenUp || family == .bat) }
@@ -241,6 +258,7 @@ final class Pet {
         if moving { return 15 }                           // its pixels are 4 pt wide, so walking looks the same at 15
         switch mode {
         case .sleeping, .catnap: return 4                // drifting Zzz read fine at 4
+        case .study: return studyState == 1 ? 12 : (studyState == 2 ? 4 : (t < pageUntil + 0.2 ? 16 : 6))
         default: break
         }
         if !particles.isEmpty { return 12 }               // hearts and notes float slowly
@@ -476,11 +494,15 @@ final class Pet {
         guard mode != .held else { return }
         if ceilingMode {
             guard edge != 2 || mode == .drift else { return }
-            if family == .bat { if mode != .drift { swoop(home: true) }; return }
+            if family == .bat {
+                if inAir { flyGoal = .land; afterLand = nil; return }       // mid-flight: it flies home by itself
+                if mode != .drift { swoop(home: true) }
+                return
+            }
             // Startled by the fullscreen app: a jump, and a dash for the top edge.
             releaseFood()
             spawnBang()
-            say([family == .cat ? "EEK!" : "WHOA!"], 1.4)
+            say([family == .cat ? eek : "WHOA!"], 1.4)
             world.synth.play(family == .cat ? "hiss" : "woof")
             hopY = 0; hopV = 0; umbrella = false
             vx = 0; vy = 1500 * s / 4
@@ -508,6 +530,20 @@ final class Pet {
                 if mode == .glide { umbrella = false; setMode(.drift) }
             }
         }
+    }
+
+    /// Drops off the top edge into a free flight (gravity off), fluttering about for a while before it hangs up again.
+    func batFlight() {
+        guard !inPlace else { return }
+        let a = area()
+        edge = 0
+        inAir = true
+        y = min(y, a.maxY - 24 * s)
+        vx = CGFloat(facing) * 60; vy = -120 * s / 4
+        flyGoal = .wander; flyTarget = nil; afterLand = nil
+        flyUntil = t + rnd(10, 28)
+        world.synth.play("chirp")
+        setMode(.fly)
     }
 
     func takeOff() {
@@ -563,6 +599,9 @@ final class Pet {
             walkTarget = farTarget()
         case .hunt:
             huntPhase = 0; huntT = 0
+        case .study:
+            moving = false
+            studyState = 0; nextThink = t + rnd(20, 50); nextPage = t + rnd(4, 9); dozeAt = t + rnd(240, 600)
         case .catnap:
             nextZ = t + 1
         case .sleeping:
@@ -602,14 +641,15 @@ final class Pet {
         let w = world
         if w.typingNow && allowed(.typing) { return begin(.typing) }
         if w.videoPlaying && allowed(.watching) { return begin(.watching) }
-        if let f = w.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
+        if hungry, let f = w.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
             f.claim = self
             food = f
             spawnBang()
             return begin(.eating)
         }
-        if w.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { return begin(.ball) }
-        if !inPlace, w.items.contains(where: { $0.kind == .butterfly && !$0.leaving && !$0.gone }) {
+        if family != .bat, w.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { return begin(.ball) }
+        // staying put, it still watches and paws at a butterfly right there; holding completely still, it doesn't
+        if stillness < 2, w.items.contains(where: { $0.kind == .butterfly && !$0.leaving && !$0.gone }) {
             spawnBang()
             return begin(.butterfly)
         }
@@ -626,7 +666,7 @@ final class Pet {
         if following { follow() }
         // "completely still": one calm pose (it still blinks) until you switch it off, put it to sleep or pick it up;
         // typing along, watching and listening still happen in place if Settings allows them
-        let busy: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .sleeping, .yawning, .catnap, .waking, .agenda]
+        let busy: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .sleeping, .yawning, .catnap, .waking, .agenda, .study]
         let reacting = [.typing, .watching, .listening].contains(mode) && allowed(mode)
         if stillness == 2 { hopV = 0; hopY = 0 }                  // no hops either
         if stillness == 2 && !inAir && !busy.contains(mode) && !reacting {
@@ -646,13 +686,17 @@ final class Pet {
         }
         // food and toys get noticed even mid-typing or mid-movie
         if !inAir && [.typing, .watching, .listening].contains(mode) {
-            if let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
+            if hungry, let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
                 f.claim = self; food = f; spawnBang(); begin(.eating); return
             }
             if world.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { playUntil = t + 10; spawnBang(); begin(.ball); return }
         }
         // notice typing and videos whatever it's busy with, except moments it can't stop (held, falling, landing, eating)
-        let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking,
+        // study mode: nothing else, until it's switched off (typing and videos don't pull it away from its book)
+        if world.studying && !inAir && ![.held, .glide, .drift, .landing, .dizzy, .study].contains(mode) && !forcedNap {
+            begin(.study); return
+        }
+        let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking, .study,
                                  .sleeping, .yawning, .catnap, .agenda]
         if !inAir && !cannot.contains(mode) && !(mode == .ball && t < playUntil) {
             if world.typingNow && allowed(.typing) { begin(.typing); return }
@@ -669,7 +713,7 @@ final class Pet {
         case .walk:
             if ambientInterrupt() { return }
             let pace: CGFloat = following ? [0.6, 1, 1.9][max(0, min(2, world.followSpeed))] : 1
-            if go(walkTarget, speed: (isBird ? 55 : (family == .dog ? 50 : 42)) * pace, dt, run: running) {
+            if go(walkTarget, speed: (isBird ? 55 : family == .dog ? 50 : family == .turtle ? 15 : 42) * pace, dt, run: running && family != .turtle) {
                 if let friend = visiting, abs(friend.x - x) < 60 * s {         // got to the friend it was visiting
                     visiting = nil
                     if napWithFriend { napWithFriend = false; face(toward: CGPoint(x: friend.x, y: friend.y), dead: 0); begin(.yawning) }
@@ -750,7 +794,50 @@ final class Pet {
             }
         case .hunt: huntThink(dt)
         case .social: socialStep(dt)
+        case .study: studyThink(dt)
         }
+    }
+
+    /// Study mode: reads, turns a page now and then, sometimes thinks very hard (never while music's on), and
+    /// eventually dozes off over the book; a tap jolts it awake and back to work.
+    func studyThink(_ dt: Double) {
+        guard world.studying else { setMode(.idle); act = isBird ? .stand : .sit; actT = 0; actDur = 2; return }
+        moving = false
+        if family == .bat && (edge != 0 || inAir) {
+            // a bat comes down off the ceiling to read on the floor with everyone else
+            let a = area()
+            if !inAir { edge = 0; inAir = true; vx = 0; vy = -60 }
+            flyTo(CGPoint(x: x, y: a.minY), speed: 130, dt)
+            if y - a.minY < 4 { inAir = false; vx = 0; vy = 0; p = perimeterP(nearX: x, y: a.minY); placeOnPerimeter() }
+            return
+        }
+        switch studyState {
+        case 1:
+            if t > studyUntil || world.musicPlaying {
+                studyState = 0; nextThink = t + rnd(35, 90)
+                if chance(0.45) { say([["AHA!", "GOT IT!", "OH!", "HMM..."].randomElement()!], 1.4) }
+            }
+        case 2:
+            if t > nextZ { nextZ = t + rnd(1.2, 1.8); spawnZ() }
+            if t > studyUntil { studyState = 0; dozeAt = t + rnd(300, 700); say(["*YAWN*"], 1.2) }
+        case 3:
+            if t > studyUntil { studyState = 0 }
+        default:
+            if t > nextPage { pageUntil = t + 1.1; nextPage = t + rnd(5, 11) }          // turns a page
+            if t > nextThink && !world.musicPlaying {
+                studyState = 1; studyUntil = t + rnd(3, 5)
+            }
+            else if t > dozeAt || (energy < 30 && chance(dt / 90)) { studyState = 2; studyUntil = t + rnd(60, 180); nextZ = t + 1 }
+        }
+    }
+
+    /// Tapped while dozing over its book: a jolt, and straight back to studying.
+    func startleStudying() {
+        spawnBang()
+        say([["HUH?!", "I'M AWAKE!", "I WAS READING!"].randomElement()!], 1.4)
+        world.synth.play(isBird ? "squawk" : species.vocal.sound)
+        if !inPlace || stillness < 2 { hopV = 230 * s / 4 }
+        studyState = 3; studyUntil = t + 1.3; dozeAt = t + rnd(300, 700)
     }
 
     func greetOrIdle() {
@@ -766,7 +853,7 @@ final class Pet {
         } else {
             say(["HI!"], 1.8)
         }
-        world.synth.play(family == .cat ? "mrrp" : "chirp")
+        world.synth.play(family == .cat ? mrrp : "chirp")
     }
 
     func idleThink(_ dt: Double) {
@@ -779,9 +866,18 @@ final class Pet {
         if pal != nil { pal = nil; game = nil; socialGoal = nil }          // a game that got interrupted
         visiting = nil; napWithFriend = false
         if ambientInterrupt() { return }
+        // your cursor resting on it: it comes right up to the glass and presses a paw against it
+        if mouseInside && t - cursorMovedAt > 1.0 && act != .press && edge == 0 && !isBird && family != .bat && family != .turtle && chance(dt * 1.5) {
+            act = .press; actT = 0; actDur = rnd(3, 4.5)
+            world.synth.play(family == .cat ? mrrp : "chirp")
+            return
+        }
         if friendThink() { return }
         if modeT > 4 && makeRoom() { return }
-        if flyMode && modeT > (t - world.lastPlay > 180 ? 20 : 1.5) { takeOff(); return }   // calm birds perch a while
+        if flyMode && modeT > (t - world.lastPlay > 180 ? 20 : 1.5) * (family == .bat ? 4 : 1) {    // calm birds perch a while
+            if family == .bat { batFlight() } else { takeOff() }
+            return
+        }
         if fullness < 25 && t > nextBeg {
             nextBeg = t + rnd(70, 140)
             setMode(.beg)
@@ -794,8 +890,10 @@ final class Pet {
             if near && t - cursorMovedAt < 0.4 && chance(dt * 0.25) { setMode(.hunt); return }
         }
         switch act {
-        case .look:
+        case .look, .rear:
             if Int(actT / 0.9) != Int((actT - dt) / 0.9) && chance(0.5) && edge == 0 { facing = -facing; turnAt = t }
+        case .press:
+            break
         case .stand, .gaze, .sit, .lie:
             let m = NSEvent.mouseLocation
             if !mouseInside && hypot(m.x - x, m.y - y) < 500 { face(toward: m, dead: 60) }
@@ -825,6 +923,11 @@ final class Pet {
             actDur = calm ? rnd(8, 20) : rnd(2, 6)
             return
         }
+        // now and then, while you're at the computer: up to the glass to say hi
+        if edge == 0 && !isBird && family != .bat && family != .turtle && world.idleSecs < 10 && chance(0.03) {
+            act = .press; actDur = rnd(3, 4.5)
+            return
+        }
         if t - world.lastPlay > 180 && chance(0.5) {
             // Left alone for a few minutes, pets settle down like real ones: longer rests, fewer walks (and much less power).
             act = isBird ? [.sit, .stand, .sit].randomElement()! : [.lie, .sit, .lie, family == .cat ? .groom : .lie].randomElement()!
@@ -851,6 +954,14 @@ final class Pet {
             default: act = .stand; actDur = rnd(2, 5)
             }
         case .cat:
+            if species == .redPanda {
+                // most awake at dawn and dusk, drowsy through the middle of the day and the night; now and then it
+                // stands up on its hind legs for a look around
+                let h = Calendar.current.component(.hour, from: Date())
+                let lively = (6...9).contains(h) || (17...21).contains(h)
+                if !lively && energy < 95 && chance(0.07) { napEnd = t + rnd(30, 70); setMode(.catnap); return }
+                if r > 0.9 { act = .rear; actDur = rnd(2.5, 4.5); return }
+            }
             switch r {
             case ..<0.26: startWalk(); return
             case ..<0.40: act = .sit; actDur = rnd(5, 14)
@@ -858,7 +969,8 @@ final class Pet {
             case ..<0.60: act = .groom; actDur = rnd(3, 6)
             case ..<0.65: act = .stretch; actDur = 2.2
             case ..<0.71: act = .look; actDur = rnd(2, 4)
-            case ..<0.74: act = .vocal; actDur = 1.0; say([["MEOW", "MRRP?", "MEW"].randomElement()!], 1.0)
+            case ..<0.74: act = .vocal; actDur = 1.0
+                say([(species == .redPanda ? ["EEP", "EEP EEP", "HUFF?"] : ["MEOW", "MRRP?", "MEW"]).randomElement()!], 1.0)
             case ..<0.80:
                 if energy < 85 { napEnd = t + rnd(20, 50); setMode(.catnap); return }
                 act = .lie; actDur = rnd(6, 12)
@@ -868,6 +980,21 @@ final class Pet {
             }
         case .bat:
             act = .stand; actDur = rnd(3, 8)
+        case .turtle:
+            // slow and steady: short strolls, long rests in the sun, a stretch of the neck, a moment in its shell
+            switch r {
+            case ..<0.24: startWalk(); return
+            case ..<0.44: act = .sit; actDur = rnd(6, 16)
+            case ..<0.58: act = .lie; actDur = rnd(8, 20)
+            case ..<0.66: act = .stretch; actDur = rnd(2, 3.5)
+            case ..<0.72: act = .hide; actDur = rnd(3, 6)
+            case ..<0.80:
+                if energy < 90 { napEnd = t + rnd(30, 80); setMode(.catnap); return }
+                act = .lie; actDur = rnd(8, 16)
+            case ..<0.88: act = .gaze; actDur = rnd(2, 4)
+            case ..<0.91: act = .vocal; actDur = 1.0; say([["HMM", "..."].randomElement()!], 1.0)
+            default: act = .stand; actDur = rnd(3, 6)
+            }
         case .dog:
             switch r {
             case ..<0.34: startWalk(); return
@@ -942,7 +1069,7 @@ final class Pet {
     }
 
     func flyThink(_ dt: Double) {
-        if flyGoal == .wander && (!flyMode || shake >= 6) { flyGoal = .land; afterLand = nil }
+        if flyGoal == .wander && (!flyMode || shake >= 6 || (family == .bat && t > flyUntil)) { flyGoal = .land; afterLand = nil }
         if flyGoal == .wander {
             if frozen { flyTarget = CGPoint(x: x, y: y); nextFlyPick = t + 1; flyTo(flyTarget!, speed: 95, dt); return }   // hover by the open menu
             if ambientInterrupt() && (mode != .fly || flyGoal == .land) { return }
@@ -953,9 +1080,22 @@ final class Pet {
                 } else {
                     flyTarget = CGPoint(x: CGFloat.random(in: b.minX...b.maxX), y: CGFloat.random(in: min(b.maxY, b.minY + 40)...b.maxY))
                 }
-                nextFlyPick = t + rnd(3, 7)
+                nextFlyPick = t + (family == .bat ? rnd(1.2, 3) : rnd(3, 7))       // a bat flits about
             }
-            flyTo(flyTarget!, speed: 95, dt)
+            flyTo(flyTarget!, speed: family == .bat ? 115 : 95, dt)
+            return
+        }
+        if family == .bat {
+            // home: up to the top edge, to hang there
+            let a = area(), R = perimeter(a).0
+            flyTo(CGPoint(x: clamp(x + vx * 0.25, R.minX + 4, R.maxX - 4), y: a.maxY), speed: 130, dt)
+            if a.maxY - y < 4 {
+                y = a.maxY; vx = 0; vy = 0
+                inAir = false
+                p = perimeterP(nearX: clamp(x, R.minX + 4, R.maxX - 4), y: y)
+                placeOnPerimeter()
+                if let m = afterLand { afterLand = nil; setMode(m) } else { setMode(.landing) }
+            }
             return
         }
         let fl = world.floorY(x, y)
@@ -1018,7 +1158,7 @@ final class Pet {
                 stars(5)
             } else {
                 setMode(.landing)
-                world.synth.play(family == .cat ? "mrrp" : "pop")
+                world.synth.play(family == .cat ? mrrp : "pop")
             }
             shake = 0
         }
@@ -1066,7 +1206,8 @@ final class Pet {
         }
         if let f = world.videoFrame {
             let r = world.xRange(margin)
-            let seatX = clamp(f.maxX - 60 * s / 4, r.lowerBound, r.upperBound)
+            // several pets: a row of seats along the bottom of the video, so nobody sits on anybody
+            let seatX = clamp(f.maxX - 60 * s / 4 - CGFloat(petIndex) * 28 * s, r.lowerBound, r.upperBound)
             let target = floorTarget(seatX, area().minY)
             if seated && abs(trackDelta(target)) > 140 { seated = false }
             if !seated {
@@ -1102,7 +1243,16 @@ final class Pet {
 
     func eatThink(_ dt: Double) {
         guard let f = food, !f.gone else { food = nil; setMode(.idle); return }
-        if world.gravity && !wallMode {
+        if family == .bat {
+            // it can't reach a snack from the ceiling: it flies down, eats it on the wing, then flies home to hang
+            let m = mouthPoint()
+            if hypot(f.x - m.x, f.y - m.y) > 8 * s {
+                if !inAir { edge = 0; inAir = true; vx = 0; vy = -60 }
+                face(toward: CGPoint(x: f.x, y: f.y), dead: 4)
+                flyTo(CGPoint(x: f.x - (m.x - x), y: f.y - (m.y - y)), speed: 140, dt)
+                return
+            }
+        } else if world.gravity && !wallMode {
             if f.held || !f.onGround {
                 face(toward: CGPoint(x: f.x, y: f.y), dead: 10)
                 if !f.held && !inAir { go(f.x - CGFloat(facing) * 12 * s, speed: 120, dt, run: true) }
@@ -1119,6 +1269,7 @@ final class Pet {
         }
         if fullness > 90 && f.bites == 0 {
             f.refusedBy = true
+            f.life = min(f.life, world.t - f.born + 5)          // nobody wants it: it goes away soon
             releaseFood()
             refuseFacing = facing
             setMode(.refusing)
@@ -1141,7 +1292,7 @@ final class Pet {
             happiness = min(100, happiness + (favorite ? 12 : 6))
             hearts(favorite ? 6 : 4)
             say([favorite ? "MY FAVORITE!" : "YUM!"], 1.8)
-            world.synth.play(family == .cat ? "purr" : "chirp")
+            world.synth.play(family == .cat ? purr : "chirp")
             setMode(.idle)
             act = family == .cat ? .groom : .stand; actT = 0; actDur = 2.5
         }
@@ -1200,12 +1351,15 @@ final class Pet {
             setMode(.idle)
             return
         }
+        if family == .bat && !inAir { edge = 0; inAir = true; vx = 0; vy = -60 }       // bats hunt moths on the wing
         if inAir {
             flyTo(CGPoint(x: b.x - CGFloat(facing) * 12 * s, y: b.y - 8 * s), speed: 120, dt)
         } else {
             go(floorTarget(b.x, b.y), speed: 120, dt, run: true)
-            if edge == 0 && abs(b.x - x) < 40 * s / 4 && b.y - y < 110 * s / 4 && hopY == 0 && chance(dt * 2.5) {
-                hopV = 360 * s / 4
+            if inPlace { face(toward: CGPoint(x: b.x, y: b.y), dead: 6) }            // staying put: it reacts on the spot
+            let reach: CGFloat = (inPlace ? 80 : 40) * s / 4
+            if edge == 0 && abs(b.x - x) < reach && b.y - y < 110 * s / 4 && hopY == 0 && chance(dt * (inPlace ? 1.6 : 2.5)) {
+                hopV = (inPlace ? 300 : 360) * s / 4
             }
         }
     }
@@ -1342,7 +1496,7 @@ final class Pet {
         happiness = min(100, happiness + 6)
         blushUntil = t + 2.5
         hearts(3)
-        world.synth.play(family == .cat ? "purr" : "chirp")
+        world.synth.play(family == .cat ? purr : "chirp")
         if family == .cat && chance(0.6) { say(["PRRR"], 1.4) }
         switch mode {
         case .idle, .walk, .beg, .vocal:
@@ -1451,7 +1605,7 @@ final class Pet {
         guard world.startleOnMusic, world.musicPlaying, world.musicStartedAt > t - modeT else { return false }
         forcedNap = false
         spawnBang()
-        say([family == .cat ? "EEK!" : family == .dog ? "YIKES!" : isBird ? "AAAH!" : "EEK!"], 1.6)
+        say([family == .cat ? eek : family == .dog ? "YIKES!" : isBird ? "AAAH!" : "EEK!"], 1.6)
         world.synth.play(family == .cat ? "hiss" : family == .bird ? "squawk" : species.vocal.sound)
         hopV = 260 * s / 4                     // a jolt, then it shrinks down and trembles
         scaredUntil = t + 2.4
@@ -1523,7 +1677,7 @@ final class Pet {
             umbrella = false
             grab = CGPoint(x: 0, y: (isBird ? 14 : 22) * s)
             setMode(.held)
-            world.synth.play(family == .cat ? "mrrp" : (isBird ? "squawk" : "chirp"))
+            world.synth.play(family == .cat ? mrrp : (isBird ? "squawk" : "chirp"))
             say([chance(0.5) ? "HEY!" : "WHEE!"], 1.2)
             world.closePopover()
         }
@@ -1593,7 +1747,15 @@ final class Pet {
     func clicked() {
         clicks.append(t)
         clicks.removeAll { t - $0 > 2.5 }
+        if mode == .idle && act == .press {                // its paw was up against the glass: a high five
+            hearts(3); say(["HIGH FIVE!"], 1.4); world.synth.play(family == .cat ? mrrp : "chirp")
+            happiness = min(100, happiness + 4); actDur = actT + 1.2
+            return
+        }
         switch mode {
+        case .study where studyState == 2:
+            startleStudying()
+            return
         case .sleeping, .yawning, .catnap:
             forcedNap = false
             setMode(.waking)
@@ -1779,6 +1941,10 @@ final class Pet {
             switch species {
             case .goose:
                 if k < 0.22 { p.headDX = 4; p.headDY = 24; p.eyes = .closed } else { p.headDX = 3; p.headDY = 12; p.eyes = .happy; p.mouth = chew }
+            case .bat:                 // nibbles on the wing (or hanging)
+                p.eyes = .happy; p.mouth = chew
+            case .redPanda:            // sits up and eats from its paw, the way red pandas hold bamboo
+                p.stance = .sit; p.tailUp = false; p.eyes = .happy; p.mouth = chew; p.arm = k < 0.3 ? .scoop : .toMouth
             default:
                 p.stance = .eat; p.eyes = .happy; p.headDY = k < 0.22 ? 1 : 0; p.mouth = chew
             }
@@ -1847,6 +2013,38 @@ final class Pet {
         case .zoomies:
             p.eyes = .wide; p.tailUp = false
             if family == .dog { p.mouth = .tongue }
+        case .study:
+            // a big book open on the floor: lying behind it reading, sitting up with a paw on the page to think,
+            // head down on the pages to doze
+            if inAir { break }                 // a bat on its way down
+            p.prop = .book; p.bob = 0; p.tailUp = false
+            let quad = !isBird && family != .bat && family != .turtle
+            if family == .dog { p.mouth = .closed }
+            if isBird { p.stance = .sit }
+            switch studyState {
+            case 1:                      // thinking very hard
+                p.thinking = true; p.spin = t * 10; p.eyes = blink ? .closed : .open; p.mouth = .closed
+                if quad { p.stance = .sit; p.arm = .tap }
+            case 2:                      // dozed off over the book
+                p.eyes = .closed; p.blush = true
+                if quad { p.stance = .lie; p.headDY = 3; p.headDX = 2 }
+                else if family == .turtle { p.stance = .curl }                 // in its nightcap, head on the pages
+                else if isBird { p.headDY = species == .goose ? 6 : 2 }
+            case 3:                      // jolted awake
+                p.eyes = .wide; p.mouth = .open
+                if quad { p.stance = hopY > 0 ? .leap : .sit }
+            default:                     // reading, following the lines
+                p.eyes = blink ? .closed : .open
+                if quad { p.stance = .lie; p.headDY = 1 }
+                if family == .turtle { p.stance = .lie }
+                if isBird && species == .goose { p.headDY = 3; p.headDX = 2 }
+                if t < pageUntil {
+                    p.turn = 1 - (pageUntil - t) / 1.1
+                    if p.turn > 0.15 && p.turn < 0.8 { p.headDX -= 1 }          // follows the page over with its eyes
+                    if isBird { p.arm = .raised }                                  // birds flip it with a wing
+                    if family == .turtle && p.turn < 0.5 { p.headDX += 1; p.headDY += 1 }     // the turtle nudges it with its nose
+                }
+            }
         case .hunt:
             switch huntPhase {
             case 0: p.stance = .crouch; p.eyes = .wide
@@ -1863,6 +2061,7 @@ final class Pet {
             let shake = Int(t / 0.05) % 2 == 0 ? 1 : -1
             p.eyes = .wide; p.earsFlat = true; p.mouth = .open; p.blush = false; p.bob = 0
             if isBird || family == .bat { p.arm = .raised; p.headDX = shake > 0 ? 1 : 0 }
+            else if species == .redPanda { p.stance = .upright; p.arm = .raised; p.phase = t * 9; p.earsFlat = false }   // up on its hind legs, arms high: "back off"
             else if hopY <= 0 { p.stance = .crouch; p.wiggle = shake; p.tailUp = true }
         }
         // "completely still": the same frame every time (no blinking, swaying, tapping or dancing; props stay)
@@ -1923,6 +2122,11 @@ final class Pet {
             case .vocal: p.stance = .sit; p.mouth = actT < 0.6 ? .open : .closed; p.tailUp = true
             case .hop: if hopY > 0 { p.stance = .leap; p.eyes = .happy }
             case .beg: p.stance = .upright
+            case .hide: p.stance = .squash
+            case .press:
+                if family == .turtle || species == .redPanda { p.eyes = .happy; p.blush = true }
+                else { p.stance = .front; p.bob = 0 }
+            case .rear: p.stance = .upright; p.tailUp = true; p.eyes = blink ? .closed : (Int(actT / 1.3) % 2 == 0 ? .open : .up)
             default: break
             }
         }

@@ -12,6 +12,8 @@ final class UIModel: ObservableObject {
     @Published var draft = ""
     @Published var names: [String: String] = [:]      // pets being renamed in the Pets tab, by id
     @Published var renaming: String?                   // which one has its name field open
+    @Published var focus: String?
+    @Published var mbLink = ""                         // a ManageBac calendar link being pasted in                      // several pets: which one the menu is looking after (nil: your main pet)
     @Published var calWay = 0          // which way to connect Google Calendar is open: 1 link, 2 Mac, 3 sign in
     @Published var link = ""
     @Published var songQuery = ""
@@ -112,6 +114,7 @@ struct Meter: View {
     let icon: NSImage
     let value: Double
     let name: String
+    var about = ""
     var body: some View {
         let lit = Int((value / 100 * 6).rounded(.up))
         HStack(spacing: 5) {
@@ -124,7 +127,7 @@ struct Meter: View {
                 }
             }
         }
-        .help("\(name): \(Int(value.rounded()))%")
+        .help("\(name): \(Int(value.rounded()))%" + (about.isEmpty ? "" : ". " + about))
     }
 }
 
@@ -189,7 +192,9 @@ struct RootView: View {
     @FocusState var naming: Bool          // the pet name being edited in the Pets tab
 
     var body: some View {
-        if let world = m.world, let pet = world.pet {
+        if let world = m.world, let main = world.pet {
+            // several pets: the menu looks after the one you clicked or picked; your main pet otherwise
+            let pet = world.pets.first { $0.id == m.focus } ?? main
             VStack(alignment: .leading, spacing: 14) {
                 // the same order on every tab; the Music tab just leaves out the snacks and toys
                 header(world, pet)
@@ -198,7 +203,7 @@ struct RootView: View {
                 tabs
                 Group {
                     switch m.tab {
-                    case 0: petsTab(world, pet)
+                    case 0: petsTab(world, main)
                     case 1: closetTab(world, pet)
                     case 2: musicTab(world)
                     default: settingsTab(world)
@@ -229,15 +234,26 @@ struct RootView: View {
                 .padding(.horizontal, 10).padding(.vertical, 7)
                 .glass(12)
             }
-            HStack {
-                Text(world.hidden ? "Hidden" : mood(world, pet).capitalizedFirst).font(.system(size: 14, weight: .semibold))
+            HStack(spacing: 6) {
+                let several = !world.companions.isEmpty
+                Text(world.hidden ? "Hidden" : several ? "\(pet.name) is \(mood(world, pet))" : mood(world, pet).capitalizedFirst)
+                    .font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
+                if several && !world.hidden {
+                    // pick which pet to feed, play with and dress up
+                    ForEach(world.pets, id: \.id) { p in
+                        Tile(img: world.faceImage(p.species), help: "Look after \(p.name)", selected: p === pet, size: 26) {
+                            m.focus = p === world.pet ? nil : p.id
+                        }
+                    }
+                }
                 if world.hidden { Button("Show pet") { world.toggleHidden(); m.refresh() }.buttonStyle(Pill(strong: true)) }
             }
             HStack(spacing: 12) {
-                Meter(icon: world.itemImage(.fish), value: pet.fullness, name: "Food")
-                Meter(icon: world.iconImage(.heart), value: pet.happiness, name: "Happiness")
-                Meter(icon: world.iconImage(.bolt), value: pet.energy, name: "Energy")
+                Meter(icon: world.itemImage(.fish), value: pet.fullness, name: "Food", about: "Feed it when it's low")
+                Meter(icon: world.iconImage(.heart), value: pet.happiness, name: "Happiness",
+                      about: "Goes up when you pet, feed and play with it, and when it keeps you company")
+                Meter(icon: world.iconImage(.bolt), value: pet.energy, name: "Energy", about: "Naps fill it up")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -267,20 +283,27 @@ struct RootView: View {
     func actions(_ world: World, _ pet: Pet) -> some View {
         // Petting, the calendar and gravity live on the pet itself (click, double-click) and in Settings.
         // These buttons close the menu so you see the pet act on them right away.
-        let foods: [(ItemKind, String)] = [(.fish, "Fish"), (.bone, "Bone"), (.cookie, "Cookie")]
+        // a red panda gets bamboo instead of fish (it's nearly all they eat)
+        // (and a bat, fruit)
+        let first: (ItemKind, String) = pet.species == .redPanda ? (.bamboo, "Bamboo")
+            : pet.family == .bat || pet.family == .turtle ? (.berry, "Strawberry") : (.fish, "Fish")
+        let foods: [(ItemKind, String)] = [first, (.bone, "Bone"), (.cookie, "Cookie")]
+        let whose = world.companions.isEmpty ? "" : " for \(pet.name)"
         // eight buttons, sized to fit the menu's width
         return GlassGroup { HStack(spacing: 5) {
-            ForEach(foods, id: \.1) { f in Tile(img: world.itemImage(f.0), help: "Feed: \(f.1)", size: 31) { world.fromMenu { world.feed(f.0) } } }
-            Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy", size: 31) { world.fromMenu { world.throwBall() } }
-            Tile(img: world.itemImage(.butterfly), help: "Let a butterfly out", size: 31) { world.fromMenu { world.releaseButterfly() } }
+            ForEach(foods, id: \.1) { f in Tile(img: world.itemImage(f.0), help: "Feed: \(f.1)\(whose)", size: 31) { world.fromMenu { world.feed(f.0, for: pet) } } }
+            Tile(img: world.itemImage(pet.family == .cat ? .yarn : .ball), help: "Throw a toy\(whose)", size: 31) { world.fromMenu { world.throwBall(for: pet) } }
+            Tile(img: world.itemImage(.butterfly), help: world.stillness == 2 ? "Your pet is holding completely still, so no butterflies" : "Let a butterfly out", size: 31) { world.fromMenu { world.releaseButterfly() } }
+                .disabled(world.stillness == 2).opacity(world.stillness == 2 ? 0.4 : 1)
             Tile(img: world.iconImage(pet.isAsleep ? .sun : .moon), help: pet.isAsleep ? "Wake up" : "Nap", size: 31) { world.fromMenu { pet.toggleNap() } }
             Tile(img: world.iconImage(.pin), help: pet.following ? "Stop following" : "Come here: follows your cursor (press again to stop)",
                  selected: pet.following ? true : nil, size: 31) { world.fromMenu { pet.comeHere() } }
-            // stay in place, in three steps: roams, stays put (still grooms), completely still
-            Tile(img: world.iconImage([Icon.roam, .anchor, .still][world.stillness]),
-                 help: ["Roams around. Click: stay put", "Stays put but still grooms. Click: hold completely still",
-                        "Holds completely still. Click: roam again"][world.stillness],
-                 selected: world.stillness > 0 ? true : nil, size: 31) { world.cycleStillness(); m.refresh() }
+            // stay in place, in four steps: roams, stays put (still grooms), completely still, reading (study mode)
+            Tile(img: world.iconImage(world.studying ? .book : [Icon.roam, .anchor, .still][world.stillness]),
+                 help: world.studying ? "Reading with you (study mode). Click: roam again"
+                    : ["Roams around. Click: stay put", "Stays put but still grooms. Click: hold completely still",
+                       "Holds completely still. Click: read with you (study mode)"][world.stillness],
+                 selected: world.stillness > 0 || world.studying ? true : nil, size: 31) { world.cycleStillness(); m.refresh() }
         } }
     }
 
@@ -547,7 +570,7 @@ struct RootView: View {
         return VStack(alignment: .leading, spacing: 8) {
             GlassGroup {
                 LazyVGrid(columns: cols, spacing: 8) {
-                    ForEach(Species.allCases) { sp in
+                    ForEach(Species.lineup) { sp in
                         let friend = world.companions.first { $0.species == sp }
                         let main = pet.species == sp
                         // one pet: tap to switch. Several: tap to bring a pet along or send it home; the star marks your main pet
@@ -653,11 +676,11 @@ struct RootView: View {
                 }
                 HStack(spacing: 5) {
                     Button("Surprise me") {
-                        world.setOutfit(Outfit(hat: Hat.allCases.randomElement()!, glasses: Glasses.allCases.randomElement()!, neck: Neckwear.allCases.randomElement()!))
+                        world.setOutfit(Outfit(hat: Hat.allCases.randomElement()!, glasses: Glasses.allCases.randomElement()!, neck: Neckwear.allCases.randomElement()!), for: pet)
                         m.refresh()
                     }
                     .buttonStyle(Pill())
-                    Button("Undress") { world.setOutfit(Outfit()); m.refresh() }.buttonStyle(Pill())
+                    Button("Undress") { world.setOutfit(Outfit(), for: pet); m.refresh() }.buttonStyle(Pill())
                 }
                 .fixedSize()
             }
@@ -673,9 +696,9 @@ struct RootView: View {
                 let picked = pet.outfit[keyPath: path] == item
                 // just the accessory itself; the big picture on the left shows it on your pet
                 if let img = world.accessoryImage(alone) {
-                    Tile(img: img, help: name(item), selected: picked, size: 40) { world.setOutfit(o); m.refresh() }
+                    Tile(img: img, help: name(item), selected: picked, size: 40) { world.setOutfit(o, for: pet); m.refresh() }
                 } else {
-                    Tile(symbol: "circle.slash", help: name(item), selected: picked, size: 40) { world.setOutfit(o); m.refresh() }
+                    Tile(symbol: "circle.slash", help: name(item), selected: picked, size: 40) { world.setOutfit(o, for: pet); m.refresh() }
                 }
             }
         } }
@@ -1006,10 +1029,32 @@ struct RootView: View {
         }
     }
 
+    /// ManageBac: paste the calendar link from ManageBac and your pet reminds you about tasks and deadlines.
+    @ViewBuilder
+    func manageBac(_ world: World) -> some View {
+        let t = world.tasks
+        connection("checklist", "ManageBac tasks", t.connected ? dueText(t) : "Reminders the evening before and the morning a task is due") {
+            if t.connected { Button("Disconnect") { t.disconnect(); m.refresh() }.buttonStyle(Pill()) }
+        }
+        if !t.connected {
+            HStack {
+                TextField("webcal:// link from ManageBac", text: $m.mbLink).textFieldStyle(.roundedBorder)
+                Button("Add") { t.setLink(m.mbLink) { ok in if ok { m.mbLink = "" }; m.refresh() } }.buttonStyle(Pill(strong: true)).disabled(m.mbLink.isEmpty)
+            }
+            hint(t.status.isEmpty ? "In ManageBac: Calendar (or Tasks & Deadlines), then Subscribe / iCal, and copy the link." : t.status)
+        }
+    }
+
+    func dueText(_ t: ICSCalendar) -> String {
+        let soon = t.events.filter { $0.end > Date() }.count
+        return soon == 0 ? "Connected: nothing due this week" : "Connected: \(soon) due this week"
+    }
+
     @ViewBuilder
     func connectionsPane(_ world: World) -> some View {
         Section {
                 calendar(world)
+                manageBac(world)
                 connection("music.note", "Music",
                            world.player.running ? "Playing in \(world.player.appName)" : "Works with every player, nothing to sign in to") {
                     EmptyView()

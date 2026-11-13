@@ -2,7 +2,7 @@
 
 import Cocoa
 
-enum ItemKind: String { case fish, bone, milk, bread, cheese, berry, sausage, cookie, ball, yarn, butterfly }
+enum ItemKind: String { case fish, bone, milk, bread, cheese, berry, sausage, cookie, ball, yarn, butterfly, bamboo }
 
 private let sprites: [ItemKind: ([String], [Character: Col])] = [
     .fish: ([
@@ -14,6 +14,14 @@ private let sprites: [ItemKind: ([String], [Character: Col])] = [
         ".LLLLLLLL.ttt",
         "..LLLLLL...tt",
     ], ["D": .fishDark, "f": .fish, "L": .fishLight, "k": .outline, "t": .fishDark]),
+    .bamboo: ([                // a length of bamboo with a sprig of leaves, a red panda's favourite
+        ".........ll..",
+        ".......llL...",
+        "......lL.....",
+        ".hhhhNhhhhNh.",
+        "bbbbbNbbbbNbb",
+        ".ddddNddddNd.",
+    ], ["l": .leaf, "L": .leafDark, "h": .bambooLight, "b": .bamboo, "d": .bambooDark, "N": .bambooDark]),
     .bone: ([
         ".HH......HW.",
         "HWWW....WWWS",
@@ -180,7 +188,7 @@ func itemCanvas(_ kind: ItemKind, bites: Int, frame: Int, variant: Int = 0) -> C
 }
 
 /// Pixel icons for the menu's buttons, drawn like the snacks (outlined, shaded).
-enum Icon { case moon, sun, pin, heart, bolt, bell, roam, anchor, still }
+enum Icon { case moon, sun, pin, heart, bolt, bell, roam, anchor, still, book }
 
 func iconCanvas(_ icon: Icon) -> Canvas {
     var c = Canvas(14, 14)
@@ -220,6 +228,9 @@ func iconCanvas(_ icon: Icon) -> Canvas {
     case .still:        // completely still: frozen, a snowflake
         c.sprite(1, 1, [".....X.....", "...X.X.X...", "....XXX....", ".X..XXX..X.", "..X..X..X..", "XXXXXXXXXXX",
                         "..X..X..X..", ".X..XXX..X.", "....XXX....", "...X.X.X...", ".....X....."], ["X": .zzz])
+    case .book:         // study mode: an open book
+        c.sprite(1, 3, ["PPPPP.PPPPP", "PLLLPKPLLLP", "PPPPPKPPPPP", "PLLLPKPLLLP", "PPPPPKPPPPP", "BBBBBBBBBBB"],
+                 ["P": .page, "L": .lapLight, "K": .lapDark, "B": .bandana])
     case .heart:
         c.sprite(3, 4, [".HH.HH.", "HWHHHHH", "HHHHHHH", ".HHHHH.", "..HHH..", "...H..."], ["H": .heart, "W": .white])
     case .bolt:

@@ -235,8 +235,8 @@ extension Pet {
         switch (g, st) {
         case (.boop, 1), (.sniff, 1), (.wary, 2), (.hiss, 13):
             booping(f)
-        case (.groom, 1): join(.groom, f); f.join(.groomed, self); world.synth.play("purr")
-        case (.groom, 2): f.join(.groom, self); join(.groomed, f); world.synth.play("purr")
+        case (.groom, 1): join(.groom, f); f.join(.groomed, self); world.synth.play(f.purr)
+        case (.groom, 2): f.join(.groom, self); join(.groomed, f); world.synth.play(purr)
         case (.fight, _): break                            // the fight scene handles its own steps
         case (.chase, 1):
             join(.bow, f); f.join(.greet, self)
@@ -257,7 +257,7 @@ extension Pet {
     /// Nose to nose: a sniff and a boop.
     func booping(_ f: Pet) {
         join(.boop, f); f.join(.boop, self)
-        if family == .cat || f.family == .cat { world.synth.play("mrrp") }
+        if family == .cat || f.family == .cat { world.synth.play((family == .cat ? self : f).mrrp) }
     }
 
     func boopScene(_ f: Pet) {
@@ -322,8 +322,8 @@ extension Pet {
                 a.join(.pounce, b); b.join(.swat, a)
                 let travel = max(0, abs(b.x - a.x) - (a.noseReach + b.noseReach - 6 * s))
                 if !a.inPlace { a.hopV = 330 * s / 4; a.leapV = CGFloat(a.facing) * travel / 0.44 } else { a.hopV = 200 * s / 4 }
-                world.synth.play(a.family == .cat ? "mrrp" : "woof")
-                if chance(0.5) { a.say([a.family == .cat ? "MRRP!" : "RUFF!"], 1) }
+                world.synth.play(a.family == .cat ? a.mrrp : "woof")
+                if chance(0.5) { a.say([a.species == .redPanda ? "HUFF!" : a.family == .cat ? "MRRP!" : "RUFF!"], 1) }
             }
         case 2:                                                       // in the air
             if a.hopY == 0 && stageT > 0.2 {
@@ -412,7 +412,7 @@ extension Pet {
                 if hiss {
                     stage = 10; stageT = 0
                     cat.join(.hiss, dog); dog.join(.startled, cat)
-                    world.synth.play("hiss"); cat.say(["HSSS!"], 1.2)
+                    world.synth.play("hiss"); cat.say([cat.species == .redPanda ? "HUFF!" : "HSSS!"], 1.2)     // a red panda's huff
                     if !dog.inPlace { dog.hopV = 170 * s / 4 }
                     dog.spawnBang()
                 } else { enter(.wary, f, 2) }
@@ -459,9 +459,9 @@ extension Pet {
             }
             if cross(0.22) {
                 other.join(.startled, goose); other.spawnBang()
-                if !other.inPlace { other.hopV = 250 * s / 4 }
+                if !other.inPlace && other.family != .turtle { other.hopV = 250 * s / 4 }      // a turtle just pulls in
                 world.synth.play(other.species.vocal.sound)
-                other.say([other.family == .cat ? "EEK!" : other.family == .dog ? "YIP!" : "SQUAWK!"], 1)
+                other.say([other.family == .cat ? other.eek : other.family == .dog ? "YIP!" : "SQUAWK!"], 1)
             }
             if cross(0.55) { world.synth.play("honk") }
             if stageT > 0.8 {
@@ -469,7 +469,7 @@ extension Pet {
                 other.join(.scurry, goose)
                 other.runOff(from: goose, 210)
                 other.socialGoal = other.floorClamp(other.x + (other.x >= goose.x ? 1 : -1) * rnd(170, 260))
-                if abs(other.socialGoal! - other.x) < 60 { other.socialGoal = nil }           // cornered: it just cowers
+                if abs(other.socialGoal! - other.x) < 60 || other.family == .turtle { other.socialGoal = nil }   // cornered (or a turtle): it stays put
                 let dir: CGFloat = other.x >= goose.x ? 1 : -1
                 goose.socialGoal = goose.floorClamp(goose.x + dir * 70 * s / 4); goose.socialSpeed = 90; goose.socialRun = false
             }
@@ -576,6 +576,9 @@ extension Pet {
             p.headDX = lick ? 1 : 0; p.headDY = lick ? 1 : 0; p.mouth = lick ? .tongue : .closed
         case .groomed:
             p.stance = .sit; p.eyes = .happy; p.blush = true; p.tailUp = true; p.tail = t * 2; p.headDY = 1
+        case .crouch where species == .redPanda && wiggling:
+            // red pandas square up to play the way they square up to fight: up on the hind legs, forelimbs high
+            p.stance = .upright; p.arm = .raised; p.phase = t * 9; p.eyes = .wide; p.tailUp = true
         case .crouch:
             p.stance = .crouch; p.eyes = .wide; p.tailUp = true; p.tail = t * 10; p.earsFlat = family == .cat
             if wiggling { p.wiggle = Int(t / 0.08) % 2 == 0 ? 1 : -1 }
@@ -607,15 +610,23 @@ extension Pet {
             p.headDY = -3; p.eyes = k < 1.0 ? .closed : .open
             p.arm = k < 0.9 && Int(k / 0.2) % 2 == 0 ? .raised : .rest
             p.mouth = k < 0.4 ? .open : .closed
+        case .startled where species == .redPanda:
+            p.stance = .upright; p.arm = .raised; p.phase = t * 9; p.eyes = .wide; p.mouth = .open; p.tailUp = true
         case .startled:
             p.eyes = .wide; p.earsFlat = true; p.mouth = .open
             if bird { p.arm = flap ? .raised : .rest } else { p.stance = hopY > 0 ? .leap : .crouch; p.tailUp = true }
+        case .scurry where family == .turtle:
+            p.stance = .crouch; p.eyes = .wide                // stays tucked in its shell
         case .scurry:
             p.eyes = .wide; p.earsFlat = true
             if bird { p.headDY = -1 } else { p.stance = .stand; p.tailUp = false }
             if k < 0.6 { p.mouth = .open } else if dog { p.mouth = .closed }
         case .wary:
             p.stance = .crouch; p.headDX = 1; p.eyes = .wide; p.tailUp = false; p.tail = t * 3
+        case .hiss where species == .redPanda:
+            // its threat display: stands up tall, forelimbs above its head, a long stare and a huff
+            p.stance = .upright; p.arm = .raised; p.phase = t * 9; p.eyes = .wide; p.tailUp = true
+            p.mouth = k < 0.7 ? .open : .closed
         case .hiss:
             p.stance = .stand; p.earsFlat = true; p.eyes = .angry; p.tailUp = true
             p.mouth = k < 1.1 ? .open : .closed

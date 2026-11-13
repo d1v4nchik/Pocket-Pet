@@ -81,7 +81,7 @@ enum Secrets {
     /// Where earlier versions kept connections: one Keychain item (or, before that, one per secret).
     private enum Legacy {
         static let service = "local.honk.google"
-        static let keys = ["secrets", "clientSecret", "refreshToken", "icsURL", "spotifyRefresh"]
+        static let keys = ["secrets", "clientSecret", "refreshToken", "icsURL", "spotifyRefresh", "managebacURL"]
 
         static func readAll() -> [String: String] {
             var all: [String: String] = [:]

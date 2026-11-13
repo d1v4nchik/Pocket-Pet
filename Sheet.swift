@@ -23,14 +23,33 @@ func renderSheet(_ path: String, only: String? = nil) {
         cells.append((name, c, makePalette(sp.colors)))
     }
 
+    if only == "turn" {                // one page turn, frame by frame
+        for (i, k) in [0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0].enumerated() {
+            add("FRAME \(i + 1)", .ginger) { $0.prop = .book; $0.turn = k; $0.stance = .lie; $0.headDY = 1; $0.tailUp = false; if k > 0.15 && k < 0.8 { $0.headDX = -1 } }
+        }
+    }
+    if only == "glass" {               // every pet up against the screen
+        for sp in Species.lineup where !sp.isBird && sp != .bat && sp != .turtle {
+            add(sanitize(sp.title), sp) { $0.stance = .front }
+        }
+    }
+    if only == "study" {               // study mode for every pet: reading, thinking hard, dozing off
+        for sp in Species.lineup {
+            let quad = !sp.isBird && sp != .bat && sp != .turtle
+            add(sanitize(sp.title), sp) { $0.prop = .book; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.stance = .lie }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
+            add("THINKING", sp) { $0.prop = .book; $0.thinking = true; $0.spin = 3; $0.tailUp = false; if quad { $0.stance = .sit; $0.arm = .tap }; if sp.isBird { $0.stance = .sit } }
+            add("PAGE", sp) { $0.prop = .book; $0.turn = 0.35; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 1 }; if sp == .turtle { $0.stance = .lie; $0.headDX = 1; $0.headDY = 1 }; if sp.isBird { $0.arm = .raised }; if sp.isBird { $0.stance = .sit }; if sp == .goose { $0.headDY = 3; $0.headDX = 2 } }
+            add("DOZING", sp) { $0.prop = .book; $0.eyes = .closed; $0.blush = true; $0.tailUp = false; if quad { $0.stance = .lie; $0.headDY = 3; $0.headDX = 2 }; if sp == .turtle { $0.stance = .curl }; if sp.isBird { $0.stance = .sit; $0.headDY = sp == .goose ? 6 : 2 } }
+        }
+    }
     if key {
-        for sp in Species.allCases {
+        for sp in Species.lineup {
             add(sanitize(sp.title), sp) { _ in }
             add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }
             add("HAPPY", sp) { $0.eyes = .happy; $0.mouth = sp.family == .dog ? .tongue : .open; $0.blush = true; if !sp.isBird { $0.stance = .sit } }
         }
     }
-    for sp in Species.allCases where only == nil || sp.rawValue == only {
+    for sp in Species.allCases where (only == nil || sp.rawValue == only) && only != "study" && only != "turn" && only != "glass" {
         add(sanitize(sp.title), sp) { _ in }
         add("WALK", sp) { $0.stance = .walk; $0.phase = 1.2 }
         add("SIT", sp) { $0.stance = .sit; $0.tailUp = false }
@@ -63,6 +82,13 @@ func renderSheet(_ path: String, only: String? = nil) {
             add("UMBRELLA", sp) { $0.stance = .umbrella }
             add("HELD", sp) { $0.stance = .held }
             add("HAPPY", sp) { $0.eyes = .happy; $0.mouth = .open; $0.blush = true }
+            add("PAW ON GLASS", sp) { $0.stance = .front; $0.eyes = .happy; $0.mouth = .open; $0.blush = true }
+            if sp == .redPanda {
+                add("ARMS UP", sp) { $0.stance = .upright; $0.arm = .raised; $0.eyes = .wide; $0.mouth = .open }
+                add("LOOK ROUND", sp) { $0.stance = .upright; $0.tailUp = true }
+                add("EAT FROM PAW", sp) { $0.stance = .sit; $0.arm = .toMouth; $0.eyes = .happy; $0.mouth = .open; $0.tailUp = false }
+                add("GROOM", sp) { $0.stance = .sit; $0.arm = .lick; $0.eyes = .closed; $0.mouth = .tongue; $0.tailUp = false }
+            }
         }
     }
     if only == nil {

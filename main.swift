@@ -53,12 +53,93 @@ if args.contains("--agenda") {     // checks the Google sign-in: prints how many
     RunLoop.main.run(until: Date().addingTimeInterval(20))
     print("timed out"); exit(1)
 }
+if let i = args.firstIndex(of: "--bubble-shot"), i + 2 < args.count {
+    // a speech bubble with these lines, as the pet would say them (to check other scripts)
+    let lines = args[(i + 2)...].map(sanitize)
+    let px: CGFloat = 4
+    let sz = bubbleSize(lines, px: px)
+    let W = Int(sz.width) + 8, H = Int(sz.height) + 20
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: W, pixelsHigh: H, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    let ctx = NSGraphicsContext(bitmapImageRep: rep)!.cgContext
+    ctx.translateBy(x: 0, y: CGFloat(H)); ctx.scaleBy(x: 1, y: -1)
+    ctx.setFillColor(CGColor(gray: 0.85, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+    ctx.setShouldAntialias(false)
+    drawBubble(ctx, lines, bx: 4, by: 4, tipX: CGFloat(W / 2), px: px, tailUp: false)
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+    print(lines)
+    exit(0)
+}
+if args.contains("--bat-test") {
+    // the bat: free flight with gravity off, flying down for a snack with gravity on; and feeding a pet that isn't
+    // the main one (your settings are put back after)
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let d = UserDefaults.standard
+        let keys = ["multiPets", "companions", "pet", "gravity", "restingPets"]
+        let saved = keys.map { ($0, d.object(forKey: $0)) }
+        defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
+        let w = World()
+        w.hidden = true
+        w.load()
+        w.setMultiPets(false)
+        w.changeSpecies(to: .bat)
+        let bat = w.pet!
+        w.idleSecs = 5; w.stillness = 0
+        func run(_ secs: Double, _ each: () -> Void = {}) {
+            for _ in 0..<Int(secs * 10) {
+                w.t += 0.1; w.updateStats(0.1); for q in w.pets { q.update(0.1) }
+                for it in w.items where !it.gone { it.update(0.1, world: w) }
+                w.items.removeAll { $0.gone }; each()
+            }
+        }
+        w.setGravity(true); run(10)
+        print("gravity on: edge \(bat.edge) (2 = hanging from the top), in the air: \(bat.inAir), mode \(bat.mode)")
+        w.setGravity(false)
+        var air = 0.0, flights = 0, wasAir = false, xs = Set<Int>(), ys = Set<Int>()
+        run(180) {
+            if bat.inAir { air += 0.1; xs.insert(Int(bat.x / 100)); ys.insert(Int(bat.y / 100)) }
+            if bat.inAir && !wasAir { flights += 1 }
+            wasAir = bat.inAir
+        }
+        print("gravity off, 3 minutes: \(flights) flights, flying \(Int(air / 1.8))% of the time, over \(xs.count)x\(ys.count) squares of 100 pt, now \(bat.mode) edge \(bat.edge)")
+        w.setGravity(true); run(20)
+        print("gravity back on: in the air \(bat.inAir), edge \(bat.edge), mode \(bat.mode)")
+        bat.fullness = 40
+        w.feed(.berry)
+        var ate = false, wentDown = false, secs = 0.0
+        let before = bat.fullness
+        run(40) { secs += 0.1; if bat.inAir { wentDown = true }; if bat.fullness > before && !ate { ate = true; print("  ate the berries after \(String(format: "%.1f", secs)) s") } }
+        print("snack on the floor: flew down \(wentDown), ate it \(ate), food left \(w.items.filter { $0.isFood && !$0.gone }.count), back home: edge \(bat.edge) in air \(bat.inAir)")
+        // several pets: food for a pet that isn't the main one goes to that pet
+        w.setMultiPets(true)
+        w.changeSpecies(to: .ginger)
+        for c in w.companions { w.toggleCompanion(c.species) }
+        w.toggleCompanion(.turtle)
+        let main = w.pet!, panda = w.companions[0]
+        run(8)
+        main.fullness = 40; panda.fullness = 40
+        let m0 = main.fullness, p0 = panda.fullness
+        w.feed(.berry, for: panda)
+        run(30)
+        print("fed the turtle (not the main pet): turtle \(Int(p0)) -> \(Int(panda.fullness)), main pet \(Int(m0)) -> \(Int(main.fullness))")
+        // a full pet leaves food alone, and the food goes away
+        main.fullness = 95; panda.fullness = 95
+        w.feed(.fish)
+        run(5); let claimed = w.items.contains { $0.claim != nil }
+        run(60)
+        print("food nobody's hungry for: claimed \(claimed), still there after a minute: \(w.items.contains { $0.isFood })")
+        // each pet's meters change on its own
+        let before2 = (main.fullness, panda.fullness); run(120)
+        print("two minutes later, food: main \(String(format: "%.2f", before2.0 - main.fullness)) down, turtle \(String(format: "%.2f", before2.1 - panda.fullness)) down")
+    }
+    exit(0)
+}
 if args.contains("--social-test") {
     // every scene for each pair of species: does it play out, finish, and leave both pets free? (settings put back after)
     _ = NSApplication.shared
     MainActor.assumeIsolated {
         let d = UserDefaults.standard
-        let saved = ["multiPets", "companions", "pet", "playTogether"].map { ($0, d.object(forKey: $0)) }
+        let saved = ["multiPets", "companions", "pet", "playTogether", "restingPets"].map { ($0, d.object(forKey: $0)) }
         defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
         let w = World()
         w.hidden = true
@@ -96,7 +177,8 @@ if args.contains("--social-test") {
         let pairs: [(Species, Species, [Game])] = [
             (.ginger, .siamese, [.boop, .groom, .fight]), (.dalmatian, .fox, [.boop, .sniff, .chase, .fight]),
             (.calico, .fox, [.wary, .hiss]), (.dalmatian, .tuxedo, [.wary, .hiss, .snub]),
-            (.goose, .ginger, [.honk, .boop]), (.fox, .goose, [.honk]), (.parrot, .dalmatian, [.mimic]), (.calico, .parrot, [.mimic])]
+            (.goose, .ginger, [.honk, .boop]), (.fox, .goose, [.honk]), (.parrot, .dalmatian, [.mimic]), (.calico, .parrot, [.mimic]),
+            (.redPanda, .ginger, [.fight, .groom]), (.redPanda, .dalmatian, [.hiss]), (.goose, .redPanda, [.honk])]
         for (a, b, games) in pairs {
             for c in w.companions { w.toggleCompanion(c.species) }
             w.changeSpecies(to: a); w.toggleCompanion(b)
@@ -156,6 +238,14 @@ if args.contains("--social-test") {
         let names = w.pets.map { "\($0.species.rawValue)=\($0.name)" }
         w.rename(w.companions[0], "Biscuit")
         w.makeMain(w.companions[0])
+        w.setOutfit(Outfit(hat: .crown), for: w.companions[1])
+        let who = w.companions[1].species
+        w.toggleCompanion(who); w.toggleCompanion(who)
+        let back = w.companions.first { $0.species == who }
+        print("sent home and brought back: name \(back?.name ?? "-"), hat \(back?.outfit.hat.rawValue ?? "-")")
+        let names3 = w.companions.map(\.name)
+        w.setMultiPets(false); w.setMultiPets(true)
+        print("several pets off and on again: before \(names3), after \(w.companions.map(\.name))")
         print("names before: \(names); after renaming and making it main: \(w.pets.map { "\($0.species.rawValue)=\($0.name)" })")
     }
     exit(0)
@@ -165,7 +255,7 @@ if args.contains("--multi-test") {
     _ = NSApplication.shared
     MainActor.assumeIsolated {
         let d = UserDefaults.standard
-        let saved = ["multiPets", "companions", "pet"].map { ($0, d.object(forKey: $0)) }
+        let saved = ["multiPets", "companions", "pet", "restingPets"].map { ($0, d.object(forKey: $0)) }
         defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
         let w = World()
         w.hidden = true
@@ -276,7 +366,7 @@ if let i = args.firstIndex(of: "--pets-shot"), i + 1 < args.count {
     _ = NSApplication.shared
     MainActor.assumeIsolated {
         let d = UserDefaults.standard
-        let saved = ["multiPets", "companions", "pet"].map { ($0, d.object(forKey: $0)) }
+        let saved = ["multiPets", "companions", "pet", "restingPets"].map { ($0, d.object(forKey: $0)) }
         defer { for (k, v) in saved { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } } }
         let w = World()
         w.hidden = true

@@ -31,11 +31,12 @@ screen with you and reacts to what you do.
   music is on.
 - It **stays out of the way**: in fullscreen apps it climbs to the top edge and hangs out upside down; for fullscreen
   videos it sits in the black bar instead. Share your screen in a call and it asks whether to hide. Want it to stay in one
-  spot? One button makes it stay put (still grooming) or hold completely still.
+  spot? One button makes it stay put (still grooming), hold completely still, or settle down to read with you while you
+  study (it thinks very hard now and then, and dozes off over the book until you tap it).
 - It **looks after you**: it reminds you to drink water (counted in glasses, sips, millilitres or ounces, with a goal
   tailored to you and reminders that keep pace with your day) and charts it, reminds you of your own habits
-  (stretching, vitamins, a walk...), nudges you before every calendar event, and rings a little bell when a message
-  arrives.
+  (stretching, vitamins, a walk...), nudges you before every calendar event and about ManageBac tasks that are due, and
+  rings a little bell when a message arrives.
 
 ## The Pets
 
@@ -46,7 +47,8 @@ screen with you and reacts to what you do.
 | 🐈 | Ginger, Siamese, Tabby and Calico cats | Fish, yarn, chasing your cursor |
 | 🐕 | Dalmatian | Bones, balls, zoomies |
 | 🦊 | Fox | Berries, curling up for long naps |
-| 🦇 | Bat | Hanging from the top of your screen, swooping |
+| 🐢 | Turtle | Strawberries, slow strolls, napping in its nightcap |
+| 🦇 | Bat | Hanging from the top of your screen, swooping, fruit (and flying free with gravity off) |
 
 Dress any of them up from the **Closet**: hats (including a Santa hat), glasses and neckwear.
 

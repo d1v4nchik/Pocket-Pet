@@ -109,31 +109,57 @@ final class Updater {
         // Where it goes, whatever the app's folder allows:
         // 1. its folder can be changed: swap the whole app
         // 2. only the app itself can (the main Applications folder on a Mac you're not an admin of): swap its insides
-        // 3. neither, or macOS is running it from a temporary read-only copy (opened straight from Downloads or the DMG):
+        // 3. neither: ask for an administrator's password (macOS shows its own prompt) and put it in place that way
+        // 4. that's cancelled, the app isn't where it started from any more (moved, renamed, or a synced Documents
+        //    folder), or macOS is running a temporary read-only copy (opened straight from Downloads or the DMG):
         //    install it in the Applications folder in your home folder and open it from there
         let translocated = here.path.contains("/AppTranslocation/")
-        let target: URL
-        if !translocated && fm.isWritableFile(atPath: here.deletingLastPathComponent().path) {
-            try swapApp(fresh, at: here)
-            target = here
-        } else if !translocated && fm.isWritableFile(atPath: here.path) && fm.isWritableFile(atPath: here.appendingPathComponent("Contents").path) {
-            let contents = here.appendingPathComponent("Contents"), old = here.appendingPathComponent(".Contents (previous)")
-            try? fm.removeItem(at: old)
-            try fm.moveItem(at: contents, to: old)
-            do { try fm.copyItem(at: fresh.appendingPathComponent("Contents"), to: contents) } catch { try? fm.moveItem(at: old, to: contents); throw error }
-            try? fm.removeItem(at: old)
-            target = here
-        } else {
+        var target: URL?
+        if !translocated && fm.fileExists(atPath: here.appendingPathComponent("Contents/Info.plist").path) {
+            if fm.isWritableFile(atPath: here.deletingLastPathComponent().path), (try? swapApp(fresh, at: here)) != nil {
+                target = here
+            }
+            if target == nil && fm.isWritableFile(atPath: here.path) && fm.isWritableFile(atPath: here.appendingPathComponent("Contents").path) {
+                let contents = here.appendingPathComponent("Contents"), old = here.appendingPathComponent(".Contents (previous)")
+                try? fm.removeItem(at: old)
+                if (try? fm.moveItem(at: contents, to: old)) != nil {
+                    if (try? fm.copyItem(at: fresh.appendingPathComponent("Contents"), to: contents)) != nil { target = here }
+                    else { try? fm.moveItem(at: old, to: contents) }
+                    try? fm.removeItem(at: old)
+                }
+            }
+            if target == nil && adminReplace(fresh, at: here) { target = here }
+        }
+        if target == nil {
             let home = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
             try fm.createDirectory(at: home, withIntermediateDirectories: true)
-            target = home.appendingPathComponent("Pocket Pet.app")
-            if fm.fileExists(atPath: target.path) { try swapApp(fresh, at: target) } else { try fm.copyItem(at: fresh, to: target) }
+            let dest = home.appendingPathComponent("Pocket Pet.app")
+            if fm.fileExists(atPath: dest.path) { try swapApp(fresh, at: dest) } else { try fm.copyItem(at: fresh, to: dest) }
             UserDefaults.standard.set(true, forKey: "movedToHomeApplications")
+            target = dest
         }
+        let placed = target!
         // the signature was checked above, so the "downloaded from the internet" flag of the old copy can go (otherwise
         // macOS stops the updated app on its next launch, as if it had never been opened)
-        removexattr(target.path, "com.apple.quarantine", XATTR_NOFOLLOW)
-        return target
+        removexattr(placed.path, "com.apple.quarantine", XATTR_NOFOLLOW)
+        return placed
+    }
+
+    /// Replaces the app with an administrator's permission: macOS asks for the password in its own window.
+    /// False if that's cancelled or doesn't work.
+    private static func adminReplace(_ fresh: URL, at here: URL) -> Bool {
+        guard here.pathExtension == "app", here.pathComponents.count > 2 else { return false }
+        let script = [
+            "on run argv",
+            "do shell script \"/bin/rm -rf \" & quoted form of item 1 of argv & \" && /usr/bin/ditto \" & quoted form of item 2 of argv & \" \" & quoted form of item 1 of argv & \" && /usr/bin/xattr -dr com.apple.quarantine \" & quoted form of item 1 of argv with prompt \"Pocket Pet needs an administrator's password to install its update.\" with administrator privileges",
+            "end run",
+        ]
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        p.arguments = script.flatMap { ["-e", $0] } + [here.path, fresh.path]
+        guard (try? p.run()) != nil else { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0 && FileManager.default.fileExists(atPath: here.appendingPathComponent("Contents/Info.plist").path)
     }
 
     /// Old aside, new in, old gone (and put back if anything fails).

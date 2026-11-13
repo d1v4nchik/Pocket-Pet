@@ -8,12 +8,16 @@ final class ICSCalendar {
     private(set) var lastFetch = Date.distantPast
     var status = ""
     private var url: String?
+    /// Where its link is saved, and how many days ahead it looks (the calendar: today and tomorrow; ManageBac tasks: a week).
+    let key: String, days: Int
+
+    init(key: String = "icsURL", days: Int = 2) { self.key = key; self.days = days }
 
     var connected: Bool { url != nil }
 
     /// After `Secrets.load()`.
     func loadSecrets() {
-        url = Secrets.get("icsURL")
+        url = Secrets.get(key)
     }
 
     /// Accepts the link copied from Google Calendar (https://… or webcal://…, ending in .ics).
@@ -34,7 +38,7 @@ final class ICSCalendar {
                 self.status = "Couldn't read that link. Copy the “Secret address in iCal format”."
                 done(false)
             } else {
-                Secrets.set(link, "icsURL")
+                Secrets.set(link, self.key)
                 self.status = ""
                 done(true)
             }
@@ -45,7 +49,7 @@ final class ICSCalendar {
         url = nil
         events = []
         lastFetch = .distantPast
-        Secrets.set(nil, "icsURL")
+        Secrets.set(nil, key)
     }
 
     func refresh(_ done: (() -> Void)?) {
@@ -55,7 +59,8 @@ final class ICSCalendar {
         URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
             let text = ok ? data.flatMap { String(data: $0, encoding: .utf8) } : nil
-            let evs = text.flatMap { $0.contains("BEGIN:VCALENDAR") ? ICSCalendar.parse($0) : nil }
+            let days = self?.days ?? 2
+            let evs = text.flatMap { $0.contains("BEGIN:VCALENDAR") ? ICSCalendar.parse($0, days: days) : nil }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let evs {
@@ -80,11 +85,11 @@ final class ICSCalendar {
         var rule: Rule?, exdates: [Date] = [], recurrenceID: Date?, cancelled = false
     }
 
-    /// Events overlapping today and tomorrow.
-    static func parse(_ text: String) -> [CalEvent] {
+    /// Events overlapping today and the days after (today and tomorrow unless told otherwise).
+    static func parse(_ text: String, days: Int = 2) -> [CalEvent] {
         let cal = Calendar.current
         let winStart = cal.startOfDay(for: Date())
-        let winEnd = winStart.addingTimeInterval(2 * 86400)
+        let winEnd = winStart.addingTimeInterval(Double(days) * 86400)
 
         // unfold continued lines
         var lines: [String] = []
