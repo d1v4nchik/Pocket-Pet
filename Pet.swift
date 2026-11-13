@@ -2046,7 +2046,7 @@ final class Pet {
             case 2:                      // dozed off over the book
                 p.eyes = .closed; p.blush = true
                 if quad { p.stance = .lie; p.headDY = 3; p.headDX = 2; p.onBook = true }
-                else if family == .turtle { p.stance = .curl }                 // in its nightcap, head on the pages
+                else if family == .turtle { p.stance = .upright; p.onBook = true }   // nods off sitting up, in its nightcap
                 else if isBird { p.stance = .sit; birdSleepHead(&p, k: 1) }    // head tucked in, like its own naps
                 else if family == .bat { p.headDY = 1 }
             case 3:                      // jolted awake

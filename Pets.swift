@@ -1122,9 +1122,9 @@ private let turtleSitting = [
     ".BTKDDGGGKGDDGGKTB.",
     ".TBKKDDGGKGGDDKKBT.",
     ".KKGGKKDDKDDKKGGKK.",
-    ".DGGGGKKCCCCKGGGGD.",
-    ".DGGGDKCCCCCKDGGGD.",
-    ".DDGGDKYYYYYKDGGDD.",
+    ".DGGGGKKGGGGKGGGGD.",
+    ".DGGGDKGGGGGKDGGGD.",
+    ".DDGGDKGGGGGKDGGDD.",
     ".KDDDD.......DDDDK.",
     "..................."
 ]
@@ -1133,16 +1133,28 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
     let g = c.h - 2
     let w = turtleSitting[0].count, h = turtleSitting.count
     let ox = cx - w / 2, oy = g - (h - 1)
-    c.sprite(ox, oy, turtleSitting, ["G": .body, "D": .bodyShade, "Y": .ring, "C": .white, "B": .inner, "T": .mark2, "K": .outline, "W": .white])
+    let map: [Character: Col] = ["G": .body, "D": .bodyShade, "Y": .ring, "C": .white, "B": .inner, "T": .mark2, "K": .outline, "W": .white]
+    let dozing = p.onBook                    // asleep over its book: head sunk a little, sleepy face, nightcap
+    let hy = oy + (dozing ? 1 : 0)
+    c.sprite(ox, oy + 11, Array(turtleSitting.dropFirst(11)), map)
+    c.sprite(ox, hy, Array(turtleSitting.prefix(11)), map)
     // eyes other than wide open: covered with skin, then drawn as lines
-    if ![.open, .up, .wide].contains(p.eyes) {
+    if dozing || ![.open, .up, .wide].contains(p.eyes) {
         for ex in [ox + 5, ox + 12] {
-            c.rect(ex, oy + 6, 2, 3, .body)
+            c.rect(ex, hy + 6, 2, 3, .body)
             switch p.eyes {
-            case .happy: c.set(ex, oy + 8, .eye); c.set(ex + 1, oy + 7, .eye); c.set(ex + 2, oy + 8, .eye)
-            default: c.hline(ex, ex + 1, oy + 8, .eye)
+            case .happy where !dozing: c.set(ex, hy + 8, .eye); c.set(ex + 1, hy + 7, .eye); c.set(ex + 2, hy + 8, .eye)
+            default: c.hline(ex, ex + 1, hy + 8, .eye)
             }
         }
+    }
+    if dozing {
+        // the sleepy face: a little open mouth with its tongue
+        c.set(cx, hy + 9, .outline); c.set(cx, hy + 10, .tongue)
+        // the blue polka-dot nightcap, its white brim, flopping over to one side with the pompom
+        c.sprite(ox + 3, hy - 3, ["....BBBBB......", "..BBYBBBYBB....", ".BBBBBYBBBBBB..", "BYBBBBBBBYBBBB.", "WWWWWWWWWWWWWBB",
+                                  "............BB.", ".............WW", ".............WW"],
+                 ["B": .wing, "Y": .ring, "W": .white])
     }
     if p.blush { c.set(ox + 4, oy + 9, .blush); c.set(ox + 14, oy + 9, .blush) }
     // the big book on its lap, the hands at its sides; one hand lifts to turn the page
@@ -1610,7 +1622,7 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
 @discardableResult
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     var p = p
-    if sp == .turtle && p.stance == .curl { p.nightcap = false; p.outfit.hat = .none }    // it has its own nightcap
+    if sp == .turtle && (p.stance == .curl || p.onBook) { p.nightcap = false; p.outfit.hat = .none }    // it has its own nightcap
     lastBook = nil
     if p.stance == .front { p.outfit = Outfit(); p.nightcap = false; p.phones = false }   // the close-up: just the face
     let a: Anchors
