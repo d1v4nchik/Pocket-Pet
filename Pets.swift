@@ -1099,67 +1099,61 @@ private let turtleHead = [
     "......DDDDDD...",
 ]
 
-/// Sitting up facing you to read (after the bead turtle): a big round head, the shell peeking out on both sides, a
-/// yellow belly plate, chunky arms and feet. The big book goes on its lap.
+/// Sitting up facing you to read, copied bead for bead from the bead turtle: a dark green shade down the left of its
+/// head, big eyes with a shine, a yellow collar with a little white bow, the shell's stripes down both sides, green
+/// hands and feet. G/D greens, Y yellow, C cream, B/T shell, K lines, W shine. The big book goes on its lap.
 private let turtleSitting = [
-    ".......GGGGGGG.......",
-    ".....GGGGGGGGGGG.....",
-    "....GGGGGGGGGGGGG....",
-    "...GGGGGGGGGGGGGGG...",
-    "...GGGGGGGGGGGGGGG...",
-    "...GGGGGGGGGGGGGGG...",
-    "...GGGGGGGGGGGGGGG...",
-    "....GGGGGGGGGGGGG....",
-    "..MMM.DGGGGGGGD.MMM..",
-    ".MMLMM.DDGGGDD.MMLMM.",
-    "RMMLMMMGGGGGGGMMMLMMR",
-    "RMMMMMGGYYYYYGGMMMMMR",
-    "RLMMMGGYYYYYYYGGMMMLR",
-    "RMMMMGYYYKKKYYYGMMMMR",
-    "RMMLGGYYYYYYYYYGGLMMR",
-    "GGGMGGYYYKKKYYYGGMGGG",
-    "GGGGGGYYYYYYYYYGGGGGG",
-    "DGGRRGGYYYYYYYGGRRGGD",
-    ".DGGRRGYYYYYYYGRRGGD.",
-    "..DDRRRRGGGGGRRRRDD..",
-    "....RRRRRRRRRRRRR....",
-    "....DGGGG...GGGGD...."
+    "...................",
+    ".......DDDGG.......",
+    "......DDGGGGG......",
+    ".....DDGGGGGGG.....",
+    "....DDGGGGGGGGG....",
+    "....DDGGGGGGGGGG...",
+    "....DKWGGGGGKWGG...",
+    "....DKKGGGGGKKGG...",
+    "....DKKGGGGGKKGG...",
+    "....DDGGGGGGGGGG...",
+    ".....DDGGGGGGGG....",
+    ".....KDDGGGGGGK....",
+    ".BT.GGKKKKKKKGGKTB.",
+    ".TBKGGKYYYYYKGGKBT.",
+    ".BTKGGGKYYYKDGGKTB.",
+    ".TBKDGGGKCKDDGGKBT.",
+    ".BTKDDGGGKGDDGGKTB.",
+    ".TBKKDDGGKGGDDKKBT.",
+    ".KKGGKKDDKDDKKGGKK.",
+    ".DGGGGKKCCCCKGGGGD.",
+    ".DGGGDKCCCCCKDGGGD.",
+    ".DDGGDKYYYYYKDGGDD.",
+    ".KDDDD.......DDDDK.",
+    "..................."
 ]
 
 private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
-    let g = c.h - 2, ox = cx - 10, oy = g - 21
-    let top = oy + p.headDY
-    c.sprite(ox, oy, Array(turtleSitting.prefix(9)).map { $0 }, turtleColors)              // the head (it can nod)
-    if p.headDY != 0 {
-        for y in 0..<max(0, p.headDY) { for x in 0..<21 where turtleSitting[y].dropFirst(x).first != "." { c.set(ox + x, oy + y, .clear) } }
-        c.sprite(ox, top, Array(turtleSitting.prefix(9)), turtleColors)
-    }
-    c.sprite(ox, oy + 9, Array(turtleSitting.dropFirst(9)), turtleColors)                 // shell, body and feet
-    // eyes: big and round like the beads, with a shine
-    let ey = top + 4
-    for ex in [cx - 5, cx + 3] {
-        switch p.eyes {
-        case .closed, .half, .sad: c.hline(ex, ex + 1, ey + 1, .eye)
-        case .happy: c.set(ex - 1, ey + 1, .eye); c.set(ex, ey, .eye); c.set(ex + 1, ey + 1, .eye)
-        case .wide: c.rect(ex, ey - 1, 2, 4, .eye); c.set(ex, ey - 1, .eyeHi)
-        default: c.rect(ex, ey, 2, 3, .eye); c.set(ex, ey, .eyeHi)
+    let g = c.h - 2
+    let w = turtleSitting[0].count, h = turtleSitting.count
+    let ox = cx - w / 2, oy = g - (h - 1)
+    c.sprite(ox, oy, turtleSitting, ["G": .body, "D": .bodyShade, "Y": .ring, "C": .white, "B": .inner, "T": .mark2, "K": .outline, "W": .white])
+    // eyes other than wide open: covered with skin, then drawn as lines
+    if ![.open, .up, .wide].contains(p.eyes) {
+        for ex in [ox + 5, ox + 12] {
+            c.rect(ex, oy + 6, 2, 3, .body)
+            switch p.eyes {
+            case .happy: c.set(ex, oy + 8, .eye); c.set(ex + 1, oy + 7, .eye); c.set(ex + 2, oy + 8, .eye)
+            default: c.hline(ex, ex + 1, oy + 8, .eye)
+            }
         }
     }
-    c.set(cx - 1, top + 7, .eye); c.set(cx, top + 7, .eye)                               // a little smile
-    if p.mouth == .open || p.mouth == .tongue { c.set(cx, top + 8, .tongue) }
-    c.set(cx - 6, top + 7, .blush); c.set(cx + 5, top + 7, .blush)                      // soft pink cheeks
-    // the big book on its lap, held at the sides; one arm lifts to turn the page
+    if p.blush { c.set(ox + 4, oy + 9, .blush); c.set(ox + 14, oy + 9, .blush) }
+    // the big book on its lap, the hands at its sides; one hand lifts to turn the page
     if p.prop == .book {
         drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
-        c.rect(cx - 10, g - 5, 3, 3, .body); c.set(cx - 10, g - 3, .bodyShade)
         if p.turn >= 0 && p.turn < 0.7 {
             let a = Double.pi * min(1, p.turn), tx = cx + Int((7 * cos(a)).rounded()), ty = g - 3 - Int((6 * sin(a)).rounded())
-            c.thick(cx + 8, g - 7, tx, ty, 2, .body)
-        } else {
-            c.rect(cx + 8, g - 5, 3, 3, .body); c.set(cx + 10, g - 3, .bodyShade)
+            c.thick(ox + 15, oy + 18, tx, ty, 2, .body)
         }
     }
-    return Anchors(headX: cx, headTop: top, headW: 13, eyes: [(cx - 5, ey), (cx + 3, ey)], profile: false, neck: (cx, top + 9))
+    return Anchors(headX: cx, headTop: oy, headW: 13, eyes: [(ox + 5, oy + 6), (ox + 12, oy + 6)], profile: false, neck: (cx, oy + 12))
 }
 
 private let turtleColors: [Character: Col] = ["G": .body, "D": .bodyShade, "M": .mark, "S": .markShade, "L": .mark2, "E": .accent,
