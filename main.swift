@@ -364,10 +364,10 @@ if let i = args.firstIndex(of: "--card-shot"), i + 1 < args.count {
     _ = NSApplication.shared
     MainActor.assumeIsolated {
         let sp = MusicPlayer()
-        sp.preview(connected: true)
+        sp.preview(connected: true, art: args.contains("loading") ? "preview:on-its-way" : "preview:cover")   // or a cover still on its way
         let card = FloatingCard()
         card.show(MusicCardView(player: sp, model: MusicCardModel()), tip: CGPoint(x: -3800, y: 300), below: false, until: .infinity)
-        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        RunLoop.main.run(until: Date().addingTimeInterval(args.contains("loading") ? 0.9 : 1.5))
         typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
         let fn = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage").map { unsafeBitCast($0, to: Capture.self) }
         if let num = NSApp.windows.first(where: { $0.isVisible })?.windowNumber, let img = fn?(.null, 8, UInt32(num), 9)?.takeRetainedValue() {

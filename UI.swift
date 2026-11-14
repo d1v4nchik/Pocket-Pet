@@ -323,7 +323,7 @@ struct RootView: View {
         } else if sp.running && (sp.song != nil || sp.app == .other) {
             VStack(spacing: expanded ? 8 : 0) {
                 HStack(spacing: 10) {
-                    Art(url: sp.song?.art, size: expanded ? 48 : 40)
+                    Art(url: sp.song?.art, size: expanded ? 48 : 40, key: sp.song?.id)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                         Text(sp.song?.artist ?? (world.trusted ? "Controlled with your media keys" : "Allow Accessibility to control it"))
@@ -1352,24 +1352,59 @@ final class ArtCache {
 struct Art: View {
     let url: String?
     let size: CGFloat
+    var key: String? = nil                        // the song: a new one restarts the wait for its cover
     @State private var loaded: (url: String, image: NSImage)?
     @State private var retried: String?          // a cover that failed to download gets one more go
+    @State private var failed: String?           // and after that, the plain note
+    @State private var waitOver = false          // no address for a cover yet: wait a little, then settle on the note
+    @State private var waitToken = 0
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
         // only ever this song's own cover: a picture loaded for another address isn't shown
         let img = url.flatMap { u in loaded?.url == u ? loaded?.image : ArtCache.cached(u) }
+        let loading = img == nil && (url.map { $0 != failed } ?? !waitOver)
         ZStack {
             shape.fill(Color.primary.opacity(0.08))
-            Image(systemName: "music.note").foregroundStyle(.secondary)
+            if loading {
+                // still on its way: the note breathes and a soft shine sweeps across, like other players do
+                TimelineView(.animation) { t in
+                    let s = t.date.timeIntervalSinceReferenceDate
+                    let sweep = s.truncatingRemainder(dividingBy: 1.4) / 1.4
+                    ZStack {
+                        Image(systemName: "music.note").foregroundStyle(.secondary)
+                            .opacity(0.45 + 0.35 * (0.5 + 0.5 * sin(s * 3)))
+                            .scaleEffect(0.94 + 0.06 * (0.5 + 0.5 * sin(s * 3)))
+                        LinearGradient(colors: [.white.opacity(0), .white.opacity(0.16), .white.opacity(0)],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: size * 0.6, height: size * 1.8)
+                            .rotationEffect(.degrees(20))
+                            .offset(x: (sweep * 2 - 1) * size * 1.1)
+                    }
+                }
+                .transition(.opacity)
+            } else if img == nil {
+                Image(systemName: "music.note").foregroundStyle(.secondary).transition(.opacity)
+            }
             if let img {
-                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill).transition(.opacity)
+                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
+                    .transition(.opacity.combined(with: .scale(scale: 1.08)))
             }
         }
         .frame(width: size, height: size)
         .clipShape(shape)
-        .onAppear(perform: load)
+        .animation(.easeOut(duration: 0.35), value: img != nil)
+        .animation(.easeOut(duration: 0.3), value: loading)
+        .onAppear { load(); startWait() }
         .onChange(of: url) { _ in load() }
+        .onChange(of: key) { _ in startWait() }
+    }
+
+    private func startWait() {
+        waitOver = false
+        waitToken += 1
+        let token = waitToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { if waitToken == token { waitOver = true } }
     }
 
     private func load() {
@@ -1377,10 +1412,11 @@ struct Art: View {
         ArtCache.load(url) { img in
             guard let img else {
                 if retried != url { retried = url; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { load() } }
+                else { failed = url }
                 return
             }
             guard url == self.url else { return }
-            withAnimation(.easeOut(duration: 0.2)) { loaded = (url, img) }
+            loaded = (url, img)
         }
     }
 }

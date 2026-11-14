@@ -178,7 +178,7 @@ struct MusicCardView: View {
         let sp = player
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 11) {
-                Art(url: sp.song?.art, size: 46)
+                Art(url: sp.song?.art, size: 46, key: sp.song?.id)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(sp.song?.name ?? "Playing in \(sp.appName)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     Text(sp.song?.artist ?? "").font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)

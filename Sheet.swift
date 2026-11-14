@@ -44,6 +44,11 @@ func renderSheet(_ path: String, only: String? = nil) {
             add("SHELL", .turtle) { $0.outfit = o; $0.stance = .squash; $0.tuck = 1 }
             add("TUCKING", .turtle) { $0.outfit = o; $0.stance = .stand; $0.tuck = 0.6 }
         }
+        for o in [Outfit(), outfits[0], outfits[1]] {
+            add("TYPE MUSIC", .turtle) { $0.outfit = o; $0.stance = .upright; $0.prop = .laptop; $0.phones = true; $0.arm = .tap }
+            add("READ MUSIC", .turtle) { $0.outfit = o; $0.stance = .upright; $0.prop = .book; $0.phones = true }
+            add("WALK MUSIC", .turtle) { $0.outfit = o; $0.stance = .walk; $0.phones = true }
+        }
     }
     if only == "necks" {               // every pet side on, in each neckwear
         for sp in Species.lineup {

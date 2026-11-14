@@ -1226,6 +1226,16 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
         c.rect(ox + 16, hy + 7, 2, 2, .white)                                           // the pompom
     }
     if p.blush { c.set(ox + 4, oy + 9, .blush); c.set(ox + 14, oy + 9, .blush) }
+    // headphones, sized to its big round head: cups over the sides of its head level with its eyes, the band hugging
+    // the dome (left out under a hat or nightcap, where only the cups show)
+    if p.phones {
+        if p.outfit.hat == .none && !dozing {
+            for (x, y) in [(3, 4), (4, 3), (5, 2), (6, 1), (12, 1), (13, 2), (14, 3), (15, 4), (16, 4)] { c.set(ox + x, hy + y, .phones) }
+            c.hline(ox + 7, ox + 11, hy, .phones)
+            c.set(ox + 3, hy + 5, .phones); c.set(ox + 16, hy + 5, .phones)
+        }
+        c.rect(ox + 2, hy + 6, 2, 4, .phonesPad); c.rect(ox + 16, hy + 6, 2, 4, .phonesPad)
+    }
     // typing: a laptop on its lap, the back of its screen towards you; it peeks over and taps with both hands
     // (headDY 99: just the face, for the Pets tab's picture)
     if p.prop == .laptop && p.headDY != 99 {
@@ -1245,7 +1255,7 @@ private func drawSittingTurtle(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
         }
     }
     // its head is a narrow dome: hats sit snug on top, the flower tucked on its edge
-    return Anchors(headX: cx, headTop: oy + 2, headW: 7, eyes: [(ox + 5, oy + 6), (ox + 12, oy + 6)], profile: false, neck: (cx, oy + 12))
+    return Anchors(headX: cx, headTop: hy + 2, headW: 7, eyes: [(ox + 5, hy + 6), (ox + 12, hy + 6)], profile: false, neck: (cx, oy + 12))
 }
 
 private let turtleColors: [Character: Col] = ["G": .body, "D": .bodyShade, "M": .mark, "S": .markShade, "L": .mark2, "E": .accent,
@@ -1775,6 +1785,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     default: a = drawQuad(&c, sp, p, cx: cx)
     }
     if let b = lastBook { lineBook(&c, b, inFront: !p.onBook) }
+    if sp == .turtle && !a.profile { p.phones = false }          // sitting up, it wears its own big headphones
     if sp == .turtle && a.profile && p.outfit.neck != .none {
         drawTortoiseNeck(&c, p.outfit.neck, a.neck)               // its neck sticks out sideways: wrap it round
         p.outfit.neck = .none
