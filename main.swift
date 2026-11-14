@@ -636,6 +636,10 @@ if let i = args.firstIndex(of: "--appicon"), i + 1 < args.count {
     renderAppIcon(args[i + 1])
     exit(0)
 }
+if let i = args.firstIndex(of: "--moments"), i + 1 < args.count {
+    renderMoments(args[i + 1])
+    exit(0)
+}
 if let i = args.firstIndex(of: "--hero"), i + 1 < args.count {
     renderHero(args[i + 1])
     exit(0)

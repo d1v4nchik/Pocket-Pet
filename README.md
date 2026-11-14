@@ -7,7 +7,7 @@
 A little pixel pet that lives on your Mac's desktop. It wanders around, naps when you're away, types along with you,
 watches videos with popcorn and listens to your music in tiny headphones.
 
-![The goose, the parrot, four cats, the dalmatian, the fox and the bat](docs/lineup.png)
+![The goose, the parrot, four cats, the dalmatian, the fox, the tortoise and the bat, dressed up](docs/pets.png)
 
 ## ⬇️ Download
 
@@ -38,6 +38,9 @@ screen with you and reacts to what you do.
   (stretching, vitamins, a walk...), nudges you before every calendar event and about ManageBac tasks that are due, and
   rings a little bell when a message arrives.
 
+![A cat reading, the tortoise typing in headphones, the dalmatian with popcorn, a cat listening to music, a cat thinking
+hard over its book, the parrot on its laptop, the fox asleep in its nightcap and the bat flying](docs/moments.png)
+
 ## The Pets
 
 | | Pet | Likes |
@@ -64,7 +67,7 @@ a cat and a dog are careful with each other, the goose honks everyone off, and t
 4. Pick it up and throw it. With gravity on, cats float down on a little umbrella; the bat just flies back up.
 5. Leave it alone for a while and it settles down for a nap.
 
-![The menu with every pet, today's calendar, the music card and a water break](docs/screens.png)
+![The menu with every pet, today's calendar, the music card and a water break](docs/menu.png)
 
 ## Controls
 
@@ -75,6 +78,7 @@ a cat and a dog are careful with each other, the goose honks everyone off, and t
 | Today's calendar | Double-click the pet |
 | Music controls and search | Click the pet while music plays |
 | Pet it | Stroke it with the cursor |
+| Paw on the glass | Rest the cursor on it, then click for a high five |
 | Throw it | Drag it and let go |
 | Follow your cursor | The map pin in the menu (press it again to stop) |
 | Stay in one spot | The paw button in the menu: roams, stays put, completely still |

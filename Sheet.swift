@@ -299,6 +299,7 @@ func renderSheet(_ path: String, only: String? = nil) {
     w.ui.tab = 0
     w.hidden = false
     w.pet.mode = .idle
+    w.pet.fullness = 84; w.pet.happiness = 92; w.pet.energy = 76          // a well looked-after pet for the picture
     w.pet.renderCanvas()
     // a made-up cover for the sample song: a warm gradient, nothing real
     let cover = NSImage(size: NSSize(width: 120, height: 120), flipped: false) { r in
@@ -401,11 +402,34 @@ func renderAppIcon(_ dir: String) {
 func renderHero(_ path: String) {
     let looks: [(Species, Outfit)] = [(.goose, Outfit(hat: .party)), (.parrot, Outfit(hat: .crown)), (.ginger, Outfit(neck: .bell)),
                                       (.siamese, Outfit(hat: .bow)), (.tuxedo, Outfit(hat: .topHat, neck: .bowtie)), (.calico, Outfit(hat: .flower)),
-                                      (.dalmatian, Outfit(glasses: .shades, neck: .bandana)), (.fox, Outfit()), (.bat, Outfit(hat: .witch))]
-    let pics = looks.map { sp, o -> (Canvas, [CGColor]) in
-        var p = Pose(); p.outfit = o
-        if !sp.isBird { p.stance = .sit; p.tailUp = sp == .fox }       // the fox shows off its tail
+                                      (.dalmatian, Outfit(glasses: .shades, neck: .bandana)), (.fox, Outfit()), (.turtle, Outfit(hat: .cowboy)),
+                                      (.bat, Outfit(hat: .witch))]
+    renderRow(path, looks.map { sp, o in (sp, { p in
+        p.outfit = o
+        if !sp.isBird && sp != .turtle { p.stance = .sit; p.tailUp = sp == .fox }       // the fox shows off its tail
         if sp == .dalmatian { p.mouth = .tongue }
+    }) })
+}
+
+/// What they get up to, for the README: reading, typing to music, popcorn, headphones, thinking hard, a nap...
+/// `PocketPet --moments out.png`
+func renderMoments(_ path: String) {
+    renderRow(path, [
+        (.ginger, { $0.stance = .lie; $0.prop = .book; $0.headDY = 1; $0.tailUp = false; $0.turn = 0.35 }),
+        (.turtle, { $0.stance = .upright; $0.prop = .laptop; $0.phones = true; $0.arm = .tap }),
+        (.dalmatian, { $0.stance = .sit; $0.prop = .popcorn; $0.tailUp = false }),
+        (.calico, { $0.stance = .sit; $0.phones = true; $0.eyes = .happy; $0.tailUp = false }),
+        (.siamese, { $0.stance = .sit; $0.prop = .book; $0.thinking = true; $0.spin = 3; $0.arm = .tap; $0.tailUp = false }),
+        (.parrot, { $0.stance = .sit; $0.prop = .laptop; $0.arm = .tap }),
+        (.fox, { $0.stance = .curl; $0.nightcap = true; $0.eyes = .closed; $0.tailUp = false }),
+        (.bat, { $0.stance = .fly; $0.phase = 1.2 }),
+    ])
+}
+
+/// Pets side by side on the cream, all standing on one line, in big crisp pixels.
+func renderRow(_ path: String, _ pets: [(Species, (inout Pose) -> Void)]) {
+    let pics = pets.map { sp, edit -> (Canvas, [CGColor]) in
+        var p = Pose(); edit(&p)
         var c = Canvas(canvasW, canvasH)
         drawPet(&c, sp, p, cx: canvasW / 2)
         c.outline()
