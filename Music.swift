@@ -80,6 +80,11 @@ final class MusicPlayer {
         upNext = [Song(id: "a", name: "Birds of a Feather", artist: "Billie Eilish"), Song(id: "b", name: "Good Luck, Babe!", artist: "Chappell Roan"),
                   Song(id: "c", name: "Apple", artist: "Charli xcx")]
     }
+    /// Sample data: the next song starts, with a cover still to download (`PocketPet --card-swap`).
+    func previewNext(art: String) {
+        song = Song(id: "spotify:track:y", name: "Sofia", artist: "Clairo", art: art, duration: 188)
+        changed()
+    }
     var elapsed: Double { min(song?.duration ?? 0, playing ? position + Date().timeIntervalSince(positionAt) : position) }
 
     private struct Reading {
@@ -117,7 +122,11 @@ final class MusicPlayer {
                 let reported = song?.art.flatMap { $0.isEmpty ? nil : Self.https($0) }      // "" is no cover at all
                 song?.art = reported
                 if let id = song?.id, song?.art == nil { song?.art = self.artCache[id] }
+                // Spotify can hand over the new song with the last song's cover for a moment: the same album, or
+                // stale. Show it, but look again quickly until the cover settles
+                let stale = song != nil && song?.id != self.song?.id && song?.art != nil && song?.art == self.song?.art
                 self.song = song
+                if stale, let s = song { self.recheckCover(s.id) }
                 ArtCache.prefetch([song?.art])
                 self.playing = r.playing
                 self.position = r.position
@@ -169,16 +178,22 @@ final class MusicPlayer {
     /// (Apple Music never hands out cover links, so it goes straight there).
     private func coverMissing(_ s: Song) {
         let tries = artTries[s.id, default: 0]
-        guard tries < 4 else { return }
+        guard tries < 6 else { return }
         artTries[s.id] = tries + 1
         if artTries.count > 300 { artTries.removeAll() }
-        if s.id.hasPrefix("spotify:") && tries < 2 {
-            later(tries == 0 ? 1.2 : 3) { [weak self] in if self?.song?.id == s.id { self?.refresh() } }
+        if s.id.hasPrefix("spotify:") && tries < 4 {
+            // asked again quickly at first: the cover usually turns up within a second
+            later([0.35, 0.7, 1.5, 3][tries]) { [weak self] in if self?.song?.id == s.id { self?.refresh(quiet: true) } }
         } else if s.id.hasPrefix("spotify:track:") && connected {
             spotifyCover(s)
         } else {
             findArtwork(s)
         }
+    }
+
+    /// Looks again a few times over the next couple of seconds in case a newer cover turns up for this song.
+    private func recheckCover(_ id: String) {
+        for d in [0.4, 1.0, 2.2] { later(d) { [weak self] in if self?.song?.id == id { self?.refresh(quiet: true) } } }
     }
 
     private func spotifyCover(_ s: Song) {

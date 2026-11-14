@@ -376,6 +376,33 @@ if let i = args.firstIndex(of: "--card-shot"), i + 1 < args.count {
     }
     exit(0)
 }
+if let i = args.firstIndex(of: "--card-swap"), i + 3 < args.count {
+    // the music card open while the song changes: frames after the change, to see how soon the new cover shows
+    _ = NSApplication.shared
+    MainActor.assumeIsolated {
+        let sp = MusicPlayer(), model = MusicCardModel()
+        sp.onChange = { model.tick &+= 1 }
+        sp.preview(connected: true, art: args[i + 2])
+        let card = FloatingCard()
+        card.show(MusicCardView(player: sp, model: model), tip: CGPoint(x: -3800, y: 300), below: false, until: .infinity)
+        RunLoop.main.run(until: Date().addingTimeInterval(2.5))
+        typealias Capture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        let fn = dlsym(dlopen(nil, RTLD_NOW), "CGWindowListCreateImage").map { unsafeBitCast($0, to: Capture.self) }
+        func shot(_ name: String) {
+            if let num = NSApp.windows.first(where: { $0.isVisible })?.windowNumber, let img = fn?(.null, 8, UInt32(num), 9)?.takeRetainedValue() {
+                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1] + name + ".png"))
+            }
+        }
+        shot("-before")
+        let t0 = Date()
+        sp.previewNext(art: args[i + 3])
+        for t in [0.2, 0.5, 1.0, 2.0, 4.0] {
+            RunLoop.main.run(until: t0.addingTimeInterval(t))
+            shot("-\(t)")
+        }
+    }
+    exit(0)
+}
 if let i = args.firstIndex(of: "--pets-shot"), i + 1 < args.count {
     // the menu's Pets tab with three pets, in a real window as macOS draws it (your pets are put back after)
     _ = NSApplication.shared

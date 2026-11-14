@@ -1405,8 +1405,8 @@ struct Art: View {
         .clipShape(shape)
         .animation(.easeOut(duration: 0.35), value: img != nil)
         .animation(.easeOut(duration: 0.3), value: loading)
-        .onAppear { load(); startWait() }
-        .onChange(of: url) { _ in load() }
+        .onAppear { load(url); startWait() }
+        .onChange(of: url) { new in load(new) }        // the new address: this closure still sees the old `url`
         .onChange(of: key) { _ in startWait() }
     }
 
@@ -1417,15 +1417,15 @@ struct Art: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { if waitToken == token { waitOver = true } }
     }
 
-    private func load() {
+    /// Downloads a cover and keeps it; it only shows while it's still this view's address.
+    private func load(_ url: String?) {
         guard let url, ArtCache.cached(url) == nil, loaded?.url != url else { return }
         ArtCache.load(url) { img in
             guard let img else {
-                if retried != url { retried = url; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { load() } }
+                if retried != url { retried = url; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { load(url) } }
                 else { failed = url }
                 return
             }
-            guard url == self.url else { return }
             loaded = (url, img)
         }
     }
