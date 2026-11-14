@@ -169,8 +169,14 @@ final class MusicPlayer {
 
     /// Covers over https, and Spotify's in the 300 px size instead of 640 px: plenty for the card, a third of the download.
     private static func https(_ u: String) -> String {
-        let secure = u.hasPrefix("http://") ? "https://" + u.dropFirst(7) : u
-        return secure.replacingOccurrences(of: "i.scdn.co/image/ab67616d0000b273", with: "i.scdn.co/image/ab67616d00001e02")
+        cover300(u.hasPrefix("http://") ? "https://" + u.dropFirst(7) : u)
+    }
+
+    /// A Spotify album cover in its 300 px size, from the 64 px (lists) or 640 px one: the card always shows this one
+    /// address, so a song picked from your queue keeps the same cover when Spotify reports it a moment later.
+    static func cover300(_ u: String) -> String {
+        u.replacingOccurrences(of: "i.scdn.co/image/ab67616d0000b273", with: "i.scdn.co/image/ab67616d00001e02")
+            .replacingOccurrences(of: "i.scdn.co/image/ab67616d00004851", with: "i.scdn.co/image/ab67616d00001e02")
     }
 
     /// No cover yet. Spotify often reports a new song a moment before its cover, so it's asked again shortly; after
@@ -287,7 +293,8 @@ final class MusicPlayer {
     /// Jumps ahead to a song in Up next, keeping the rest of the queue (skips there, like pressing next a few times).
     func skip(to index: Int) {
         guard index >= 0, index < upNext.count else { return }
-        let target = upNext[index]
+        var target = upNext[index]
+        target.art = target.art.map(Self.cover300)
         upNext.removeFirst(index + 1)
         song = target; playing = true; position = 0; positionAt = Date()
         changed()
@@ -435,6 +442,7 @@ final class MusicPlayer {
             guard let self, let json else { return }
             self.upNext = (json["queue"] as? [[String: Any]] ?? []).prefix(20).compactMap(Self.song)
             ArtCache.prefetch(self.upNext.map(\.art))
+            ArtCache.prefetch(self.upNext.prefix(3).map { $0.art.map(Self.cover300) })   // the card's size, for what's next
             self.changed()
         }
     }

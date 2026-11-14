@@ -1363,7 +1363,9 @@ struct Art: View {
     let url: String?
     let size: CGFloat
     var key: String? = nil                        // the song: a new one restarts the wait for its cover
-    @State private var loaded: (url: String, image: NSImage)?
+    @State private var shown: (url: String, image: NSImage)?     // the cover on screen
+    @State private var target: String?           // the cover that should be on screen
+    @State private var holding = false           // a new song's cover is on its way: the last one stays a moment
     @State private var retried: String?          // a cover that failed to download gets one more go
     @State private var failed: String?           // and after that, the plain note
     @State private var waitOver = false          // no address for a cover yet: wait a little, then settle on the note
@@ -1371,9 +1373,10 @@ struct Art: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
-        // only ever this song's own cover: a picture loaded for another address isn't shown
-        let img = url.flatMap { u in loaded?.url == u ? loaded?.image : ArtCache.cached(u) }
-        let loading = img == nil && (url.map { $0 != failed } ?? !waitOver)
+        let current = shown.flatMap { $0.url == url ? $0 : nil }
+        // the last cover stays while the new one is on its way, and for the one frame before the change is handled
+        let onScreen = current ?? (holding || target != url ? shown : nil)
+        let loading = onScreen == nil && (url.map { $0 != failed } ?? !waitOver)
         ZStack {
             shape.fill(Color.primary.opacity(0.08))
             if loading {
@@ -1393,21 +1396,43 @@ struct Art: View {
                     }
                 }
                 .transition(.opacity)
-            } else if img == nil {
+            } else if onScreen == nil {
                 Image(systemName: "music.note").foregroundStyle(.secondary).transition(.opacity)
             }
-            if let img {
-                Image(nsImage: img).resizable().aspectRatio(contentMode: .fill)
-                    .transition(.opacity.combined(with: .scale(scale: 1.08)))
+            // each cover is its own view, so a new one fades in over the last as that fades out
+            if let s = onScreen {
+                Image(nsImage: s.image).resizable().aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .id(s.url)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 1.08)), removal: .opacity))
             }
         }
         .frame(width: size, height: size)
         .clipShape(shape)
-        .animation(.easeOut(duration: 0.35), value: img != nil)
-        .animation(.easeOut(duration: 0.3), value: loading)
-        .onAppear { load(url); startWait() }
-        .onChange(of: url) { new in load(new) }        // the new address: this closure still sees the old `url`
+        .onAppear {
+            target = url
+            if let url, let img = ArtCache.cached(url) { shown = (url, img) } else { load(url) }
+            startWait()
+        }
+        .onChange(of: url) { new in change(to: new) }   // the new address: this closure still sees the old `url`
         .onChange(of: key) { _ in startWait() }
+    }
+
+    private func change(to new: String?) {
+        // all in one go, so there's never a frame with neither cover
+        if let new, let img = ArtCache.cached(new) {
+            withAnimation(.easeOut(duration: 0.35)) { target = new; shown = (new, img); holding = false }
+            return
+        }
+        // not here yet: keep the last cover a moment (most covers arrive within it), then the loading shine
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { target = new; holding = shown != nil }
+        if holding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                if target == new && shown?.url != new { withAnimation(.easeOut(duration: 0.3)) { holding = false } }
+            }
+        }
+        load(new)
     }
 
     private func startWait() {
@@ -1417,16 +1442,17 @@ struct Art: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { if waitToken == token { waitOver = true } }
     }
 
-    /// Downloads a cover and keeps it; it only shows while it's still this view's address.
+    /// Downloads a cover and shows it, as long as it's still the one this view wants.
     private func load(_ url: String?) {
-        guard let url, ArtCache.cached(url) == nil, loaded?.url != url else { return }
+        guard let url else { return }
         ArtCache.load(url) { img in
             guard let img else {
                 if retried != url { retried = url; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { load(url) } }
-                else { failed = url }
+                else if target == url { withAnimation(.easeOut(duration: 0.3)) { failed = url; holding = false } }
                 return
             }
-            loaded = (url, img)
+            guard target == url, shown?.url != url else { return }
+            withAnimation(.easeOut(duration: 0.35)) { shown = (url, img); holding = false }
         }
     }
 }

@@ -393,12 +393,15 @@ if let i = args.firstIndex(of: "--card-swap"), i + 3 < args.count {
                 try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1] + name + ".png"))
             }
         }
+        let cachedFirst = args.contains("cached")         // picked from the queue: its cover is already fetched
+        if cachedFirst { ArtCache.prefetch([args[i + 3]]); RunLoop.main.run(until: Date().addingTimeInterval(1.5)) }
         shot("-before")
         let t0 = Date()
         sp.previewNext(art: args[i + 3])
-        for t in [0.2, 0.5, 1.0, 2.0, 4.0] {
+        for t in [0.05, 0.15, 0.3, 0.5, 1.0, 2.0] {
             RunLoop.main.run(until: t0.addingTimeInterval(t))
             shot("-\(t)")
+            if t == 0.5 { sp.previewNext(art: args[i + 3]) }          // Spotify reports the same song again
         }
     }
     exit(0)
