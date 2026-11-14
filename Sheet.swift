@@ -259,7 +259,7 @@ func renderSheet(_ path: String, only: String? = nil) {
     let view = VStack(spacing: 20) {
         AgendaView(agenda: Agenda.build(events, now: now))
         AgendaView(agenda: Agenda.build(events, tasks: [ev(13, 20, "History essay", day: 1), ev(15, 45, "Maths worksheet", day: 3),
-                                                         ev(11, 5, "Biology lab report", day: 5)], now: late))
+                                                         ev(11, 5, "Biology lab report", day: 5), ev(9, 30, "Piano  Lesson", day: 1)], now: late))
         AgendaView(agenda: Agenda.build([], tasks: [ev(13, 20, "History essay", day: 1)], calendar: false, now: late))
         MusicCardView(player: sp, model: MusicCardModel())
         WaterView(title: "Water break?", line: "3 of 8 glasses today", progress: 3 / 8, dots: (3, 8), pace: "On track")

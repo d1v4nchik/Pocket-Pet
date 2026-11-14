@@ -48,7 +48,10 @@ struct Agenda {
                 .map { AgendaRow(id: $0.id, time: time($0.start), title: clean($0.title), place: place($0)) }
         }
         a.calendar = calendar
-        let due = Agenda.dueSoon(tasks, now: now)
+        // a task that's already on the card (ManageBac added to Google Calendar too) isn't listed twice
+        func key(_ t: String) -> String { t.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        let onCard = Set(events.filter { $0.start < after && $0.end > today }.map { key($0.title) })
+        let due = Agenda.dueSoon(tasks, now: now).filter { !onCard.contains(key($0.title)) }
         a.due = Array(due.prefix(4))
         a.dueMore = max(0, due.count - 4)
         return a
