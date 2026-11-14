@@ -88,7 +88,8 @@ final class MusicPlayer {
 
     /// Asks Spotify and Apple Music (whichever are open) what's playing; the one that's playing wins.
     /// The first time per app, macOS asks you once whether Pocket Pet may control it.
-    func refresh() {
+    /// `quiet`: a look in the background (the song changed while the menu is closed), never asking for permission.
+    func refresh(quiet: Bool = false) {
         guard !previewing else { return }
         let s = isRunning(Self.spotifyID), m = isRunning(Self.musicID)
         guard s || m else {
@@ -97,9 +98,9 @@ final class MusicPlayer {
         }
         guard !pending else { return }
         pending = true
-        let askS = s && !asked.contains(Self.spotifyID), askM = m && !asked.contains(Self.musicID)
-        if s { asked.insert(Self.spotifyID) }
-        if m { asked.insert(Self.musicID) }
+        let askS = !quiet && s && !asked.contains(Self.spotifyID), askM = !quiet && m && !asked.contains(Self.musicID)
+        if s && !quiet { asked.insert(Self.spotifyID) }
+        if m && !quiet { asked.insert(Self.musicID) }
         q.async { [self] in
             let rs = s ? Self.read(.spotify, ask: askS) : nil
             let rm = m ? Self.read(.music, ask: askM) : nil
@@ -157,7 +158,11 @@ final class MusicPlayer {
         return r
     }
 
-    private static func https(_ u: String) -> String { u.hasPrefix("http://") ? "https://" + u.dropFirst(7) : u }
+    /// Covers over https, and Spotify's in the 300 px size instead of 640 px: plenty for the card, a third of the download.
+    private static func https(_ u: String) -> String {
+        let secure = u.hasPrefix("http://") ? "https://" + u.dropFirst(7) : u
+        return secure.replacingOccurrences(of: "i.scdn.co/image/ab67616d0000b273", with: "i.scdn.co/image/ab67616d00001e02")
+    }
 
     /// No cover yet. Spotify often reports a new song a moment before its cover, so it's asked again shortly; after
     /// that the cover is looked up: through your Spotify account if it's connected, otherwise Apple's song search

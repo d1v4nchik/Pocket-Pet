@@ -944,13 +944,15 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
             let shown = sanitize(title)
             if !shown.isEmpty { pet.say(["♪ " + String(shown.prefix(22))], 3) }
         }
-        if popover.isShown || musicCard.visible {
-            player.refresh()
-            if title != musicTitle {
-                player.refreshUpNext()
-                // Spotify can report the new title a moment before its cover: look again shortly
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.player.refresh() }
-            }
+        let shown = popover.isShown || musicCard.visible
+        if shown { player.refresh() }
+        if title != musicTitle {
+            // a new song: fetch its cover now, menu open or not, so it's already there when you look (in the
+            // background this never asks for permission)
+            if !shown { player.refresh(quiet: true) }
+            player.refreshUpNext()
+            // Spotify can report the new title a moment before its cover: look again shortly
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.player.refresh(quiet: !shown) }
         }
         musicPlaying = playing
         musicTitle = title
@@ -1954,6 +1956,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if ui.editing { rename(ui.draft) }
         for (id, n) in ui.names { if let p = pets.first(where: { $0.id == id }) { rename(p, n) } }
         ui.editing = false; ui.names = [:]; ui.renaming = nil
+        ui.tab = 0; ui.closetPart = 0              // the menu always opens on Pets again, whatever tab you left it on
     }
 
     func pawIcon(dot: Bool = false) -> NSImage {

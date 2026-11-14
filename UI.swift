@@ -1331,12 +1331,22 @@ struct RootView: View {
 /// Album art, kept in memory once loaded (and fetched ahead of time) so it's there instantly; it fades in otherwise.
 final class ArtCache {
     private static let cache = NSCache<NSString, NSImage>()
+    /// Covers also stay on disk, so a song you've heard before shows its cover straight away, even after a restart
+    /// (a cover's address never changes, so a saved copy is always right).
+    private static let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("Pocket Pet Covers")
+        c.urlCache = URLCache(memoryCapacity: 4 << 20, diskCapacity: 60 << 20, directory: dir)
+        c.requestCachePolicy = .returnCacheDataElseLoad
+        c.timeoutIntervalForRequest = 10
+        return URLSession(configuration: c)
+    }()
     static func cached(_ url: String) -> NSImage? { cache.object(forKey: url as NSString) }
 
     static func load(_ url: String, _ done: @escaping (NSImage?) -> Void) {
         if let img = cached(url) { done(img); return }
         guard let u = URL(string: url) else { done(nil); return }
-        URLSession.shared.dataTask(with: u) { data, _, _ in
+        session.dataTask(with: u) { data, _, _ in
             let img = data.flatMap(NSImage.init(data:))
             if let img { cache.setObject(img, forKey: url as NSString) }
             DispatchQueue.main.async { done(img) }
