@@ -18,10 +18,13 @@ struct Agenda {
     var allDay: [String] = []
     var empty: String?          // "Nothing else today"
     var tomorrow: [AgendaRow] = []
+    var due: [AgendaRow] = []           // ManageBac: what's due this week
+    var dueMore = 0
+    var calendar = true                 // false: only ManageBac is connected
 
-    var lineCount: Int { rows.count + tomorrow.count + (allDay.isEmpty ? 0 : 1) }
+    var lineCount: Int { rows.count + tomorrow.count + (allDay.isEmpty ? 0 : 1) + due.count }
 
-    static func build(_ events: [CalEvent], now: Date = Date()) -> Agenda {
+    static func build(_ events: [CalEvent], tasks: [CalEvent] = [], calendar: Bool = true, now: Date = Date()) -> Agenda {
         let cal = Calendar.current
         let today = cal.startOfDay(for: now), tomorrow = today.addingTimeInterval(86400), after = tomorrow.addingTimeInterval(86400)
         func time(_ d: Date) -> String { d.formatted(date: .omitted, time: .shortened) }
@@ -44,7 +47,24 @@ struct Agenda {
             a.tomorrow = events.filter { !$0.allDay && $0.start >= tomorrow && $0.start < after }.prefix(3 - a.rows.count)
                 .map { AgendaRow(id: $0.id, time: time($0.start), title: clean($0.title), place: place($0)) }
         }
+        a.calendar = calendar
+        let due = Agenda.dueSoon(tasks, now: now)
+        a.due = Array(due.prefix(4))
+        a.dueMore = max(0, due.count - 4)
         return a
+    }
+
+    /// ManageBac tasks due in the next week, soonest first: "Today", "Tomorrow" or the weekday.
+    static func dueSoon(_ tasks: [CalEvent], now: Date = Date()) -> [AgendaRow] {
+        let cal = Calendar.current, today = cal.startOfDay(for: now)
+        return tasks.compactMap { e -> (Date, AgendaRow)? in
+            let day = cal.startOfDay(for: e.allDay ? e.start : e.end.addingTimeInterval(-1))
+            let left = cal.dateComponents([.day], from: today, to: day).day ?? 99
+            guard left >= 0, left <= 7, e.allDay || e.end > now else { return nil }
+            let when = left == 0 ? "Today" : left == 1 ? "Tomorrow" : day.formatted(.dateTime.weekday(.abbreviated).day())
+            let t = e.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (e.end, AgendaRow(id: "due" + e.id, time: when, title: t.isEmpty ? "Task" : t))
+        }.sorted { $0.0 < $1.0 }.map { $0.1 }
     }
 
     /// A tidy location: links become "Online", long addresses keep their first part.
@@ -71,7 +91,7 @@ struct AgendaView: View {
                 Text(agenda.allDay.joined(separator: "  ·  "))
                     .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
             }
-            if let empty = agenda.empty {
+            if let empty = agenda.empty, agenda.calendar {
                 Text(empty).font(.system(size: 12)).foregroundStyle(.secondary)
             }
             ForEach(agenda.rows) { row($0) }
@@ -82,6 +102,17 @@ struct AgendaView: View {
                 Divider().opacity(0.5)
                 Text("Tomorrow").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 ForEach(agenda.tomorrow) { row($0) }
+            }
+            if !agenda.due.isEmpty {
+                if agenda.calendar { Divider().opacity(0.5) }
+                Label("Due soon", systemImage: "checklist").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    .labelStyle(TightLabel())
+                ForEach(agenda.due) { row($0) }
+                if agenda.dueMore > 0 {
+                    Text("+\(agenda.dueMore) more this week").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            } else if !agenda.calendar {
+                Text("Nothing due this week").font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)

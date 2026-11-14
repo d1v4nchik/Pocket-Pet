@@ -1701,7 +1701,9 @@ final class Pet {
             edge = 0
             inAir = false
             umbrella = false
-            grab = CGPoint(x: 0, y: (isBird ? 14 : 22) * s)
+            // held by the scruff, just above the head; the tortoise pulls into its shell, so it's held by the shell,
+            // which sits behind where its head was
+            grab = species == .turtle ? CGPoint(x: CGFloat(-8 * facing) * s, y: 11 * s) : CGPoint(x: 0, y: (isBird ? 14 : 22) * s)
             setMode(.held)
             world.synth.play(family == .cat ? mrrp : (isBird ? "squawk" : "chirp"))
             say([chance(0.5) ? "HEY!" : "WHEE!"], 1.2)
@@ -2019,7 +2021,8 @@ final class Pet {
             if isBird { if species == .goose { p.headDY = 3; p.headDX = 1 }; if fullness < 10 { p.stance = .sit; p.bob = 0 } }
             else { p.stance = family == .dog ? .upright : .sit; p.tailUp = false; p.mouth = modeT < 0.8 ? .open : .closed }
         case .held:
-            p.stance = isBird ? .held : .held; p.bob = 0; p.headDX = 0
+            p.stance = .held; p.bob = 0; p.headDX = 0
+            p.phones = false                                   // the headphones come off when it's picked up
             p.phase = t * 6
             if isBird {
                 p.arm = flapFast ? .raised : .rest; p.eyes = .wide

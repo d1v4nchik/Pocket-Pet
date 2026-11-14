@@ -258,7 +258,9 @@ func renderSheet(_ path: String, only: String? = nil) {
     sp.preview(connected: false)
     let view = VStack(spacing: 20) {
         AgendaView(agenda: Agenda.build(events, now: now))
-        AgendaView(agenda: Agenda.build(events, now: late))
+        AgendaView(agenda: Agenda.build(events, tasks: [ev(13, 20, "History essay", day: 1), ev(15, 45, "Maths worksheet", day: 3),
+                                                         ev(11, 5, "Biology lab report", day: 5)], now: late))
+        AgendaView(agenda: Agenda.build([], tasks: [ev(13, 20, "History essay", day: 1)], calendar: false, now: late))
         MusicCardView(player: sp, model: MusicCardModel())
         WaterView(title: "Water break?", line: "3 of 8 glasses today", progress: 3 / 8, dots: (3, 8), pace: "On track")
     }.padding(20).background(Color.gray.opacity(0.4))
@@ -415,7 +417,7 @@ func renderHero(_ path: String) {
 /// `PocketPet --moments out.png`
 func renderMoments(_ path: String) {
     renderRow(path, [
-        (.ginger, { $0.stance = .lie; $0.prop = .book; $0.headDY = 1; $0.tailUp = false; $0.turn = 0.35 }),
+        (.ginger, { $0.stance = .lie; $0.prop = .book; $0.headDY = 1; $0.tailUp = false }),
         (.turtle, { $0.stance = .upright; $0.prop = .laptop; $0.phones = true; $0.arm = .tap }),
         (.dalmatian, { $0.stance = .sit; $0.prop = .popcorn; $0.tailUp = false }),
         (.calico, { $0.stance = .sit; $0.phones = true; $0.eyes = .happy; $0.tailUp = false }),

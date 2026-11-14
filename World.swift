@@ -1263,13 +1263,13 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     // MARK: Calendar
 
     func showAgenda() {
-        guard calendarConnected else {
+        guard calendarConnected || tasks.connected else {
             pet.showAgenda(["CONNECT YOUR", "CALENDAR IN MY MENU"])
             return
         }
         let show = { [weak self] in
             guard let self, !self.hidden else { return }
-            let agenda = Agenda.build(self.calendarEvents)
+            let agenda = Agenda.build(self.calendarEvents, tasks: self.tasks.connected ? self.tasks.events : [], calendar: self.calendarConnected)
             let dur = min(16, 7 + Double(agenda.lineCount))
             self.pet.showAgenda([], for: dur)
             let (tip, below) = self.pet.bubbleTip()
@@ -1279,13 +1279,15 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         }
         // fetch whichever sources are stale (and the Mac's own calendars), then show once they're all back
         let stale = [google.signedIn && Date().timeIntervalSince(google.lastFetch) > 120,
-                     ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120, macCal.authorized]
+                     ics.connected && Date().timeIntervalSince(ics.lastFetch) > 120, macCal.authorized,
+                     tasks.connected && Date().timeIntervalSince(tasks.lastFetch) > 600]
         var waiting = stale.filter { $0 }.count
         guard waiting > 0 else { show(); return }
         let done = { waiting -= 1; if waiting == 0 { show() } }
         if stale[0] { google.refreshEvents(done) }
         if stale[1] { ics.refresh(done) }
         if stale[2] { macCal.refresh(done) }
+        if stale[3] { tasks.refresh(done) }
     }
 
     /// Up to `n` letters for the pixel bubble, cut between words.
