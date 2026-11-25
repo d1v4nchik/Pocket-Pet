@@ -1828,8 +1828,8 @@ private func sharkTopOutfit(_ o: Outfit, _ put: (Int, Int, Col) -> Void) {
 }
 
 /// The shark sitting facing you, for studying: its book lies open on the floor right in front of it, the way the turtle
-/// reads. Fin on top, round blue head, a dark eye either side, a rounded grin with little teeth and a tongue, fins out
-/// to the sides, peachy belly.
+/// reads. Fin on top, a round blue head with gill marks, shiny eyes set wide, rosy cheeks, a tiny open chomp with its
+/// tongue in a cream face, fins out to the sides, peachy belly.
 private let sharkFront = [
     "..........B..........",
     ".........BBB.........",
@@ -1837,15 +1837,15 @@ private let sharkFront = [
     ".....BBBBBBBBBBB.....",
     "....BBBBBBBBBBBBB....",
     "...BBBBBBBBBBBBBBB...",
-    "...BBWKBBBBBBBWKBB...",
-    "...BBKKBBBBBBBKKBB...",
+    "...BBBBBBBBBBBBBBB...",
+    "..BBBWKBBBBBBBWKBBB..",
+    "..BDBKKBBBBBBBKKBDB..",
+    "..BDBKKWWWWWWWKKBDB..",
+    ".DBBWWWWKKKKKWWWWBBD.",
+    "DDBWWWWKWRRRWKWWWWBDD",
+    "DDBWWWWWKRORKWWWWWBDD",
+    "D.BWWWWWWKKKWWWWWWB.D",
     "...BWWWWWWWWWWWWWB...",
-    "..BWWWKKKKKKKKKWWWB..",
-    "..BWWKWRWRWRWRWKWWB..",
-    ".DBWWKRRRRRRRRRKWWBD.",
-    "DDBWWKRRROOORRRKWWBDD",
-    "DD.BWWKRROOORRKWWB.DD",
-    "D..BWWWKKKKKKKWWWB..D",
     "...DBWWWWWWWWWWWBD...",
     "...DPPPPPPPPPPPPPD...",
     "...DDPPPPPPPPPPPDD...",
@@ -1860,15 +1860,15 @@ private let sharkFrontShut = [
     ".....BBBBBBBBBBB.....",
     "....BBBBBBBBBBBBB....",
     "...BBBBBBBBBBBBBBB...",
-    "...BBWKBBBBBBBWKBB...",
-    "...BBKKBBBBBBBKKBB...",
+    "...BBBBBBBBBBBBBBB...",
+    "..BBBWKBBBBBBBWKBBB..",
+    "..BDBKKBBBBBBBKKBDB..",
+    "..BDBKKWWWWWWWKKBDB..",
+    ".DBBWWWWWWWWWWWWWBBD.",
+    "DDBWWWWKWWWWWKWWWWBDD",
+    "DDBWWWWWKKKKKWWWWWBDD",
+    "D.BWWWWWWWWWWWWWWWB.D",
     "...BWWWWWWWWWWWWWB...",
-    "..BWWWWWWWWWWWWWWWB..",
-    "..BWWWWWWWWWWWWWWWB..",
-    ".DBWWWKWWWWWWWKWWWBD.",
-    "DDBWWWWKKKKKKKWWWWBDD",
-    "DD.BWWWWWWWWWWWWWB.DD",
-    "D..BWWWWWWWWWWWWWB..D",
     "...DBWWWWWWWWWWWBD...",
     "...DPPPPPPPPPPPPPD...",
     "...DDPPPPPPPPPPPDD...",
@@ -1881,20 +1881,20 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let shut = p.mouth == .closed && [.closed, .half].contains(p.eyes)
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
     c.sprite(ox, oy, shut ? sharkFrontShut : sharkFront, map)
-    let eyes = [(ox + 5, oy + 6), (ox + 14, oy + 6)]
+    let eyes = [(ox + 5, oy + 7), (ox + 14, oy + 7)]
     for (ex, ey) in eyes {
         switch p.eyes {
-        case .closed, .half:
-            c.rect(ex, ey, 2, 2, .body); c.hline(ex - 1, ex + 2, ey + 1, .outline)
-        case .happy:
-            c.rect(ex, ey, 2, 2, .body); c.set(ex - 1, ey + 1, .outline); c.hline(ex, ex + 1, ey, .outline); c.set(ex + 2, ey + 1, .outline)
+        case .closed, .half:                                              // sleepy, curved down
+            c.rect(ex, ey, 2, 3, .body); c.set(ex - 1, ey + 1, .outline); c.hline(ex, ex + 1, ey + 2, .outline); c.set(ex + 2, ey + 1, .outline)
+        case .happy:                                                      // ^ ^
+            c.rect(ex, ey, 2, 3, .body); c.set(ex - 1, ey + 2, .outline); c.hline(ex, ex + 1, ey + 1, .outline); c.set(ex + 2, ey + 2, .outline)
         case .angry, .sad, .dizzy:
             c.set(ex, ey, .outline)                                       // no shine
         default:
             break
         }
     }
-    if p.blush { c.set(ox + 4, oy + 8, .blush); c.set(ox + 16, oy + 8, .blush) }
+    c.hline(ox + 4, ox + 5, oy + 10, .blush); c.hline(ox + 15, ox + 16, oy + 10, .blush)   // rosy cheeks
     if p.phones {
         // the band hugging its round head, the cups over the sides level with its eyes
         if p.outfit.hat == .none || p.nightcap {
