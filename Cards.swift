@@ -18,9 +18,9 @@ struct Agenda {
     var allDay: [String] = []
     var empty: String?          // "Nothing else today"
     var tomorrow: [AgendaRow] = []
-    var due: [AgendaRow] = []           // ManageBac: what's due this week
+    var due: [AgendaRow] = []           // ManageBac and the calendars picked for it: what's due this week
     var dueMore = 0
-    var calendar = true                 // false: only ManageBac is connected
+    var calendar = true                 // false: only "Due soon" sources are connected
 
     var lineCount: Int { rows.count + tomorrow.count + (allDay.isEmpty ? 0 : 1) + due.count }
 
@@ -57,11 +57,17 @@ struct Agenda {
         return a
     }
 
-    /// ManageBac tasks due in the next week, soonest first: "Today", "Tomorrow" or the weekday.
+    /// The day a task is due: an all-day one on its day, a timed one on the day it ends (a deadline at midnight
+    /// belongs to the day before; one with no length, like a Google Classroom due time, to its own day).
+    static func dueDay(_ e: CalEvent) -> Date {
+        Calendar.current.startOfDay(for: e.allDay ? e.start : max(e.start, e.end.addingTimeInterval(-1)))
+    }
+
+    /// Tasks due in the next week, soonest first: "Today", "Tomorrow" or the weekday.
     static func dueSoon(_ tasks: [CalEvent], now: Date = Date()) -> [AgendaRow] {
         let cal = Calendar.current, today = cal.startOfDay(for: now)
         return tasks.compactMap { e -> (Date, AgendaRow)? in
-            let day = cal.startOfDay(for: e.allDay ? e.start : e.end.addingTimeInterval(-1))
+            let day = Agenda.dueDay(e)
             let left = cal.dateComponents([.day], from: today, to: day).day ?? 99
             guard left >= 0, left <= 7, e.allDay || e.end > now else { return nil }
             let when = left == 0 ? "Today" : left == 1 ? "Tomorrow" : day.formatted(.dateTime.weekday(.abbreviated).day())

@@ -434,16 +434,62 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     /// Any mix of a private calendar link, a Google sign-in and the Mac's own calendars, all shown together.
     var useMacCalendar = true
     var macCalendarOn: Bool { useMacCalendar && macCal.authorized && !macCal.accounts.isEmpty }
-    var calendarConnected: Bool { google.signedIn || ics.connected || macCalendarOn }
+    var calendarConnected: Bool { google.signedIn || (ics.connected && !icsIsDue) || macCalendarOn }
     var calendarEvents: [CalEvent] {
         var sources: [[CalEvent]] = []
-        if ics.connected { sources.append(ics.events) }
+        if ics.connected && !icsIsDue { sources.append(ics.events) }
         if google.signedIn { sources.append(google.events) }
         if macCalendarOn { sources.append(macCal.events) }
         // the same calendar often comes in two ways (say, its link and the Mac), so it's shown once
         func key(_ e: CalEvent) -> String { "\(e.title.lowercased().trimmingCharacters(in: .whitespaces))|\(Int(e.start.timeIntervalSince1970) / 60)" }
         var seen = Set<String>()
         return sources.joined().filter { seen.insert(key($0)).inserted }.sorted { $0.start < $1.start }
+    }
+
+    /// Calendars picked to feed "Due soon" (say, Google Classroom's class calendars): "mac:…", "google:…" or "ics" for the
+    /// private calendar link. Their events are listed as tasks for the week instead of in the day's agenda.
+    var dueCalendars: Set<String> = [] {
+        didSet {
+            macCal.dueIDs = dueCalendars
+            google.dueIDs = dueCalendars
+            ics.days = icsIsDue ? 8 : 2
+        }
+    }
+    var icsIsDue: Bool { dueCalendars.contains("ics") }
+    /// Every calendar that can be picked for "Due soon", from each connected source.
+    var pickableCalendars: [PickableCalendar] {
+        var all: [PickableCalendar] = []
+        if ics.connected { all.append(PickableCalendar(id: "ics", title: "Private calendar link", account: "Link")) }
+        if google.signedIn { all += google.calendars }
+        if macCalendarOn { all += macCal.calendars }
+        return all
+    }
+    /// The picked calendars that are connected right now.
+    var dueCalendarsOn: Bool {
+        (ics.connected && icsIsDue) || (google.signedIn && dueCalendars.contains { $0.hasPrefix("google:") })
+            || (macCalendarOn && dueCalendars.contains { $0.hasPrefix("mac:") })
+    }
+    var dueConnected: Bool { tasks.connected || dueCalendarsOn }
+    /// Everything that's due: ManageBac's tasks and the events of every calendar picked for "Due soon".
+    var dueEvents: [CalEvent] {
+        var sources: [[CalEvent]] = []
+        if tasks.connected { sources.append(tasks.events) }
+        if ics.connected && icsIsDue { sources.append(ics.events) }
+        if google.signedIn { sources.append(google.dueEvents) }
+        if macCalendarOn { sources.append(macCal.dueEvents) }
+        // a task in two places (ManageBac and its Google Calendar copy, say) is listed once
+        func key(_ e: CalEvent) -> String {
+            "\(e.title.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " "))|\(Int(Agenda.dueDay(e).timeIntervalSince1970))"
+        }
+        var seen = Set<String>()
+        return sources.joined().filter { seen.insert(key($0)).inserted }.sorted { $0.end < $1.end }
+    }
+
+    /// Picks a calendar for "Due soon" (or puts it back in the agenda), then reads both again.
+    func setDue(_ id: String, _ on: Bool) {
+        if on { dueCalendars.insert(id) } else { dueCalendars.remove(id) }
+        save()
+        google.refreshEvents(nil); ics.refresh(nil); macCal.refresh()
     }
 
     // MARK: Setup
@@ -1263,13 +1309,13 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     // MARK: Calendar
 
     func showAgenda() {
-        guard calendarConnected || tasks.connected else {
+        guard calendarConnected || dueConnected else {
             pet.showAgenda(["CONNECT YOUR", "CALENDAR IN MY MENU"])
             return
         }
         let show = { [weak self] in
             guard let self, !self.hidden else { return }
-            let agenda = Agenda.build(self.calendarEvents, tasks: self.tasks.connected ? self.tasks.events : [], calendar: self.calendarConnected)
+            let agenda = Agenda.build(self.calendarEvents, tasks: self.dueEvents, calendar: self.calendarConnected)
             let dur = min(16, 7 + Double(agenda.lineCount))
             self.pet.showAgenda([], for: dur)
             let (tip, below) = self.pet.bubbleTip()
@@ -1299,13 +1345,14 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         return String(cut) + ".."
     }
 
-    /// ManageBac tasks: the evening before a task is due (from 4 PM) and the morning it's due (from 8 AM), once each.
+    /// Due soon (ManageBac and the picked calendars): the evening before a task is due (from 4 PM) and the morning it's due
+    /// (from 8 AM), once each.
     func checkTasks() {
-        guard tasks.connected, !hidden else { return }
+        guard dueConnected, !hidden else { return }
         let cal = Calendar.current, nowD = Date()
         let hour = cal.component(.hour, from: nowD)
-        for e in tasks.events where e.end > nowD || e.allDay {
-            let due = cal.startOfDay(for: e.allDay ? e.start : e.end.addingTimeInterval(-1))
+        for e in dueEvents where e.end > nowD || e.allDay {
+            let due = Agenda.dueDay(e)
             let today = cal.startOfDay(for: nowD)
             let daysLeft = cal.dateComponents([.day], from: today, to: due).day ?? 99
             let kind = daysLeft == 1 && hour >= 16 ? "eve" : daysLeft == 0 && hour >= 8 ? "day" : nil
@@ -1826,6 +1873,8 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         bellOn = d.object(forKey: "bell") as? Bool ?? true
         bellTabs = d.object(forKey: "bellTabs") as? Bool ?? true
         useMacCalendar = d.object(forKey: "useMacCalendar") as? Bool ?? true
+        dueCalendars = Set(d.stringArray(forKey: "dueCalendars") ?? [])
+        if !dueCalendars.isEmpty { macCal.refresh() }        // its first read, at launch, didn't know which ones are picked
         waterEvery = d.object(forKey: "water") as? Double ?? 3600
         let saved = d.double(forKey: "savedAt")
         awaySeconds = saved > 0 ? Date().timeIntervalSince1970 - saved : 0
@@ -1880,6 +1929,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         d.set(bellOn, forKey: "bell")
         d.set(bellTabs, forKey: "bellTabs")
         d.set(useMacCalendar, forKey: "useMacCalendar")
+        d.set(Array(dueCalendars), forKey: "dueCalendars")
         d.set(waterEvery, forKey: "water")
         if let data = try? JSONEncoder().encode(pet.record) { d.set(data, forKey: "pet") }
         d.set(multiPets, forKey: "multiPets")

@@ -1041,24 +1041,51 @@ struct RootView: View {
         }
     }
 
-    /// ManageBac: paste the calendar link from ManageBac and your pet reminds you about tasks and deadlines.
+    /// Due soon: ManageBac's calendar link, plus any calendars you pick (Google Classroom puts each class's due dates in a
+    /// Google calendar of its own). Your pet reminds you the evening before and the morning a task is due.
     @ViewBuilder
     func manageBac(_ world: World) -> some View {
         let t = world.tasks
-        connection("checklist", "ManageBac tasks", t.connected ? dueText(t) : "Reminders the evening before and the morning a task is due") {
-            if t.connected { Button("Disconnect") { t.disconnect(); m.refresh() }.buttonStyle(Pill()) }
+        let cals = world.pickableCalendars
+        let picked = cals.filter { world.dueCalendars.contains($0.id) }
+        connection("checklist", "Due soon", world.dueConnected ? dueText(world) : "Reminders the evening before and the morning a task is due") {
+            EmptyView()
         }
-        if !t.connected {
+        // calendars: Google Classroom, a homework calendar, Canvas or Schoology added to your calendar...
+        source("calendar.badge.checkmark", picked.isEmpty ? "From your calendars" : picked.map(\.title).joined(separator: ", ")) {
+            if cals.isEmpty {
+                status("Connect a calendar first")
+            } else {
+                Menu(picked.isEmpty ? "Pick" : "\(picked.count) picked") {
+                    ForEach(Array(Set(cals.map(\.account))).sorted(), id: \.self) { account in
+                        Section(account) {
+                            ForEach(cals.filter { $0.account == account }) { c in
+                                Toggle(c.title, isOn: Binding(get: { world.dueCalendars.contains(c.id) },
+                                                              set: { world.setDue(c.id, $0); m.refresh() }))
+                            }
+                        }
+                    }
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .help("Events in these calendars are listed under Due soon instead of in the day's agenda")
+            }
+        }
+        if t.connected {
+            source("graduationcap", "ManageBac") { Button("Disconnect") { t.disconnect(); m.refresh() }.buttonStyle(Pill()) }
+        } else {
             HStack {
                 TextField("webcal:// link from ManageBac", text: $m.mbLink).textFieldStyle(.roundedBorder)
                 Button("Add") { t.setLink(m.mbLink) { ok in if ok { m.mbLink = "" }; m.refresh() } }.buttonStyle(Pill(strong: true)).disabled(m.mbLink.isEmpty)
             }
-            hint(t.status.isEmpty ? "In ManageBac: Calendar (or Tasks & Deadlines), then Subscribe / iCal, and copy the link." : t.status)
+            .padding(.leading, 22)
         }
+        hint(!t.status.isEmpty ? t.status : picked.isEmpty
+             ? "Google Classroom: pick its class calendars above (they come with your Google account). ManageBac: Calendar, then Subscribe / iCal, and paste the link."
+             : "Tasks from the picked calendars show under Due soon, not in the day's agenda.")
     }
 
-    func dueText(_ t: ICSCalendar) -> String {
-        let soon = t.events.filter { $0.end > Date() }.count
+    func dueText(_ world: World) -> String {
+        let soon = Agenda.dueSoon(world.dueEvents).count
         return soon == 0 ? "Connected: nothing due this week" : "Connected: \(soon) due this week"
     }
 

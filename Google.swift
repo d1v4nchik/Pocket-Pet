@@ -116,6 +116,11 @@ final class Google {
     private var expiry = Date.distantPast
     private var signingIn = false
     var events: [CalEvent] = []
+    /// From the calendars picked for "Due soon" ("google:" + the calendar's id), a week ahead; left out of `events`.
+    var dueEvents: [CalEvent] = []
+    var dueIDs: Set<String> = []
+    /// Every calendar this account can see (Google Classroom's class calendars too), for the "Due soon" picker.
+    var calendars: [PickableCalendar] = []
     var lastFetch = Date.distantPast
     var status = ""
 
@@ -158,6 +163,8 @@ final class Google {
         accessToken = nil
         email = ""
         events = []
+        dueEvents = []
+        calendars = []
         Secrets.set(nil, "refreshToken")
         UserDefaults.standard.removeObject(forKey: "googleEmail")
         status = ""
@@ -284,11 +291,14 @@ final class Google {
     func refreshEvents(_ done: (() -> Void)?) {
         token { [weak self] token in
             guard let self, let token else { done?(); return }
+            let due = self.dueIDs
             DispatchQueue.global(qos: .utility).async {
-                let evs = Self.fetchEvents(token: token)
+                let got = Self.fetchEvents(token: token, due: due)
                 DispatchQueue.main.async {
-                    if let evs {
+                    if let (evs, tasks, cals) = got {
                         self.events = evs
+                        self.dueEvents = tasks
+                        self.calendars = cals
                         self.lastFetch = Date()
                         self.status = ""
                     } else {
@@ -300,17 +310,24 @@ final class Google {
         }
     }
 
-    private static func fetchEvents(token: String) -> [CalEvent]? {
+    /// The day's events (today and tomorrow) from the calendars shown in Google Calendar, the week ahead from the
+    /// calendars picked for "Due soon", and the list of every calendar for the picker.
+    private static func fetchEvents(token: String, due: Set<String>) -> ([CalEvent], [CalEvent], [PickableCalendar])? {
         guard let list = getJSON("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader", token: token),
               let cals = list["items"] as? [[String: Any]] else { return nil }
         let start = Calendar.current.startOfDay(for: Date())
-        let end = start.addingTimeInterval(2 * 86400)
         let iso = ISO8601DateFormatter()
-        var out: [CalEvent] = []
-        for cal in cals where (cal["selected"] as? Bool ?? false) || (cal["primary"] as? Bool ?? false) {
+        var out: [CalEvent] = [], tasks: [CalEvent] = [], pickable: [PickableCalendar] = []
+        let account = (cals.first { $0["primary"] as? Bool ?? false }?["id"] as? String) ?? "Google"
+        for cal in cals {
             guard let id = cal["id"] as? String,
                   let enc = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { continue }
-            let url = "https://www.googleapis.com/calendar/v3/calendars/\(enc)/events?singleEvents=true&orderBy=startTime&maxResults=25"
+            let title = (cal["summaryOverride"] as? String) ?? (cal["summary"] as? String) ?? id
+            pickable.append(PickableCalendar(id: "google:" + id, title: title, account: account))
+            let isDue = due.contains("google:" + id)
+            guard isDue || (cal["selected"] as? Bool ?? false) || (cal["primary"] as? Bool ?? false) else { continue }
+            let end = start.addingTimeInterval((isDue ? 8 : 2) * 86400)
+            let url = "https://www.googleapis.com/calendar/v3/calendars/\(enc)/events?singleEvents=true&orderBy=startTime&maxResults=\(isDue ? 50 : 25)"
                 + "&timeMin=\(iso.string(from: start))&timeMax=\(iso.string(from: end))"
             guard let res = getJSON(url, token: token), let items = res["items"] as? [[String: Any]] else { continue }
             for e in items {
@@ -319,11 +336,12 @@ final class Google {
                    att.contains(where: { ($0["self"] as? Bool ?? false) && ($0["responseStatus"] as? String) == "declined" }) { continue }
                 guard let s = e["start"] as? [String: Any], let en = e["end"] as? [String: Any],
                       let (sd, allDay) = parseTime(s), let (ed, _) = parseTime(en) else { continue }
-                out.append(CalEvent(id: e["id"] as? String ?? UUID().uuidString, title: e["summary"] as? String ?? "Event",
-                                    start: sd, end: ed, allDay: allDay, location: e["location"] as? String))
+                let ev = CalEvent(id: e["id"] as? String ?? UUID().uuidString, title: e["summary"] as? String ?? "Event",
+                                  start: sd, end: ed, allDay: allDay, location: e["location"] as? String)
+                if isDue { tasks.append(ev) } else { out.append(ev) }
             }
         }
-        return out.sorted { $0.start < $1.start }
+        return (out.sorted { $0.start < $1.start }, tasks.sorted { $0.start < $1.start }, pickable)
     }
 
     private static func parseTime(_ d: [String: Any]) -> (Date, Bool)? {

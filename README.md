@@ -35,7 +35,8 @@ screen with you and reacts to what you do.
   study (it thinks very hard now and then, and dozes off over the book until you tap it).
 - It **looks after you**: it reminds you to drink water (counted in glasses, sips, millilitres or ounces, with a goal
   tailored to you and reminders that keep pace with your day) and charts it, reminds you of your own habits
-  (stretching, vitamins, a walk...), nudges you before every calendar event and about ManageBac tasks that are due, and
+  (stretching, vitamins, a walk...), nudges you before every calendar event and about tasks that are due (ManageBac, or any calendar you pick for
+  "Due soon", like Google Classroom's class calendars), and
   rings a little bell when a message arrives.
 
 ![A cat reading, the tortoise typing in headphones, the dalmatian with popcorn, a cat listening to music, a cat thinking

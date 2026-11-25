@@ -9,7 +9,8 @@ final class ICSCalendar {
     var status = ""
     private var url: String?
     /// Where its link is saved, and how many days ahead it looks (the calendar: today and tomorrow; ManageBac tasks: a week).
-    let key: String, days: Int
+    let key: String
+    var days: Int
 
     init(key: String = "icsURL", days: Int = 2) { self.key = key; self.days = days }
 
