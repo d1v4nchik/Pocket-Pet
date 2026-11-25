@@ -16,6 +16,7 @@ final class UIModel: ObservableObject {
     @Published var mbLink = ""                         // a ManageBac calendar link being pasted in                      // several pets: which one the menu is looking after (nil: your main pet)
     @Published var calWay = 0          // which way to connect Google Calendar is open: 1 link, 2 Mac, 3 sign in
     @Published var link = ""
+    @Published var ownGoogle = false   // the steps for a Google Cloud client of your own are open
     @Published var songQuery = ""
     @Published var closetPart = 0
     /// Which Settings groups are unfolded.
@@ -1320,7 +1321,26 @@ struct RootView: View {
         .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
+    /// Sign in with Google: Pocket Pet's own sign-in when this build has one, or a Google Cloud client of your own.
+    @ViewBuilder
     func advancedGoogle(_ world: World) -> some View {
+        let g = world.google
+        if g.hasBuiltIn && !g.hasOwnClient && !m.ownGoogle {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Sign in with your Google account. Your pet only reads your calendars, and nothing leaves this Mac.")
+                HStack(spacing: 6) {
+                    Button("Sign in with Google") { g.signIn { ok in if ok { m.calWay = 0 }; m.refresh() }; m.refresh() }
+                        .buttonStyle(Pill(strong: true))
+                    Button("Use my own Google Cloud app") { m.ownGoogle = true }.buttonStyle(Pill())
+                }
+            }
+            .font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        } else {
+            ownGoogle(world)
+        }
+    }
+
+    func ownGoogle(_ world: World) -> some View {
         let g = world.google
         return VStack(alignment: .leading, spacing: 4) {
             Text("Your own Google Cloud app. Takes a few minutes.")
@@ -1330,14 +1350,14 @@ struct RootView: View {
             HStack {
                 Button("Open Google Cloud") { NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!) }
                     .buttonStyle(Pill())
-                Button(g.hasClient ? "Change file…" : "Choose file…") {
+                Button(g.hasOwnClient ? "Change file…" : "Choose file…") {
                     let panel = NSOpenPanel()
                     panel.allowedContentTypes = [.json]
                     panel.message = "Choose the client JSON you downloaded from Google Cloud"
                     if panel.runModal() == .OK, let url = panel.url { _ = g.importClientFile(url); m.refresh() }
                 }
                 .buttonStyle(Pill())
-                if g.hasClient { Button("Sign in") { g.signIn { ok in if ok { m.calWay = 0 }; m.refresh() }; m.refresh() }.buttonStyle(Pill(strong: true)) }
+                if g.hasOwnClient { Button("Sign in") { g.signIn { ok in if ok { m.calWay = 0 }; m.refresh() }; m.refresh() }.buttonStyle(Pill(strong: true)) }
             }
             .padding(.top, 2)
         }

@@ -143,6 +143,10 @@ on the maintainer's Mac, and Pocket Pet refuses any update without that signatur
 certificate of its own (made once with `./build.sh --new-signing-identity`), so macOS keeps its permissions through
 updates.
 
+"Sign in with Google" uses Pocket Pet's own Google OAuth client (a Desktop app client). Its JSON stays out of the repo:
+the maintainer keeps it at `~/.pocketpet/google-client.json` and `build.sh` puts it into the app. Builds without it
+still offer a Google Cloud client of your own, a calendar link, or the Mac's calendars.
+
 ## Contributing
 
 Bug reports, ideas, new pets and pixel art are all welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the

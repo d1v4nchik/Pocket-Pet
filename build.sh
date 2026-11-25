@@ -37,6 +37,14 @@ SOURCES=(main.swift Art.swift Pets.swift Pet.swift ItemArt.swift World.swift Goo
 VERSION="$(cat VERSION 2>/dev/null || echo 3.0)"
 UPDATE_REPO="$(cat update-repo.txt 2>/dev/null || true)"            # e.g. yourname/pocket-pet on GitHub
 UPDATE_KEY="$(cat update-public-key.txt 2>/dev/null || true)"       # the public half of your signing key
+# Pocket Pet's own "Sign in with Google": the Desktop app OAuth client JSON from Google Cloud, kept out of the repo.
+GOOGLE_CLIENT="$HOME/.pocketpet/google-client.json"
+GOOGLE_ID=""; GOOGLE_SECRET=""
+if [[ -f "$GOOGLE_CLIENT" ]]; then
+    GOOGLE_ID="$(plutil -extract installed.client_id raw -o - "$GOOGLE_CLIENT" 2>/dev/null || true)"
+    GOOGLE_SECRET="$(plutil -extract installed.client_secret raw -o - "$GOOGLE_CLIENT" 2>/dev/null || true)"
+    [[ -n "$GOOGLE_ID" ]] || echo "warning: $GOOGLE_CLIENT isn't a Desktop app client, building without Google sign-in"
+fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -70,6 +78,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>PocketPetUpdateRepo</key><string>$UPDATE_REPO</string>
     <key>PocketPetUpdateKey</key><string>$UPDATE_KEY</string>
+    <key>PocketPetGoogleClientID</key><string>$GOOGLE_ID</string>
+    <key>PocketPetGoogleClientSecret</key><string>$GOOGLE_SECRET</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 d1v4nchik. Free software under the GPL-3.0.</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>

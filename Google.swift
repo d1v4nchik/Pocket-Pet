@@ -108,8 +108,8 @@ enum Secrets {
 }
 
 final class Google {
-    private(set) var clientID = ""
-    private var clientSecret = ""
+    private var ownID = ""
+    private var ownSecret = ""
     private(set) var email = ""
     private var refreshToken: String?
     private var accessToken: String?
@@ -124,20 +124,33 @@ final class Google {
     var lastFetch = Date.distantPast
     var status = ""
 
-    var hasClient: Bool { !clientID.isEmpty && !clientSecret.isEmpty }
+    /// Pocket Pet's own Google sign-in, put in by build.sh from ~/.pocketpet/google-client.json (a "Desktop app" OAuth
+    /// client). A desktop app can't keep a secret from its users, and Google knows it: PKCE protects the sign-in instead.
+    static let builtIn: (id: String, secret: String)? = {
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard let id = info["PocketPetGoogleClientID"] as? String, let secret = info["PocketPetGoogleClientSecret"] as? String,
+              !id.isEmpty, !secret.isEmpty else { return nil }
+        return (id, secret)
+    }()
+    /// A Google Cloud client of your own, chosen in the menu (it wins over the built-in one).
+    var hasOwnClient: Bool { !ownID.isEmpty && !ownSecret.isEmpty }
+    var hasBuiltIn: Bool { Self.builtIn != nil }
+    var hasClient: Bool { hasOwnClient || hasBuiltIn }
+    private var clientID: String { hasOwnClient ? ownID : Self.builtIn?.id ?? "" }
+    private var clientSecret: String { hasOwnClient ? ownSecret : Self.builtIn?.secret ?? "" }
     var signedIn: Bool { refreshToken != nil }
 
     static let scopes = "openid email https://www.googleapis.com/auth/calendar.readonly"
 
     init() {
         let d = UserDefaults.standard
-        clientID = d.string(forKey: "googleClientID") ?? ""
+        ownID = d.string(forKey: "googleClientID") ?? ""
         email = d.string(forKey: "googleEmail") ?? ""
     }
 
     /// After `Secrets.load()`.
     func loadSecrets() {
-        clientSecret = Secrets.get("clientSecret") ?? ""
+        ownSecret = Secrets.get("clientSecret") ?? ""
         refreshToken = Secrets.get("refreshToken")
     }
 
@@ -150,8 +163,9 @@ final class Google {
             status = "That file doesn't look like a Google OAuth client"
             return false
         }
-        clientID = id
-        clientSecret = secret
+        if id != clientID { signOut() }          // a sign-in belongs to the client it was made with
+        ownID = id
+        ownSecret = secret
         UserDefaults.standard.set(id, forKey: "googleClientID")
         Secrets.set(secret, "clientSecret")
         status = "Client added. Now sign in!"
@@ -172,7 +186,7 @@ final class Google {
 
     func forgetClient() {
         signOut()
-        clientID = ""; clientSecret = ""
+        ownID = ""; ownSecret = ""
         UserDefaults.standard.removeObject(forKey: "googleClientID")
         Secrets.set(nil, "clientSecret")
     }
@@ -254,7 +268,9 @@ final class Google {
                 case "invalid_grant":       // expired or revoked; Google expires sign-ins weekly for apps left in testing
                     self.signOut(); self.status = "Google ended this sign-in. Sign in again, or paste a calendar link (it never expires)."
                 case "invalid_client":      // the Google Cloud client's secret was reset or the client deleted
-                    self.status = "Google no longer accepts your Cloud client. Choose its file again, or paste a calendar link instead."
+                    self.status = self.hasOwnClient
+                        ? "Google no longer accepts your Cloud client. Choose its file again, or paste a calendar link instead."
+                        : "Google sign-in isn't working in this version. Paste a calendar link for now."
                 default: break
                 }
                 done(nil)
