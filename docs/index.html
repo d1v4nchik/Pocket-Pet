@@ -4,22 +4,512 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pocket Pet</title>
+<meta name="description" content="A little pixel pet that lives on your Mac's desktop. Free and open source.">
+<meta name="theme-color" content="#140f1a">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
 <style>
-  body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #222; background: #fff; }
-  img { max-width: 100%; height: auto; image-rendering: pixelated; }
-  .icon { width: 96px; }
-  @media (prefers-color-scheme: dark) { body { color: #eee; background: #1b1b1d; } a { color: #8ab4ff; } }
+  :root {
+    --bg: #140f1a;
+    --glass: rgba(42, 31, 54, 0.62);
+    --glass-2: rgba(58, 44, 74, 0.55);
+    --line: rgba(255, 255, 255, 0.09);
+    --pink: #ff6fb0;
+    --pink-2: #ffb0d3;
+    --pink-d: #c2457f;
+    --text: #f7eef6;
+    --muted: #b7a6c4;
+    --radius: 22px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--text); background: var(--bg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(60vw 40vw at 15% -5%, rgba(255, 111, 176, 0.22), transparent 70%),
+      radial-gradient(50vw 40vw at 100% 30%, rgba(150, 90, 220, 0.18), transparent 70%),
+      radial-gradient(60vw 50vw at 30% 110%, rgba(255, 111, 176, 0.12), transparent 70%),
+      var(--bg);
+  }
+  .stars { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+  .stars i { position: absolute; width: 3px; height: 3px; background: var(--pink-2); opacity: .25; animation: twinkle 3s steps(2) infinite; }
+  @keyframes twinkle { 50% { opacity: .9; } }
+  a { color: var(--pink-2); }
+  img { image-rendering: pixelated; }
+  .pixel { font-family: "Silkscreen", ui-monospace, monospace; letter-spacing: .02em; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+  /* nav */
+  nav { position: sticky; top: 12px; z-index: 20; margin: 12px auto 0; }
+  nav .bar {
+    display: flex; align-items: center; gap: 16px; padding: 8px 10px 8px 14px;
+    background: var(--glass); border: 1px solid var(--line); border-radius: 999px;
+    backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  }
+  nav .brand { display: flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; font-weight: 700; }
+  nav .brand img { width: 28px; height: 28px; }
+  nav .links { display: flex; gap: 4px; margin-left: auto; }
+  nav .links a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 999px; font-size: 14px; }
+  nav .links a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+  nav .links a.cta { background: var(--pink); color: #2a0f1d; font-weight: 700; }
+  @media (max-width: 640px) { nav .links a:not(.cta) { display: none; } }
+
+  /* glass panel */
+  .glass {
+    background: var(--glass); border: 1px solid var(--line); border-radius: var(--radius);
+    backdrop-filter: blur(20px) saturate(1.3); -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+  }
+
+  /* hero */
+  .hero { margin-top: 28px; padding: 48px 24px 0; text-align: center; position: relative; overflow: hidden; }
+  .hero h1 { margin: 0; }
+  .hero h1 img { width: min(560px, 86%); height: auto; filter: drop-shadow(0 0 24px rgba(255, 111, 176, .45)); }
+  .hero p.lead { font-size: 19px; color: var(--muted); max-width: 560px; margin: 18px auto 26px; }
+  .hero p.lead b { color: var(--text); }
+  .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 999px;
+    font-weight: 700; text-decoration: none; border: 0; cursor: pointer; font-size: 16px;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn.primary { background: linear-gradient(180deg, #ff86bd, var(--pink)); color: #2a0f1d; box-shadow: 0 8px 28px rgba(255, 111, 176, .4); }
+  .btn.ghost { background: rgba(255,255,255,.07); color: var(--text); border: 1px solid var(--line); }
+  .small { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  .stage { position: relative; height: 170px; margin: 26px 0 0; }
+  .stage::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 22px; height: 3px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 9px, transparent 9px 12px);
+  }
+  .hint { position: absolute; right: 0; top: 0; font-size: 12px; color: var(--muted); }
+
+  /* pets drawn from sprite sheets */
+  .pet { position: absolute; bottom: 24px; cursor: pointer; background-repeat: no-repeat; image-rendering: pixelated; transform-origin: 50% 100%; }
+  .heart { position: absolute; z-index: 2; pointer-events: none; color: var(--pink); font-family: "Silkscreen", monospace; font-size: 20px; animation: float 1s ease-out forwards; }
+  @keyframes float { to { transform: translateY(-46px); opacity: 0; } }
+  .companion { position: fixed; bottom: 0; z-index: 30; }
+  .companion .pet { bottom: 4px; }
+
+  section { margin-top: 96px; }
+  h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -.01em; }
+  h2 .pixel { color: var(--pink); font-size: .55em; display: block; letter-spacing: .08em; margin-bottom: 8px; }
+  .sub { color: var(--muted); max-width: 640px; margin: 0 0 28px; font-size: 17px; }
+
+  /* features */
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .card { padding: 22px; transition: transform .2s ease, border-color .2s ease; }
+  .card:hover { transform: translateY(-4px); border-color: rgba(255, 111, 176, .35); }
+  .card .art { height: 196px; display: grid; place-items: center; background: var(--glass-2); border-radius: 16px; margin-bottom: 16px; }
+  .card .art img { width: 192px; height: 176px; max-width: 100%; object-fit: contain; }
+  .card h3 { margin: 0 0 6px; font-size: 19px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* pets */
+  .pets { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); }
+  .tile {
+    padding: 14px; text-align: center; cursor: pointer; color: var(--text); font: inherit;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .tile:hover { transform: translateY(-4px); }
+  .tile[aria-pressed="true"] { border-color: var(--pink); box-shadow: 0 0 0 2px var(--pink), 0 16px 40px rgba(255, 111, 176, .25); }
+  .tile .box { position: relative; height: 130px; background: var(--glass-2); border-radius: 14px; }
+  .tile .box .pet { left: 50%; cursor: inherit; }
+  .tile .name { display: block; margin-top: 10px; color: var(--pink-2); font-size: 15px; }
+  .tile .likes { display: block; color: var(--muted); font-size: 13px; line-height: 1.4; margin-top: 2px; }
+  .tile .take { display: block; margin-top: 8px; font-size: 12px; color: var(--pink); opacity: 0; transition: opacity .2s; }
+  .tile:hover .take, .tile[aria-pressed="true"] .take { opacity: 1; }
+  .wide { margin-top: 16px; padding: 18px; text-align: center; }
+  .wide img { width: 100%; height: auto; }
+
+  /* menu screenshot */
+  .shot { padding: 14px; }
+  .shot img { width: 100%; height: auto; border-radius: 14px; display: block; image-rendering: auto; }
+
+  /* install */
+  .two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .two .glass { padding: 26px; }
+  .two h3 { margin: 0 0 8px; }
+  .two p, .two li { color: var(--muted); }
+  .cmd { display: flex; align-items: center; gap: 8px; background: #0e0a12; border: 1px solid var(--line); border-radius: 14px; padding: 12px 12px 12px 16px; margin: 14px 0; }
+  .cmd code { flex: 1; overflow-x: auto; white-space: nowrap; color: var(--pink-2); font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; }
+  .cmd button { border: 0; border-radius: 10px; padding: 8px 12px; background: var(--pink); color: #2a0f1d; font-weight: 700; cursor: pointer; }
+  ol { padding-left: 20px; } li { margin: 6px 0; }
+
+  /* privacy */
+  .privacy { padding: 30px; display: grid; gap: 22px; grid-template-columns: auto 1fr; align-items: center; }
+  .privacy .lock { width: 72px; height: 72px; border-radius: 20px; background: var(--glass-2); display: grid; place-items: center; font-size: 34px; }
+  .privacy p { margin: 6px 0 0; color: var(--muted); }
+  @media (max-width: 560px) { .privacy { grid-template-columns: 1fr; } }
+
+  footer { margin: 96px 0 0; padding: 30px 0 90px; text-align: center; color: var(--muted); font-size: 14px; }
+  footer a { color: var(--muted); }
+  footer .pixel { color: var(--pink); display: block; margin-bottom: 6px; font-size: 16px; }
+  @media (prefers-reduced-motion: reduce) { .stars i, .heart { animation: none; } .card:hover, .tile:hover, .btn:hover { transform: none; } }
 </style>
 </head>
 <body>
-<img class="icon" src="icon.png" alt="Pocket Pet icon">
-<h1>Pocket Pet</h1>
-<p>A little pixel pet that lives on your Mac's desktop. It plays, naps and dances to your music, reminds you to drink
-water, and keeps an eye on your calendar: it tells you what's on today, nudges you before each event, and reminds you
-about homework that's due soon.</p>
-<p>Connecting a calendar is optional. With "Sign in with Google", Pocket Pet only reads your calendars, and everything
-stays on your Mac. See the <a href="privacy.html">privacy policy</a>.</p>
-<img src="pets.png" alt="The pets">
-<p><a href="https://github.com/d1v4nchik/Pocket-Pet">Source code and downloads on GitHub</a></p>
+<div class="stars" aria-hidden="true"></div>
+
+<div class="wrap">
+  <nav>
+    <div class="bar">
+      <a class="brand" href="#top"><img src="icon.png" alt="">Pocket Pet</a>
+      <div class="links">
+        <a href="#features">What it does</a>
+        <a href="#pets">Pets</a>
+        <a href="#install">Install</a>
+        <a href="privacy.html">Privacy</a>
+        <a class="cta" href="https://github.com/d1v4nchik/Pocket-Pet/releases/latest">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero glass" id="top">
+    <h1><img src="img/title.png" alt="Pocket Pet"></h1>
+    <p class="lead"><b>A little pixel pet that lives on your Mac's desktop.</b> It plays, naps and dances to your music,
+      reminds you to drink water, and keeps an eye on your calendar: it tells you what's on today, nudges you before each
+      event, and reminds you about homework that's due soon.</p>
+    <div class="buttons">
+      <a class="btn primary" href="https://github.com/d1v4nchik/Pocket-Pet/releases/latest">⬇ Download for Mac</a>
+      <a class="btn ghost" href="https://github.com/d1v4nchik/Pocket-Pet">View on GitHub</a>
+    </div>
+    <p class="small">Free and open source · macOS 13 or newer · Apple Silicon and Intel</p>
+    <div class="stage" id="stage"><span class="hint pixel">click a pet ♥</span></div>
+  </header>
+
+  <section id="features">
+    <h2><span class="pixel">What it does</span>It shares your screen with you</h2>
+    <p class="sub">One small pixel animal that wanders along the bottom of your screen and reacts to what you're doing.</p>
+    <div class="grid">
+      <div class="card glass"><div class="art"><img src="img/typing.gif" alt="A ginger cat typing on a laptop"></div>
+        <h3>Types along with you</h3><p>When you type, it pulls out a tiny laptop and taps away too.</p></div>
+      <div class="card glass"><div class="art"><img src="img/movie.gif" alt="The dalmatian with popcorn"></div>
+        <h3>Movie night</h3><p>A video starts and out comes the popcorn. In fullscreen it sits in the black bar instead.</p></div>
+      <div class="card glass"><div class="art"><img src="img/music.gif" alt="A calico cat in headphones"></div>
+        <h3>Listens to your music</h3><p>Tiny headphones go on with Spotify, Apple Music or any player. Click it for music controls.</p></div>
+      <div class="card glass"><div class="art"><img src="img/nap.gif" alt="The fox asleep in its nightcap"></div>
+        <h3>Naps when you're away</h3><p>Step away and it curls up in a nightcap, then wakes up when you're back.</p></div>
+      <div class="card glass"><div class="art"><img src="img/water.gif" alt="The parrot with a glass of water"></div>
+        <h3>Looks after you</h3><p>Water reminders that keep pace with your day, your own habits, calendar nudges and homework that's due soon.</p></div>
+      <div class="card glass"><div class="art"><img src="img/umbrella.gif" alt="A Siamese cat floating down on an umbrella"></div>
+        <h3>Pick it up and throw it</h3><p>Cats float down on a little umbrella. The bat just flies back up.</p></div>
+    </div>
+  </section>
+
+  <section id="pets">
+    <h2><span class="pixel">Meet the pets</span>Choose your buddy</h2>
+    <p class="sub">Click one to take it along: it follows your cursor along the bottom of this page. In the app you can bring up to five at once.</p>
+    <div class="pets" id="pet-tiles"></div>
+    <div class="wide glass">
+      <img src="img/closet.gif" alt="Pets trying on hats, glasses, scarves and bow ties">
+      <p class="small">Dress them up from the Closet: hats (including a Santa hat), glasses and neckwear.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="pixel">One little menu</span>Everything in one place</h2>
+    <p class="sub">Food, happiness and energy, today's calendar, music controls and a gentle water break, all from the paw in your menu bar.</p>
+    <div class="shot glass"><img src="menu.png" alt="The menu with every pet, today's calendar, the music card and a water break"></div>
+  </section>
+
+  <section id="install">
+    <h2><span class="pixel">Get it</span>Install in a minute</h2>
+    <div class="two">
+      <div class="glass">
+        <h3>With Terminal (recommended)</h3>
+        <p>No warnings and no admin password. Open Terminal and paste:</p>
+        <div class="cmd"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/d1v4nchik/Pocket-Pet/main/install.sh | bash</code><button id="copy" type="button">Copy</button></div>
+        <p>It goes in the Applications folder in your home folder, and updates itself from then on.</p>
+      </div>
+      <div class="glass">
+        <h3>With the DMG</h3>
+        <ol>
+          <li>Download <a href="https://github.com/d1v4nchik/Pocket-Pet/releases/latest">Pocket Pet.dmg</a> and open it.</li>
+          <li>Drag Pocket Pet onto Applications.</li>
+          <li>The first time, open System Settings › Privacy &amp; Security and click <b>Open Anyway</b>.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="privacy glass">
+      <div class="lock" aria-hidden="true">🔒</div>
+      <div>
+        <h3 style="margin:0">Private by design</h3>
+        <p>Connecting a calendar is optional. With "Sign in with Google", Pocket Pet only reads your calendars, and
+          everything stays on your Mac. Nothing is collected, and Pocket Pet knows <i>that</i> you're typing, never
+          <i>what</i>. See the <a href="privacy.html">privacy policy</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="pixel">Sweet dreams ♥</span>
+    <a href="https://github.com/d1v4nchik/Pocket-Pet">Source code and downloads on GitHub</a> ·
+    <a href="privacy.html">Privacy policy</a> · GPL-3.0<br>
+    Pocket Pet is an independent fan-made project and isn't affiliated with Apple, Google or Spotify.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const PETS = [
+    { id: 'goose', name: 'Goose', likes: 'Flying around, honking, cookies', w: 27, h: 32 },
+    { id: 'parrot', name: 'Parrot', likes: 'Saying hello, berries, its tail', w: 27, h: 22 },
+    { id: 'ginger', name: 'Ginger cat', likes: 'Fish and chasing your cursor', w: 27, h: 26 },
+    { id: 'siamese', name: 'Siamese cat', likes: 'Yarn and grooming', w: 27, h: 26 },
+    { id: 'tuxedo', name: 'Tabby cat', likes: 'Touching noses with friends', w: 28, h: 26 },
+    { id: 'calico', name: 'Calico cat', likes: 'Play-fights and yarn', w: 27, h: 26 },
+    { id: 'dalmatian', name: 'Dalmatian', likes: 'Bones, balls, zoomies', w: 32, h: 23 },
+    { id: 'fox', name: 'Fox', likes: 'Berries and long naps', w: 30, h: 26 },
+    { id: 'turtle', name: 'Tortoise', likes: 'Strawberries, slow strolls', w: 32, h: 18, slow: true },
+    { id: 'bat', name: 'Bat', likes: 'Hanging upside down, fruit', w: 40, h: 30, flies: true },
+    { id: 'shark', name: 'Bubbles', likes: 'Swimming anywhere, crawling on land', w: 30, h: 25 },
+  ];
+  const byId = Object.fromEntries(PETS.map(p => [p.id, p]));
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                  set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  // twinkly stars
+  const stars = document.querySelector('.stars');
+  for (let i = 0; i < 40; i++) {
+    const s = document.createElement('i');
+    s.style.left = Math.random() * 100 + '%'; s.style.top = Math.random() * 100 + '%';
+    s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
+    stars.appendChild(s);
+  }
+
+  // A pet drawn from its sprite sheet (walk 0-11, sit 12-35, happy 36-37, all facing right).
+  // Nothing here is random: pets walk to where they're told, sit, face whoever they're told to, and hop.
+  class Pet {
+    constructor(parent, def, scale, opts = {}) {
+      this.def = def; this.s = scale; this.parent = parent; this.opts = opts;
+      const el = this.el = document.createElement('div');
+      el.className = 'pet';
+      el.style.width = def.w * scale + 'px'; el.style.height = def.h * scale + 'px';
+      el.style.backgroundImage = `url(sprites/${def.id}.png)`;
+      el.style.backgroundSize = `${def.w * 38 * scale}px ${def.h * scale}px`;
+      el.setAttribute('role', 'img'); el.setAttribute('aria-label', def.name);
+      parent.appendChild(el);
+      this.x = opts.x ?? 0; this.target = null; this.facing = 1;
+      this.t = opts.phase ?? 0; this.hopT = 0; this.happyT = 0; this.alt = 0; this.altTarget = 0;
+      this.speed = (opts.speed ?? 34) * scale / 3;
+      if (opts.onClick) el.addEventListener('click', e => { e.stopPropagation(); opts.onClick(this); });
+    }
+    get w() { return this.def.w * this.s; }
+    get center() { return this.x + this.w / 2; }
+    walkTo(x) { this.target = x; }
+    face(dir) { if (!this.moving) this.facing = dir < 0 ? -1 : 1; }
+    faceX(x) { this.face(x - this.center); }
+    hop() { this.hopT = .42; this.happyT = .8; }
+    heart(dx = 0) {
+      const h = document.createElement('span');
+      h.className = 'heart'; h.textContent = '♥';
+      h.style.left = this.opts.centered ? `calc(50% + ${dx - 6}px)` : (this.center + dx - 6) + 'px';
+      h.style.bottom = (this.baseBottom() + this.def.h * this.s + 4) + 'px';
+      this.parent.appendChild(h); setTimeout(() => h.remove(), 1000);
+    }
+    baseBottom() { return (this.opts.bottom ?? 24) + this.alt; }
+    get moving() { return this.target !== null && Math.abs(this.target - this.x) > 1; }
+    frame(i) { this.el.style.backgroundPosition = `${-i * this.def.w * this.s}px 0`; }
+    step(dt) {
+      this.t += dt;
+      this.alt += (this.altTarget - this.alt) * Math.min(1, dt * 3);
+      if (this.moving && !still) {
+        const d = this.target - this.x;
+        this.facing = d < 0 ? -1 : 1;
+        this.x += Math.sign(d) * Math.min(Math.abs(d), this.speed * dt);
+      } else if (this.target !== null && still) this.x = this.target;
+      let f;
+      if (this.happyT > 0) { this.happyT -= dt; f = 36 + (Math.floor(this.happyT * 8) % 2); }
+      else if (this.moving || this.def.flies) f = this.def.id === 'turtle' ? 0 : Math.floor(this.t * (this.def.flies ? 20 : 12)) % 12;
+      else f = 12 + Math.floor(this.t * 9) % 24;
+      this.frame(f);
+      let lift = 0;
+      if (this.hopT > 0) { this.hopT -= dt; lift = Math.round(Math.sin((1 - this.hopT / .42) * Math.PI) * 6 * this.s); }
+      if (this.def.id === 'turtle' && this.moving) lift += Math.floor(this.t * 5) % 2;
+      if (this.def.flies) lift += Math.round(Math.sin(this.t * 3) * 2 * this.s);
+      this.el.style.zIndex = this.moving ? 2 : 1;
+      if (this.opts.centered) this.el.style.transform = `translateX(-50%)`;
+      else {
+        this.el.style.left = this.x + 'px';
+        this.el.style.transform = this.facing < 0 ? 'scaleX(-1)' : '';
+      }
+      this.el.style.bottom = (this.baseBottom() + lift) + 'px';
+    }
+  }
+
+  const all = [];
+  const after = (s, fn) => setTimeout(fn, s * 1000);
+
+  // ---- the hero scene: a rehearsed little routine where every pet has its own moments ----
+  // Each pet has a home spot. The script below plays the same way every time (it loops every LOOP seconds),
+  // but beats are staggered so no two pets ever move in step.
+  const stage = document.getElementById('stage');
+  const narrow = innerWidth < 600;
+  const scale = narrow ? 2 : 3;
+  const HOMES = narrow
+    ? { goose: .1, ginger: .36, calico: .6, shark: .86 }
+    : { goose: .08, ginger: .23, calico: .37, dalmatian: .52, parrot: .66, shark: .8, turtle: .93 };
+  const SPEED = { goose: 30, ginger: 36, calico: 34, dalmatian: 44, parrot: 26, shark: 24, turtle: 10, bat: 70 };
+  const cast = {};
+  Object.keys(HOMES).forEach(id => {
+    const p = new Pet(stage, byId[id], scale, { speed: SPEED[id], onClick: q => pat(q), phase: Object.keys(cast).length * .41 });
+    p.busy = 0; cast[id] = p; all.push(p);
+  });
+  const bat = cast.bat = new Pet(stage, byId.bat, scale, { speed: SPEED.bat, onClick: q => { q.hop(); q.heart(); } });
+  bat.altTarget = 80; bat.busy = 0; all.push(bat);
+  const W = () => stage.clientWidth;
+  const at = f => f * W();
+  const home = id => at(HOMES[id]) - cast[id].w / 2;
+  let mouseX = null;
+  stage.addEventListener('mousemove', e => { mouseX = e.clientX - stage.getBoundingClientRect().left; });
+  stage.addEventListener('mouseleave', () => { mouseX = null; });
+
+  // walk up beside another pet, on whichever side you're coming from
+  function besideX(p, q) {
+    return p.center < q.center ? q.x - p.w - 6 : q.x + q.w + 6;
+  }
+  function pat(p) {
+    p.hop(); p.heart();
+    // whoever is closest turns to see what happened
+    const others = Object.values(cast).filter(q => q !== p && q !== bat && !q.moving);
+    others.sort((a, b) => Math.abs(a.center - p.center) - Math.abs(b.center - p.center));
+    if (others[0]) { others[0].faceX(p.center); setTimeout(() => others[0].hop(), 300); }
+  }
+
+  // [seconds, pet, action, argument]
+  // actions: to (a spot 0..1), home, visit (walk beside a pet), face (a pet), hop, heart, speed (multiplier)
+  const LOOP = 30;
+  const SCRIPT = [
+    // ginger pops over to calico and they touch noses
+    [0.8, 'ginger', 'visit', 'calico'], [2.4, 'ginger', 'face', 'calico'], [2.5, 'calico', 'face', 'ginger'],
+    [2.8, 'ginger', 'heart', 'calico'], [3.2, 'calico', 'hop'], [4.6, 'ginger', 'home'],
+    // the tortoise takes a slow stroll and comes back
+    [1.6, 'turtle', 'to', .9], [9.0, 'turtle', 'home'],
+    // the parrot shuffles over to Bubbles and says hello
+    [3.4, 'parrot', 'visit', 'shark'], [5.6, 'parrot', 'face', 'shark'], [5.8, 'parrot', 'hop'], [6.3, 'shark', 'face', 'parrot'],
+    [6.5, 'shark', 'hop'], [6.8, 'parrot', 'heart', 'shark'], [8.4, 'parrot', 'home'],
+    // the goose waddles up to ginger and honks; ginger jumps
+    [6.0, 'goose', 'visit', 'ginger'], [7.6, 'goose', 'face', 'ginger'], [7.8, 'goose', 'hop'], [8.1, 'ginger', 'face', 'goose'],
+    [8.2, 'ginger', 'hop'], [9.8, 'goose', 'home'],
+    // the bat drops in over the tortoise
+    [8.0, 'bat', 'to', .9], [11.0, 'turtle', 'face', 'bat'], [11.4, 'turtle', 'hop'], [12.6, 'bat', 'to', 1.2],
+    // the dalmatian gets the zoomies
+    [10.4, 'dalmatian', 'speed', 2.4], [10.4, 'dalmatian', 'to', .6], [11.2, 'dalmatian', 'to', .45], [12.0, 'dalmatian', 'to', .58],
+    [12.9, 'dalmatian', 'speed', 1], [12.9, 'dalmatian', 'home'], [13.6, 'dalmatian', 'hop'],
+    // calico and ginger play-fight
+    [14.0, 'calico', 'visit', 'ginger'], [15.4, 'calico', 'face', 'ginger'], [15.5, 'ginger', 'face', 'calico'],
+    [15.7, 'calico', 'hop'], [16.1, 'ginger', 'hop'], [16.5, 'calico', 'hop'], [17.0, 'ginger', 'heart', 'calico'], [18.4, 'calico', 'home'],
+    // Bubbles flops about a little
+    [16.0, 'shark', 'to', .76], [18.2, 'shark', 'home'],
+    // the goose honks and the parrot copies it
+    [19.0, 'goose', 'hop'], [19.5, 'parrot', 'face', 'goose'], [19.8, 'parrot', 'hop'],
+    // the dalmatian goes to sniff the parrot
+    [20.4, 'dalmatian', 'visit', 'parrot'], [22.0, 'parrot', 'face', 'dalmatian'], [22.2, 'dalmatian', 'face', 'parrot'],
+    [22.4, 'parrot', 'hop'], [22.8, 'dalmatian', 'heart', 'parrot'], [24.2, 'dalmatian', 'home'],
+    // the bat comes back the other way, over the goose
+    [21.0, 'bat', 'to', .08], [23.4, 'goose', 'face', 'bat'], [23.7, 'goose', 'hop'], [25.0, 'bat', 'to', -.25],
+    // Bubbles visits the tortoise
+    [24.6, 'shark', 'visit', 'turtle'], [26.6, 'turtle', 'face', 'shark'], [26.8, 'shark', 'heart', 'turtle'], [27.2, 'turtle', 'hop'],
+    [28.0, 'shark', 'home'],
+  ].sort((a, b) => a[0] - b[0]);
+
+  function run(id, action, arg) {
+    const p = cast[id];
+    if (!p || (arg && typeof arg === 'string' && !cast[arg])) return;   // that pet isn't on this screen size
+    const q = typeof arg === 'string' ? cast[arg] : null;
+    const base = SPEED[id] * scale / 3;
+    if (action === 'to') p.walkTo(at(arg) - p.w / 2);
+    if (action === 'home') p.walkTo(home(id));
+    if (action === 'visit') p.walkTo(besideX(p, q));
+    if (action === 'face') p.faceX(q.center);
+    if (action === 'hop') p.hop();
+    if (action === 'heart') p.heart(q ? (q.center - p.center) / 2 : 0);
+    if (action === 'speed') p.speed = base * arg;
+    p.busy = 1.5;   // stays put for the cursor for a moment after any beat
+  }
+
+  let clock = 0, next = 0;
+  Object.keys(HOMES).forEach(id => { cast[id].x = home(id); });
+  bat.x = -bat.w - 20;
+  function scene(dt) {
+    clock += dt;
+    while (next < SCRIPT.length && SCRIPT[next][0] <= clock) { const [, id, a, arg] = SCRIPT[next++]; run(id, a, arg); }
+    if (clock >= LOOP) { clock = 0; next = 0; }
+    // a pet with nothing to do glances at the cursor when it comes close
+    for (const p of Object.values(cast)) {
+      p.busy = Math.max(0, p.busy - dt);
+      if (p === bat || p.moving || p.busy > 0 || mouseX === null) continue;
+      if (Math.abs(mouseX - p.center) < 220) p.faceX(mouseX);
+    }
+  }
+
+  // ---- pet tiles: hover for a hop, click to take one along ----
+  const tiles = document.getElementById('pet-tiles');
+  const tileBtns = {};
+  PETS.forEach((def, i) => {
+    const b = document.createElement('button');
+    b.className = 'tile glass'; b.type = 'button'; b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = `<div class="box"></div><span class="name pixel">${def.name}</span><span class="likes">${def.likes}</span><span class="take pixel">take me along ♥</span>`;
+    const p = new Pet(b.querySelector('.box'), def, 3, { centered: true, bottom: 14, phase: i * .37 });
+    all.push(p);
+    b.addEventListener('mouseenter', () => p.hop());
+    b.addEventListener('click', () => { choose(def.id); p.hop(); p.heart(); });
+    tileBtns[def.id] = b;
+    tiles.appendChild(b);
+  });
+
+  // ---- your buddy: walks along the bottom of the window to wherever your cursor is ----
+  const comp = document.createElement('div');
+  comp.className = 'companion'; comp.style.left = 0; comp.style.right = 0; comp.style.height = '1px';
+  document.body.appendChild(comp);
+  let buddy = null, pointerX = innerWidth * .15;
+  addEventListener('mousemove', e => { pointerX = e.clientX; });
+  addEventListener('touchstart', e => { pointerX = e.touches[0].clientX; }, { passive: true });
+  function choose(id) {
+    if (buddy) { buddy.el.remove(); all.splice(all.indexOf(buddy), 1); }
+    buddy = new Pet(comp, byId[id], 3, { bottom: 4, speed: 70, onClick: p => { p.hop(); p.heart(); } });
+    buddy.x = -buddy.w; if (byId[id].flies) buddy.altTarget = 20;
+    all.push(buddy);
+    Object.entries(tileBtns).forEach(([k, b]) => b.setAttribute('aria-pressed', String(k === id)));
+    store.set('pocketpet.buddy', id);
+  }
+  const saved = store.get('pocketpet.buddy');
+  if (saved && byId[saved]) choose(saved);
+
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(.1, (now - last) / 1000); last = now;
+    // sitting pets on the stage watch the cursor
+    scene(dt);
+    if (buddy) {
+      const want = Math.max(0, Math.min(innerWidth - buddy.w, pointerX - buddy.w / 2));
+      if (Math.abs(want - buddy.x) > 24) buddy.walkTo(want);
+    }
+    for (const p of all) p.step(dt);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // copy the install line
+  const copy = document.getElementById('copy');
+  copy.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); copy.textContent = 'Copied ♥'; }
+    catch { copy.textContent = 'Select it'; }
+    setTimeout(() => copy.textContent = 'Copy', 1600);
+  });
+})();
+</script>
 </body>
 </html>

@@ -4,13 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pocket Pet privacy policy</title>
+<link rel="icon" href="icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&display=swap" rel="stylesheet">
 <style>
-  body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 680px; margin: 40px auto; padding: 0 16px; color: #222; background: #fff; }
-  h1 { font-size: 28px; } h2 { font-size: 19px; margin-top: 28px; }
-  @media (prefers-color-scheme: dark) { body { color: #eee; background: #1b1b1d; } a { color: #8ab4ff; } }
+  :root { --bg: #140f1a; --glass: rgba(42, 31, 54, 0.62); --line: rgba(255, 255, 255, 0.09); --pink: #ff6fb0; --pink-2: #ffb0d3; --text: #f7eef6; --muted: #c9bad5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 40px 16px 80px; color: var(--text); font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: radial-gradient(60vw 40vw at 15% -5%, rgba(255, 111, 176, 0.2), transparent 70%), radial-gradient(50vw 40vw at 100% 40%, rgba(150, 90, 220, 0.16), transparent 70%), var(--bg);
+         background-attachment: fixed; min-height: 100vh; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px clamp(20px, 5vw, 44px); background: var(--glass); border: 1px solid var(--line); border-radius: 22px;
+         backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .back { display: inline-block; max-width: 720px; margin: 0 auto 14px; font-family: "Silkscreen", monospace; color: var(--pink); text-decoration: none; }
+  .top { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 4px; } h2 { font-size: 19px; margin-top: 30px; color: var(--pink-2); }
+  p, li { color: var(--muted); } a { color: var(--pink-2); } b, strong { color: var(--text); }
 </style>
 </head>
 <body>
+<div class="top"><a class="back" href="./">♥ Pocket Pet</a></div>
+<main>
 <h1>Pocket Pet privacy policy</h1>
 <p>Last updated: November 25, 2026</p>
 
@@ -50,5 +62,6 @@ beyond what any web request does.</p>
 
 <h2>Contact</h2>
 <p>Questions: open an issue at <a href="https://github.com/d1v4nchik/Pocket-Pet/issues">github.com/d1v4nchik/Pocket-Pet</a>.</p>
+</main>
 </body>
 </html>

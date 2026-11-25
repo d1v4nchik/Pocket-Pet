@@ -1,13 +1,24 @@
-# Pocket Pet
-![macOS](https://img.shields.io/badge/macOS-13%2B-black)
-![Apple Silicon and Intel](https://img.shields.io/badge/Apple%20Silicon%20%7C%20Intel-supported-black)
-![Latest release](https://img.shields.io/github/v/release/d1v4nchik/Pocket-Pet)
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+<div align="center">
 
-A little pixel pet that lives on your Mac's desktop. It wanders around, naps when you're away, types along with you,
+<img src="assets/readme/banner.gif" width="100%" alt="Pocket Pet: the goose, the cats, the dalmatian, the parrot, Bubbles the shark, the fox, the tortoise and the bat walking along">
+
+<br>
+
+![macOS](https://img.shields.io/badge/macOS-13%2B-ff6fb0?style=flat-square&labelColor=211a29)
+![Apple Silicon and Intel](https://img.shields.io/badge/Apple%20Silicon%20%7C%20Intel-supported-ff6fb0?style=flat-square&labelColor=211a29)
+![Latest release](https://img.shields.io/github/v/release/d1v4nchik/Pocket-Pet?style=flat-square&color=ff6fb0&labelColor=211a29)
+![License](https://img.shields.io/badge/license-GPL--3.0-ff6fb0?style=flat-square&labelColor=211a29)
+
+**A little pixel pet that lives on your Mac's desktop.** 🐾<br>
+It wanders around, naps when you're away, types along with you,<br>
 watches videos with popcorn and listens to your music in tiny headphones.
 
-![The goose, the parrot, four cats, the dalmatian, the fox, the tortoise and the bat, dressed up](docs/pets.png)
+<a href="https://github.com/d1v4nchik/Pocket-Pet/releases/latest"><img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F%20%20Download-Pocket%20Pet-ff6fb0?style=for-the-badge&labelColor=211a29" alt="Download Pocket Pet" height="38"></a>
+<a href="https://d1v4nchik.github.io/Pocket-Pet/"><img src="https://img.shields.io/badge/%F0%9F%A9%B7%20%20Visit-the%20website-211a29?style=for-the-badge&labelColor=ff6fb0" alt="Visit the Pocket Pet website" height="38"></a>
+
+</div>
+
+<br>
 
 ## ⬇️ Download
 
@@ -17,42 +28,55 @@ The easiest way, with no warnings and no admin password: open **Terminal** and p
 curl -fsSL https://raw.githubusercontent.com/d1v4nchik/Pocket-Pet/main/install.sh | bash
 ```
 
-Or **[get Pocket Pet.dmg](https://github.com/d1v4nchik/Pocket-Pet/releases/latest)** (see [Installing](#installing)).
+Or **[get Pocket Pet.dmg](https://github.com/d1v4nchik/Pocket-Pet/releases/latest)** (see [Installing](#-installing)).
 macOS 13 or newer, Apple Silicon or Intel. Once installed, it updates itself and tells you when there's a new version.
 
-## What It Is
+## 🩷 What It Is
 
 Pocket Pet is a desktop companion in the spirit of Desktop Goose and Tamagotchi: one small pixel animal that shares your
 screen with you and reacts to what you do.
 
-- It **lives with you**: walks along the bottom of the screen (or every edge, with gravity off), naps when you step
+<p align="center">
+  <img src="assets/readme/moments.gif" width="100%" alt="A cat typing on a laptop, the dalmatian with popcorn, a cat listening to music, the fox asleep in its nightcap, the parrot with a glass of water and a cat floating down on an umbrella">
+</p>
+
+- 🏡 It **lives with you**: walks along the bottom of the screen (or every edge, with gravity off), naps when you step
   away, and visibly wakes up when you're back.
-- It **keeps you company**: types along when you type, grabs popcorn when a video plays and puts on headphones when
+- 🍿 It **keeps you company**: types along when you type, grabs popcorn when a video plays and puts on headphones when
   music is on.
-- It **stays out of the way**: in fullscreen apps it climbs to the top edge and hangs out upside down; for fullscreen
+- 🤫 It **stays out of the way**: in fullscreen apps it climbs to the top edge and hangs out upside down; for fullscreen
   videos it sits in the black bar instead. Share your screen in a call and it asks whether to hide. Want it to stay in one
   spot? One button makes it stay put (still grooming), hold completely still, or settle down to read with you while you
   study (it thinks very hard now and then, and dozes off over the book until you tap it).
-- It **looks after you**: it reminds you to drink water (counted in glasses, sips, millilitres or ounces, with a goal
+- 💧 It **looks after you**: it reminds you to drink water (counted in glasses, sips, millilitres or ounces, with a goal
   tailored to you and reminders that keep pace with your day) and charts it, reminds you of your own habits
   (stretching, vitamins, a walk...), nudges you before every calendar event and about tasks that are due (ManageBac, or any calendar you pick for
   "Due soon", like Google Classroom's class calendars), and
   rings a little bell when a message arrives.
 
-![A cat reading, the tortoise typing in headphones, the dalmatian with popcorn, a cat listening to music, a cat thinking
-hard over its book, the parrot on its laptop, the fox asleep in its nightcap and the bat flying](docs/moments.png)
+## 🐾 The Pets
 
-## The Pets
+<table align="center">
+<tr>
+<td align="center"><img src="assets/readme/pets/goose.gif" width="112" alt="Goose"><br><sub>flying around, honking, cookies</sub></td>
+<td align="center"><img src="assets/readme/pets/parrot.gif" width="112" alt="Parrot"><br><sub>saying hello, berries, showing off its tail</sub></td>
+<td align="center"><img src="assets/readme/pets/ginger.gif" width="112" alt="Ginger cat"><br><sub>fish and chasing your cursor</sub></td>
+<td align="center"><img src="assets/readme/pets/siamese.gif" width="112" alt="Siamese cat"><br><sub>yarn and long grooming sessions</sub></td>
+<td align="center"><img src="assets/readme/pets/tuxedo.gif" width="112" alt="Tabby cat"><br><sub>touching noses with other cats</sub></td>
+<td align="center"><img src="assets/readme/pets/calico.gif" width="112" alt="Calico cat"><br><sub>play-fights and yarn</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="assets/readme/pets/dalmatian.gif" width="112" alt="Dalmatian"><br><sub>bones, balls, zoomies</sub></td>
+<td align="center"><img src="assets/readme/pets/fox.gif" width="112" alt="Fox"><br><sub>berries, curling up for long naps</sub></td>
+<td align="center"><img src="assets/readme/pets/turtle.gif" width="112" alt="Tortoise"><br><sub>strawberries, slow strolls, its nightcap</sub></td>
+<td align="center"><img src="assets/readme/pets/bat.gif" width="112" alt="Bat"><br><sub>hanging upside down, swooping, fruit</sub></td>
+<td align="center"><img src="assets/readme/pets/shark.gif" width="112" alt="Bubbles the shark"><br><sub>swimming anywhere, crawling about on land</sub></td>
+</tr>
+</table>
 
-| | Pet | Likes |
-|---|---|---|
-| 🪿 | Goose | Flying around, honking, cookies |
-| 🦜 | Parrot | Saying hello, berries, showing off its tail |
-| 🐈 | Ginger, Siamese, Tabby and Calico cats | Fish, yarn, chasing your cursor |
-| 🐕 | Dalmatian | Bones, balls, zoomies |
-| 🦊 | Fox | Berries, curling up for long naps |
-| 🐢 | Tortoise | Strawberries, slow strolls, pulling into its shell, napping in its nightcap |
-| 🦇 | Bat | Hanging from the top of your screen, swooping, fruit (and flying free with gravity off) |
+<p align="center">
+  <img src="assets/readme/closet.gif" width="100%" alt="The goose, cats, dalmatian, fox, bat and parrot trying on hats, glasses, scarves and bow ties">
+</p>
 
 Dress any of them up from the **Closet**: hats (including a Santa hat), glasses and neckwear.
 
@@ -60,7 +84,7 @@ Want more than one? Switch on **Several pets at once** in Settings and bring up 
 They get along like real animals: cats touch noses, groom each other and play-fight, dogs and foxes play-bow and chase,
 a cat and a dog are careful with each other, the goose honks everyone off, and the parrot copies whoever it meets.
 
-## How It Plays
+## ✨ How It Plays
 
 1. Open Pocket Pet. Your pet drops in and starts exploring.
 2. Keep it happy: the three meters in its menu are **food**, **happiness** and **energy**.
@@ -70,7 +94,7 @@ a cat and a dog are careful with each other, the goose honks everyone off, and t
 
 ![The menu with every pet, today's calendar, the music card and a water break](docs/menu.png)
 
-## Controls
+## 🎮 Controls
 
 | | |
 |---|---|
@@ -85,7 +109,7 @@ a cat and a dog are careful with each other, the goose honks everyone off, and t
 | Stay in one spot | The paw button in the menu: roams, stays put, completely still |
 | Everything else | Menu › Settings › **Advanced Settings…** |
 
-## Installing
+## 📦 Installing
 
 **With Terminal (recommended):** paste the line from [Download](#%EF%B8%8F-download). It puts Pocket Pet in the
 Applications folder in your home folder, checks it's signed by Pocket Pet's maintainer, and opens it. macOS only warns
@@ -104,7 +128,7 @@ about apps downloaded by a browser, so there's no "malicious software" message t
    xattr -dr com.apple.quarantine ~/Applications/Pocket\ Pet.app
    ```
 
-## Connections
+## 🔌 Connections
 
 All optional, all in **Advanced Settings › Connections** (menu › Settings).
 
@@ -121,13 +145,13 @@ password.
 System Settings › Privacy & Security › Accessibility, select Pocket Pet, click **−**, then add it again with **+**. From
 3.3 on, updates keep the permission.
 
-## Privacy
+## 🔒 Privacy
 
 Nothing is collected or sent anywhere. The only things that go over the internet are your calendar (to Google or
 wherever its link points), Spotify (when you connect it), album covers for Apple Music songs, and the update check here
 on GitHub. Pocket Pet knows *that* you're typing, never *what*. See [SECURITY.md](SECURITY.md) for the details.
 
-## Building From Source
+## 🛠️ Building From Source
 
 **Requirements:** macOS 13+ and Apple's command line tools (`xcode-select --install`).
 
@@ -147,12 +171,12 @@ updates.
 the maintainer keeps it at `~/.pocketpet/google-client.json` and `build.sh` puts it into the app. Builds without it
 still offer a Google Cloud client of your own, a calendar link, or the Mac's calendars.
 
-## Contributing
+## 💌 Contributing
 
 Bug reports, ideas, new pets and pixel art are all welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). Please report security issues privately as described in [SECURITY.md](SECURITY.md).
 
-## License
+## 📜 License
 
 Copyright (C) 2026 d1v4nchik
 
@@ -161,8 +185,14 @@ Pocket Pet is free software: you can redistribute it and/or modify it under the 
 that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE.
 
-## Disclaimer
+## ℹ️ Disclaimer
 
 Pocket Pet is an independent fan-made project. It is not affiliated with or endorsed by Apple, Spotify, Google,
 Microsoft or any of the other companies whose products it works with; their names are trademarks of their respective
 owners.
+
+<br>
+
+<div align="center">
+  <img src="assets/readme/footer.gif" width="300" alt="The fox asleep: sweet dreams, thanks for visiting">
+</div>
