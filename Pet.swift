@@ -2217,7 +2217,9 @@ final class Pet {
         if family == .bat && !(mode == .idle && act == .press) { pose.phase = t * 13 }      // wing beats (held open to say hi)
         var c = Canvas(cw, chh)
         let a = drawPet(&c, species, pose, cx: cx)
-        if pose.twirl != 0 { c.squashX(around: cx, cos(pose.twirl)) }       // spinning round to the music
+        if pose.twirl != 0 {                                                  // spinning round to the music
+            turnFrame(&c, a, cx: cx, angle: pose.twirl, hop: Int((sin(pose.twirl / 2) * 2).rounded()))
+        }
         if facing < 0 { c.mirror(around: cx) }
         head = (facing < 0 ? 2 * cx - a.headX : a.headX, a.headTop)
         hitCells = c.bounds()

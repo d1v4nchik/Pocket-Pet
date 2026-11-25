@@ -1923,6 +1923,62 @@ private func drawTortoiseNeck(_ c: inout Canvas, _ n: Neckwear, _ top: (Int, Int
     }
 }
 
+/// One frame of a pet spinning round on the spot (the music dance), drawn to feel solid rather than a flat card turning:
+/// eight held frames a turn like hand-drawn ones, squeezed to its width at that angle but never thinner than its body
+/// is deep, the far side in shadow, its back (no face) when it faces away, a little hop, and a see-through motion blur
+/// of where it just was trailing behind it while it whips round.
+func turnFrame(_ c: inout Canvas, _ a: Anchors, cx: Int, angle: Double, hop: Int) {
+    let step = Double.pi / 4
+    let base = c
+    let shade: [UInt8: Col] = [Col.body.rawValue: .bodyShade, Col.bodyLight.rawValue: .body, Col.mark.rawValue: .markShade,
+                               Col.belly.rawValue: .bellyShade, Col.wing.rawValue: .wingDark]
+    let half = a.headW / 2 + 2
+    let inFace = { (x: Int, y: Int) -> Bool in abs(x - a.headX) <= half && y >= a.headTop && y <= a.headTop + 13 }
+
+    func frame(_ angle: Double) -> Canvas {
+        var f = base
+        let q = (angle / step).rounded() * step
+        let co = cos(q), si = sin(q)
+        // a side-view bird shows its back a quarter of the way round; a pet that sits facing you, halfway round
+        let back = a.profile ? si < -0.1 : co < -0.1
+        let edgeOn = abs(co) < 0.1
+        var hide: Set<UInt8> = []
+        if back {
+            hide = Set([Col.eye, .eyeHi, .nose, .mouth, .tongue, .blush].map { $0.rawValue })
+            if a.profile && edgeOn { hide.formUnion([Col.beak, .beakDark, .inner].map { $0.rawValue }) }   // beak behind the head
+        }
+        for y in 0..<f.h {
+            for x in 0..<f.w {
+                var v = f.px[y * f.w + x]
+                guard v != 0 else { continue }
+                if hide.contains(v) { v = Col.body.rawValue }
+                // from behind, the white face and chest are fur too (a white tail tip and paws stay)
+                if back && (!a.profile || edgeOn) && v == Col.belly.rawValue && inFace(x, y) { v = Col.body.rawValue }
+                // the side turned away from you is in shadow
+                if abs(si) > 0.3, Double(x - cx) * si >= 2, let d = shade[v] { v = d.rawValue }
+                f.px[y * f.w + x] = v
+            }
+        }
+        f.squashX(around: cx, co < 0 ? min(-0.45, co) : max(0.45, co))
+        return f
+    }
+
+    var now = frame(angle)
+    if angle > step && angle < 2 * .pi - step {
+        // motion blur: the two frames it just turned through, fading out behind it
+        let was = frame(angle - step), before = frame(angle - 2 * step)
+        for i in now.px.indices where now.px[i] == 0 {
+            if was.px[i] != 0 { now.px[i] = Col.smear.rawValue }
+            else if before.px[i] != 0 { now.px[i] = Col.smearFaint.rawValue }
+        }
+    }
+    if hop > 0 {
+        // up off the ground for a moment on the way round
+        now.px = Array(now.px[(hop * now.w)...]) + [UInt8](repeating: 0, count: hop * now.w)
+    }
+    c = now
+}
+
 // MARK: - Particles
 
 enum PKind { case heart, z, star, bang, question, kernel, crumb, drop, puff, note }

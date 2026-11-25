@@ -27,7 +27,8 @@ enum Col: UInt8, CaseIterable {
          hatShine, glass, glassEdge, water, waterLight,
          whisker,                // drawn like the outline, but gets no outline of its own (thin whiskers)
          bamboo, bambooLight, bambooDark,
-         bookCover, spin1, spin2, spin3          // study mode: the book's cover; the thinking spinner (no outline)
+         bookCover, spin1, spin2, spin3,         // study mode: the book's cover; the thinking spinner (no outline)
+         smear, smearFaint                       // motion blur while spinning: the coat colour, see-through (no outline)
 }
 
 private let baseHex: [Col: UInt32] = [
@@ -69,7 +70,15 @@ func cgColor(_ h: UInt32) -> CGColor {
 }
 
 func makePalette(_ overrides: [Col: UInt32] = [:]) -> [CGColor] {
-    Col.allCases.map { cgColor(overrides[$0] ?? baseHex[$0] ?? 0xff00ff) }
+    Col.allCases.map { col in
+        switch col {
+        case .smear, .smearFaint:
+            let coat = cgColor(overrides[.body] ?? baseHex[.body] ?? 0xffffff)
+            return coat.copy(alpha: col == .smear ? 0.5 : 0.22) ?? coat
+        default:
+            return cgColor(overrides[col] ?? baseHex[col] ?? 0xff00ff)
+        }
+    }
 }
 
 let basePalette = makePalette()
@@ -275,10 +284,12 @@ struct Canvas {
     /// Adds a 1-cell outline around everything drawn (whiskers excepted, so they stay one cell thin).
     mutating func outline(_ c: Col = .outline) {
         var out = px
-        let thin: Set<UInt8> = [Col.whisker.rawValue, Col.spin1.rawValue, Col.spin2.rawValue, Col.spin3.rawValue]
+        let thin: Set<UInt8> = [Col.whisker.rawValue, Col.spin1.rawValue, Col.spin2.rawValue, Col.spin3.rawValue,
+                                Col.smear.rawValue, Col.smearFaint.rawValue]
         func solid(_ x: Int, _ y: Int) -> Bool { let v = get(x, y); return v != 0 && !thin.contains(v) }
+        let blur: Set<UInt8> = [Col.smear.rawValue, Col.smearFaint.rawValue]     // motion blur gives way to the outline
         for y in 0..<h {
-            for x in 0..<w where px[y * w + x] == 0 {
+            for x in 0..<w where px[y * w + x] == 0 || blur.contains(px[y * w + x]) {
                 if solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1) {
                     out[y * w + x] = c.rawValue
                 }
