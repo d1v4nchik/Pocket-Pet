@@ -223,7 +223,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
                     .ring: 0x23b14b, .beak: 0xfaf6ed, .beakDark: 0x434a52, .nose: 0xf0dcaa, .inner: 0xd2a665,
                     .feet: 0x525d7d, .eye: 0x434a52, .outline: 0x351f12]
         case .shark:        // the reference's soft blues, cream lips, a rosy mouth and a peachy belly
-            return [.body: 0x6496b8, .bodyShade: 0x4a74a0, .belly: 0xf0ece2, .mouth: 0x9a5a64, .tongue: 0xe07a68,
+            return [.body: 0x6496b8, .bodyShade: 0x4a74a0, .bodyLight: 0x8ab8d6, .belly: 0xf0ece2, .mouth: 0x9a5a64, .tongue: 0xe07a68,
                     .mark: 0xe8c4b4, .blush: 0xf4a0a8, .outline: 0x3a4560, .eye: 0x3a4560]
         case .calico:
             return [.body: 0xffffff, .bodyShade: 0xdfe0e8, .mark: 0xf4a24a, .mark2: 0x3b3645, .belly: 0xffffff]
@@ -1684,9 +1684,51 @@ private let sharkArt = [
     ".......DD...............",
 ]
 
+/// Swimming (gravity off), seen from above like a real shark in the water, heading right: its broad head with an eye
+/// either side, pectoral fins swept back, the dark line of its back and a crescent tail. F fins, D back, L light, E eyes.
+private let sharkTopArt = [
+    ".............FF................",
+    "F.............FFF..............",
+    "FF.............FFFF............",
+    ".FF.............FFFFF.BBBBBB...",
+    ".FFF......BBBBBBBBBBBBBBBBBBBB.",
+    "..FFF.BBBBBBBBBBBBBBBBLLLLLEBBB",
+    "...BBBBBDDDDDDDDDDDDDDBBBBBBBBB",
+    "...BDDDDDDDDDDDDDDDDDDDDDBBBBBB",
+    "...BBBBBDDDDDDDDDDDDDDBBBBBBBBB",
+    "..FFF.BBBBBBBBBBBBBBBBLLLLLEBBB",
+    ".FFF......BBBBBBBBBBBBBBBBBBBB.",
+    ".FF.............FFFFF.BBBBBB...",
+    "FF.............FFFF............",
+    "F.............FFF..............",
+    ".............FF................",
+]
+
+private func drawSharkTop(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let ox = cx - 15, oy = c.h - 2 - 20 + p.bob
+    // a swimming wave runs down its body: the head steady, the tail sweeping side to side
+    func dy(_ x: Int) -> Int {
+        let a = 2.2 * pow(max(0, 1 - Double(x) / 30), 1.5)
+        return Int((a * sin(p.phase - Double(x) * 0.35)).rounded())
+    }
+    let map: [Character: Col] = ["B": .body, "D": .bodyShade, "F": .bodyShade, "L": .bodyLight, "E": .eye]
+    for (y, row) in sharkTopArt.enumerated() {
+        for (x, ch) in row.enumerated() { if let col = map[ch] { c.set(ox + x, oy + y + dy(x), col) } }
+    }
+    if [.closed, .half, .happy].contains(p.eyes) { for ey in [5, 9] { c.hline(ox + 26, ox + 27, oy + ey + dy(27), .outline) } }
+    if p.blush { c.set(ox + 25, oy + 6 + dy(25), .blush); c.set(ox + 25, oy + 8 + dy(25), .blush) }
+    if p.phones {
+        // from above: the band across the top of its head, a pad on each side
+        for y in 3...11 { c.set(ox + 24, oy + y + dy(24), .phones) }
+        c.rect(ox + 23, oy + 1 + dy(23), 3, 2, .phonesPad); c.rect(ox + 23, oy + 12 + dy(23), 3, 2, .phonesPad)
+    }
+    return Anchors(headX: ox + 26, headTop: oy + 3, headW: 9, eyes: [(ox + 27, oy + 5)], profile: true, neck: (ox + 22, oy + 7))
+}
+
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let st = p.stance
+    if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
     let ox = cx - 12
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
