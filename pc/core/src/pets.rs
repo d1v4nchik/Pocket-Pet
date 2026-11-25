@@ -160,14 +160,14 @@ impl QuadSpec {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum Species { Goose, Parrot, Ginger, Siamese, Tuxedo, Calico, Dalmatian, Fox, Bat }
+pub enum Species { Goose, Parrot, Ginger, Siamese, Tuxedo, Calico, Dalmatian, Fox, Bat, Shark }
 
 impl Species {
-    pub const ALL: [Species; 9] = [Species::Goose, Species::Parrot, Species::Ginger, Species::Siamese, Species::Tuxedo,
-        Species::Calico, Species::Dalmatian, Species::Fox, Species::Bat];
+    pub const ALL: [Species; 10] = [Species::Goose, Species::Parrot, Species::Ginger, Species::Siamese, Species::Tuxedo,
+        Species::Calico, Species::Dalmatian, Species::Fox, Species::Bat, Species::Shark];
 
     pub fn raw(self) -> &'static str {
-        ["goose", "parrot", "ginger", "siamese", "tuxedo", "calico", "dalmatian", "fox", "bat"][self as usize]
+        ["goose", "parrot", "ginger", "siamese", "tuxedo", "calico", "dalmatian", "fox", "bat", "shark"][self as usize]
     }
 
     /// Old names from earlier versions carry over.
@@ -184,7 +184,7 @@ impl Species {
 
     pub fn family(self) -> Family {
         match self {
-            Species::Goose | Species::Parrot => Family::Bird,
+            Species::Goose | Species::Parrot | Species::Shark => Family::Bird,   // the shark flops on the ground and swims where birds fly
             Species::Dalmatian | Species::Fox => Family::Dog,
             Species::Bat => Family::Bat,
             _ => Family::Cat,
@@ -203,6 +203,7 @@ impl Species {
             Species::Dalmatian => "Dalmatian",
             Species::Fox => "Fox",
             Species::Bat => "Bat",
+            Species::Shark => "Shark",
         }
     }
 
@@ -217,6 +218,7 @@ impl Species {
             Species::Dalmatian => "Domino",
             Species::Fox => "Ember",
             Species::Bat => "Luna",
+            Species::Shark => "Bubbles",
         }
     }
 
@@ -267,10 +269,14 @@ impl Species {
                                  (Nose, 0xe0889a), (Inner, 0xd8d1b5), (Mouth, 0xc9677a), (Tongue, 0xe0889a), (Outline, 0x392c24), (Whisker, 0x392c24)],
             Species::Fox => &[(Body, 0xfd921e), (BodyShade, 0xe27c12), (Mark, 0xfd921e), (Mark2, 0x5b5257), (Belly, 0xffffff),
                               (Eye, 0x2b2738), (Nose, 0x2b2738), (Inner, 0xffffff)],
-            // green, with a red head, yellow cheeks and blue flight feathers
-            Species::Parrot => &[(Body, 0x5cc24c), (BodyShade, 0x46a33c), (Belly, 0xa9df63), (Mark, 0xea4a3f), (Accent, 0xffd447),
-                                 (Wing, 0x4cb047), (WingDark, 0x2f6fd6), (Beak, 0xf2e6cc), (BeakDark, 0x3a3340), (Feet, 0x8d929c),
-                                 (Ring, 0xffffff), (Speculum, 0xea4a3f)],
+            // a scarlet macaw, the reference's colours: red, a pale face, yellow and blue wings, a blue-edged tail
+            Species::Parrot => &[(Body, 0xe15635), (BodyShade, 0x9c3435), (Mark, 0xd42e30), (MarkShade, 0x783c44), (Belly, 0xdac7b9),
+                                 (Accent, 0xffdd3d), (Mark2, 0xffc10c), (Wing, 0x378ada), (WingDark, 0x275fac), (Speculum, 0x67b1d8),
+                                 (Ring, 0x23b14b), (Beak, 0xfaf6ed), (BeakDark, 0x434a52), (Nose, 0xf0dcaa), (Inner, 0xd2a665),
+                                 (Feet, 0x525d7d), (Eye, 0x434a52), (Outline, 0x351f12)],
+            // the reference's soft blues, cream lips, a rosy mouth and a peachy belly
+            Species::Shark => &[(Body, 0x6496b8), (BodyShade, 0x4a74a0), (BodyLight, 0x8ab8d6), (Belly, 0xf0ece2), (Mouth, 0x9a5a64),
+                                (Tongue, 0xe07a68), (Mark, 0xe8c4b4), (Blush, 0xf4a0a8), (Outline, 0x3a4560), (Eye, 0x3a4560)],
             Species::Calico => &[(Body, 0xffffff), (BodyShade, 0xdfe0e8), (Mark, 0xf4a24a), (Mark2, 0x3b3645), (Belly, 0xffffff)],
             Species::Dalmatian => &[(Body, 0xffffff), (BodyShade, 0xe6e3ee), (Mark, 0x3a3440), (Belly, 0xffffff), (Nose, 0x3a3440)],
             Species::Bat => &[(Body, 0x4f4166), (BodyShade, 0x3d3252), (Wing, 0x6a5785), (WingDark, 0x392e4e), (Belly, 0x6f5f88),
@@ -541,7 +547,7 @@ fn quad_anchors(hx: i32, ht: i32) -> Anchors {
 }
 
 /// Coat markings on a side-view body spanning x0...x1, rows r0...rb.
-fn side_coat(c: &mut Canvas, q: &QuadSpec, x0: i32, x1: i32, r0: i32, rb: i32) {
+fn side_coat(c: &mut Canvas, q: &QuadSpec, x0: i32, x1: i32, r0: i32, rb: i32, lying: bool) {
     let in_body = |x: i32, y: i32| -> bool { x >= x0 - 1 && x <= x1 + 1 && y >= r0 && y <= rb };
     match q.coat {
         Coat::Tabby => {
@@ -565,7 +571,8 @@ fn side_coat(c: &mut Canvas, q: &QuadSpec, x0: i32, x1: i32, r0: i32, rb: i32) {
             while x <= x1 - 4 { c.paint(Col::Body, Col::Mark, |xx, y| xx == x && y >= r0 && y <= r0 + 2); x += 3; }
         }
         // white chest and belly
-        c.patch(Col::Belly, |x, y| in_body(x, y) && ((y == rb && x >= x0 + 2 && x <= x1 - 1) || (x >= x1 - 2 && y >= r0 + 2)));
+        let belly = !(lying && q.coat == Coat::Fox);
+        c.patch(Col::Belly, |x, y| in_body(x, y) && ((belly && y == rb && x >= x0 + 2 && x <= x1 - 1) || (x >= x1 - 2 && y >= r0 + 2)));
     } else {
         c.paint(Col::Body, Col::Belly, |x, y| (y == rb && x >= x0 + 3 && x <= x1 - 3) || (y == rb - 1 && x >= x0 + 5 && x <= x1 - 5));
     }
@@ -636,7 +643,7 @@ fn draw_quad(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
             for _ in 0..(q.body_h - 3) { rows.push((0, 0)); }
             rows.push((1, -1));
             for (i, s) in rows.iter().enumerate() { c.hline(x0 + s.0, x1 + s.1, r0 + i as i32, Col::Body); }
-            side_coat(c, &q, x0, x1, r0, rb);
+            side_coat(c, &q, x0, x1, r0, rb, false);
             hx = x1 - 4 + p.head_dx;
             ht = r0 - 6 + p.head_dy;
             if crouch { hx += 2; ht += 2; }
@@ -723,7 +730,7 @@ fn draw_quad(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
                 side_tail(c, &q, x0 + 1, g - 4, p);
             }
             c.spans(x0, g - 6, &[(3, x1 - x0 - 3), (1, x1 - x0 - 1), (0, x1 - x0), (0, x1 - x0), (0, x1 - x0), (0, x1 - x0), (1, x1 - x0 - 1)], Col::Body);
-            side_coat(c, &q, x0, x1, g - 6, g);
+            side_coat(c, &q, x0, x1, g - 6, g, true);
             if sp.family() == Family::Cat {
                 c.hline(cx + 3, cx + 5, g, if sk == Col::Body { Col::Belly } else { sk });
                 hx = cx - 1 + p.head_dx; ht = g - 11 + p.head_dy;
@@ -739,7 +746,7 @@ fn draw_quad(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
 
         Stance::Curl => {
             c.spans(cx, g - 6, &[(-6, 4), (-8, 6), (-9, 7), (-9, 7), (-9, 7), (-9, 7), (-8, 6)], Col::Body);
-            side_coat(c, &q, cx - 9, cx + 7, g - 6, g);
+            side_coat(c, &q, cx - 9, cx + 7, g - 6, g, false);
             hx = cx - 2 + p.head_dx;
             ht = g - 8 + p.head_dy;
         }
@@ -877,67 +884,271 @@ fn draw_sleeping_fox(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
 
 // MARK: - Parrot
 
-fn parrot_wing(c: &mut Canvas, arm: Arm, cx: i32, top: i32) {
-    let (w, wd) = (Col::Wing, Col::WingDark);
-    match arm {
-        Arm::Raised => c.region(cx - 1, top - 7, &[(-6, -4), (-7, -2), (-7, -1), (-6, 0), (-5, 1), (-4, 1), (-3, 1), (-2, 1), (-1, 1)], w, wd),
-        Arm::Down => c.region(cx - 1, top + 3, &[(-1, 1), (-2, 1), (-3, 1), (-4, 0), (-5, -1), (-6, -2), (-7, -3), (-7, -5)], w, wd),
-        Arm::Forward | Arm::Scoop | Arm::ToMouth | Arm::Hold | Arm::Tap => c.region(cx, top + 3, &[(-2, 1), (-2, 2), (-2, 3), (-1, 4), (0, 4)], w, wd),
-        // folded along its side, the tips over the tail
-        _ => c.region(cx, top + 2, &[(-3, 0), (-4, 1), (-4, 1), (-4, 1), (-4, 1), (-5, 0), (-5, -1), (-6, -2), (-6, -3)], w, wd),
-    }
-}
+// A scarlet macaw facing right, copied cell for cell from the reference picture. O red, R bright red, D dark red,
+// M plum, F pale face, W/c/T beak (white, cream, tan), G lower beak, Y/y yellow coverts, B/N/L blues, V the green
+// feather, S legs, K lines. Rows 0-9 are the head (it nods as one piece), the body hangs under it.
+const MACAW_HEAD: [&str; 10] = [
+    "........RO.....",
+    ".....DROOOO....",
+    "....DROOOOOD...",
+    "....RROFFOOD...",
+    "....ROFFFFOTT..",
+    "....DOFFFFcWWT.",
+    "....MOFFFFOWWW.",
+    "....DRRFFDGcWW.",
+    "....DODDDDGGGc.",
+    "...DOOODDGGG...",
+];
+const MACAW_BODY: [&str; 7] = [
+    "..DOOBBVDMN....",
+    "..yYOYBVDDDN...",
+    "..yYYYYBDODB...",
+    "..yYBYBBRORB...",
+    "..yBLBLROORB...",
+    ".LNLLNBRRRB....",
+    "LLNLLDRRRK.....",
+];
+const MACAW_BODY_BARE: [&str; 7] = [
+    "..DOORRODMN....",
+    "..DOOORODDDN...",
+    "..DDOORRDODB...",
+    "..DDOOORRORB...",
+    "..DDDOROORRB...",
+    "..DDDDDRRRB....",
+    "...DDDRRRK.....",
+];
+const MACAW_TAIL_HANGING: [&str; 11] = [
+    "..KSDDDK.......",
+    "...SDDS........",
+    "..BDDDS........",
+    "..BDDDB........",
+    ".BBRDDB........",
+    ".LBRDK.........",
+    "..RRD..........",
+    "..ROD..........",
+    "..ROD..........",
+    "..ROD..........",
+    "..DR...........",
+];
+const MACAW_TAIL_GROUND: [&str; 4] = [
+    "........BBBDDD",
+    ".....BBLRRRDDD",
+    "..BBLRROOODD..",
+    "LLRRROOODD....",
+];
+const MACAW_WING_UP: [&str; 9] = [
+    "L.......",
+    "LB......",
+    "LBN.....",
+    ".LBN....",
+    ".LBBY...",
+    "..LBYY..",
+    "..LBYYO.",
+    "...BYYOO",
+    "....YOOO",
+];
 
-/// A parrot, side view facing right: upright, green with a red head and yellow cheek, blue-edged wings,
-/// a long blue and red tail and a hooked beak.
+const MACAW_MAP: &[(u8, Col)] = &[(b'O', Col::Body), (b'D', Col::BodyShade), (b'R', Col::Mark), (b'M', Col::MarkShade), (b'F', Col::Belly),
+    (b'G', Col::BeakDark), (b'W', Col::Beak), (b'c', Col::Nose), (b'T', Col::Inner), (b'B', Col::Wing), (b'N', Col::WingDark),
+    (b'L', Col::Speculum), (b'Y', Col::Accent), (b'y', Col::Mark2), (b'V', Col::Ring), (b'S', Col::Feet), (b'K', Col::Outline)];
+
 fn draw_parrot(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
     let st = p.stance;
     let sitting = matches!(st, Stance::Sit | Stance::Lie | Stance::Curl);
     let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
-    let bb = if sitting { g } else if airborne { g - 4 } else { g - 2 };            // bottom row of the body
-    let top = bb - 11 + if st == Stance::Squash { 2 } else { 0 } + p.bob;
+    let ox = cx - 8;
+    // the body's bottom row: on its feet, sat on the ground, or in the air with the tail hanging down to the ground row
+    let bottom = (if sitting { g } else if airborne { g - 11 } else { g - 3 }) + if st == Stance::Squash { 1 } else { 0 };
+    let oy = bottom - 16 + p.bob;
 
-    // tail first, out behind and down to the ground (or trailing, in the air)
-    let tip = if airborne { (cx - 12, bb + 4) } else { (cx - 11, g) };
-    c.thick(cx - 3, bb - 3, tip.0, tip.1 - 1, 2, Col::WingDark);
-    c.thick(cx - 3, bb - 4, tip.0 + 1, tip.1 - 2, 1, Col::Speculum);
-    if !sitting {
-        if airborne { c.set(cx - 1, bb + 1, Col::Feet); c.set(cx + 1, bb + 1, Col::Feet); }
-        else { for fx in [cx - 1, cx + 2] { c.set(fx, g - 1, Col::Feet); c.hline(fx - 1, fx + 1, g, Col::Feet); } }
-    }
-    // body: an upright oval, lighter breast
-    let widths = [(-2, 2), (-3, 3), (-4, 3), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 3), (-3, 3), (-3, 2), (-2, 1)];
-    for (i, w) in widths.iter().enumerate() {
-        if top + i as i32 <= bb { c.hline(cx + w.0, cx + w.1, top + i as i32, Col::Body); }
-    }
-    c.paint(Col::Body, Col::Belly, |x, y| x >= cx + 1 && y >= top + 3 && y <= bb - 1);
-
-    if p.prop == Prop::Laptop { draw_laptop(c, cx + 7, g); }
-    if p.prop == Prop::Popcorn { draw_popcorn(c, cx + 7, g); }
-    if p.prop == Prop::Calendar { draw_calendar(c, cx + 6, top + 1); }
-    if p.prop == Prop::Glass { draw_glass(c, cx + 6, top + 2); }
-    parrot_wing(c, p.arm, cx, top);
-
-    // head, on a short neck; pecking and eating bring it down to the ground in front
-    let mut hx = cx - 1 + (-3).max(4.min(p.head_dx));
-    let mut ht = top - 5 + (-3).max(10.min(p.head_dy));
-    if st == Stance::Eat { hx = cx + 3 + 0.max(p.head_dx); ht = g - 6; }
-    c.thick(cx - 1, top + 1, hx + 1, ht + 3, 3, Col::Body);
-    c.spans(hx, ht, &[(1, 4), (0, 5), (0, 5), (0, 5), (1, 4)], Col::Mark);
-    c.hline(hx + 1, hx + 2, ht + 3, Col::Accent);                         // yellow cheek
-    for (dx, dy) in [(2, 1), (4, 1), (3, 0), (3, 2)] { c.set(hx + dx, ht + dy, Col::Ring); }
-    profile_eye(c, p.eyes, hx + 3, ht + 1);
-    // hooked beak
-    c.hline(hx + 6, hx + 7, ht + 1, Col::Beak);
-    c.hline(hx + 6, hx + 8, ht + 2, Col::Beak);
-    if p.mouth == Mouth::Closed {
-        c.set(hx + 8, ht + 3, Col::Beak); c.hline(hx + 6, hx + 7, ht + 3, Col::BeakDark);
+    if airborne {
+        c.sprite(ox, oy + 17, &MACAW_TAIL_HANGING, MACAW_MAP);
     } else {
-        c.set(hx + 8, ht + 3, Col::Beak); c.set(hx + 6, ht + 3, Col::Mouth); c.hline(hx + 6, hx + 7, ht + 4, Col::BeakDark);
+        c.sprite(ox - 10, g - 3, &MACAW_TAIL_GROUND, MACAW_MAP);
+        if !sitting {
+            let step = if st == Stance::Walk { if p.phase.sin() > 0.0 { 1 } else { 0 } } else { 0 };
+            for (i, fx) in [ox + 5, ox + 8].into_iter().enumerate() {
+                let lift = if i == step && st == Stance::Walk { 1 } else { 0 };
+                c.rect(fx + 1, g - 2, 1, 2 - lift, Col::Feet); c.hline(fx, fx + 2, g - lift, Col::Feet);
+            }
+        }
     }
-    if p.blush { c.set(hx + 2, ht + 3, Col::Blush); }
-    Anchors { head_x: hx + 2, head_top: ht, head_w: 6, eyes: vec![(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5), hat_dx: 0 }
+    let wing_up = p.arm == Arm::Raised;
+    c.sprite(ox, oy + 10, if wing_up { &MACAW_BODY_BARE } else { &MACAW_BODY }, MACAW_MAP);
+
+    if p.prop == Prop::Laptop { draw_laptop(c, cx + 9, g); }
+    if p.prop == Prop::Popcorn { draw_popcorn(c, cx + 9, g); }
+    if p.prop == Prop::Calendar { draw_calendar(c, cx + 9, oy + 10); }
+    if p.prop == Prop::Glass { draw_glass(c, cx + 9, oy + 11); }
+
+    // the head: nods and pecks move it a few cells, its bottom rows drawn along the way so the neck stays joined
+    let (mut dx, mut dy) = ((-2).max(3.min(p.head_dx)), (-3).max(3.min(p.head_dy)));
+    if st == Stance::Eat { dx = 2; dy = 3; }
+    let n = dx.abs().max(dy.abs());
+    let neck = &MACAW_HEAD[MACAW_HEAD.len() - 3..];
+    for k in 0..n {
+        let (sx, sy) = (iround(f64::from(dx * k) / f64::from(n)), iround(f64::from(dy * k) / f64::from(n)));
+        c.sprite(ox + sx, oy + 7 + sy, neck, MACAW_MAP);
+    }
+    c.sprite(ox + dx, oy + dy, &MACAW_HEAD, MACAW_MAP);
+    let (hx, hy) = (ox + dx, oy + dy);
+    profile_eye(c, p.eyes, hx + 8, hy + 5);
+    if p.mouth != Mouth::Closed {
+        c.hline(hx + 10, hx + 12, hy + 8, Col::Mouth);                 // the lower beak drops open
+        c.hline(hx + 10, hx + 12, hy + 9, Col::BeakDark); c.hline(hx + 10, hx + 11, hy + 10, Col::BeakDark);
+    }
+    if p.blush { c.hline(hx + 7, hx + 8, hy + 7, Col::Blush); }
+    if p.phones {
+        // headphones fitted to its head: the pad over its ear behind the eye, the band up round the back of its crown
+        if p.outfit.hat == Hat::None || p.nightcap {
+            for (x, y) in [(4, 3), (4, 2), (5, 1), (6, 0), (7, 0), (8, -1), (9, -1), (10, 0)] { c.set(hx + x, hy + y, Col::Phones); }
+        }
+        c.rect(hx + 4, hy + 4, 2, 3, Col::PhonesPad);
+        c.set(hx + 3, hy + 5, Col::Phones);
+    }
+    match p.arm {
+        Arm::Raised => c.sprite(ox - 2, oy + 1, &MACAW_WING_UP, MACAW_MAP),
+        Arm::Forward | Arm::Tap | Arm::Hold | Arm::Scoop | Arm::ToMouth => {
+            // reaching forward (typing, holding): the wing stretches out in front, blue tips last
+            let tip = if p.prop == Prop::Laptop { (cx + 10, g - if p.arm == Arm::Tap { 2 } else { 3 }) } else { (ox + 12, oy + 14) };
+            c.thick(ox + 5, oy + 11, tip.0 - 1, tip.1, 2, Col::Wing);
+            c.hline(tip.0 - 1, tip.0 + 1, tip.1 + 1, Col::WingDark);
+        }
+        _ => {}
+    }
+    Anchors { head_x: hx + 8, head_top: hy, head_w: 8, eyes: vec![(hx + 8, hy + 5)], profile: true, neck: (hx + 7, hy + 10), hat_dx: 0 }
+}
+
+// MARK: - Shark
+
+/// A little shark facing right, leaping with its mouth open in a big happy gape, copied cell for cell from the reference
+/// picture: its dorsal fin swept back, the cream face plate with a row of teeth top and bottom, the tail behind.
+/// B blue, D deep blue, W cream, R inside its mouth, O tongue, P peachy belly, K lines.
+const SHARK_ART: [&str; 23] = [
+    "......................BBBBBB..",
+    "....................BBBBBBBB..",
+    "..................BBBBBBWWWW..",
+    "................BBBBBBWWWWWWW.",
+    "........BBBBBB.BBBBBBWWWWWWWW.",
+    "......BBBBBBBKBBKWKBWWKKKKKKW.",
+    "......DBBBBBKBBBKKKWWKWWWWWKW.",
+    ".......DDDBBKBBBKKKWKWRWRRWKW.",
+    "........DDDKBBBBBBWKRWRRRRRKW.",
+    ".........DKBBBBBBWWKRRRRRRKWW.",
+    "..B......DKBBBBBBWKRRRRRRRKW..",
+    "..DD......BBBBBBWWKOROOORKKW..",
+    "...DD....KBBBBBBWWKWOWOWOKWW..",
+    "...DDD..DDBBBBBBBWWKWWOWWKW...",
+    "....DDKDDDDBBBBBBWWWKKWWKWW...",
+    "....DDDDDDDKDDDBBWWWWWKKWW....",
+    ".....DDDDDKDDDDDKWWWWWWWWW....",
+    ".....DKDDDKDDDDDKPWWWWWPWK....",
+    "....KDKKPPKDDDDDKPWWWWPPKK....",
+    "....DD.KPPKDDDDKPPPPPPPKDDD...",
+    "...DD....KKDDDDKPPPPPPKKDDK...",
+    "...D......DDDDKPPPPPP..KKDD...",
+    "..........DD.............KK...",
+];
+
+/// The same with its mouth shut in a smile (asleep, or chewing).
+const SHARK_ART_SHUT: [&str; 23] = [
+    "......................BBBBBB..",
+    "....................BBBBBBBB..",
+    "..................BBBBBBWWWW..",
+    "................BBBBBBWWWWWWW.",
+    "........BBBBBB.BBBBBBWWWWWWWW.",
+    "......BBBBBBBKBBKWKBWWWWWWWWW.",
+    "......DBBBBBKBBBKKKWWWWWWWWWW.",
+    ".......DDDBBKBBBKKKWWWWWWWWWW.",
+    "........DDDKBBBBBBWWWWWWWWWWW.",
+    ".........DKBBBBBBWWKWWWWWWKWW.",
+    "..B......DKBBBBBBWWWKKKKKKWW..",
+    "..DD......BBBBBBWWWWWWWWWWWW..",
+    "...DD....KBBBBBBWWWWWWWWWWWW..",
+    "...DDD..DDBBBBBBBWWWWWWWWWW...",
+    "....DDKDDDDBBBBBBWWWWWWWWWW...",
+    "....DDDDDDDKDDDBBWWWWWWWWW....",
+    ".....DDDDDKDDDDDKWWWWWWWWW....",
+    ".....DKDDDKDDDDDKPWWWWWPWK....",
+    "....KDKKPPKDDDDDKPWWWWPPKK....",
+    "....DD.KPPKDDDDKPPPPPPPKDDD...",
+    "...DD....KKDDDDKPPPPPPKKDDK...",
+    "...D......DDDDKPPPPPP..KKDD...",
+    "..........DD.............KK...",
+];
+
+const SHARK_MAP: &[(u8, Col)] = &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'R', Col::Mouth), (b'O', Col::Tongue),
+    (b'P', Col::Mark), (b'K', Col::Outline)];
+
+/// Bubbles the shark, side on. (The Mac app also has it seen from above while it swims, and facing you behind its book
+/// when it studies; this port has neither swimming nor study mode, so it's always side on.)
+fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
+    let g = c.h - 2;
+    let st = p.stance;
+    let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
+    let ox = cx - 15;
+    let oy = g - (SHARK_ART.len() as i32 - 1) + p.bob - if airborne { 3 } else { 0 } + if st == Stance::Squash { 1 } else { 0 };
+    // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
+    let shut = p.mouth == Mouth::Closed && (matches!(p.eyes, Eyes::Closed | Eyes::Half) || st == Stance::Eat);
+    // flopping and swimming: the tail swishes and the whole body tips nose up and nose down
+    let (mut tilt, mut tail_dy, mut lift) = (0.0, 0, 0);
+    match st {
+        Stance::Walk => {                           // out of the water: a floppy wobble along the ground
+            let s = p.phase.sin();
+            tilt = s * 0.3; lift = iround(s.abs() * 3.0); tail_dy = if s > 0.0 { -1 } else { 1 };
+        }
+        Stance::Fly | Stance::Leap => {
+            let s = (p.phase * 0.5).sin();
+            tail_dy = iround(s * 1.4); tilt = s * 0.06;
+        }
+        Stance::Held | Stance::Umbrella => tilt = (p.phase * 1.6).sin() * 0.3,
+        Stance::Eat => tilt = -0.2,                 // nose down to its snack
+        _ => {}
+    }
+    if p.arm == Arm::Raised && !matches!(st, Stance::Walk | Stance::Fly | Stance::Leap) { tail_dy = -2; }   // a flick of the tail
+    let at = |x: i32, y: i32| -> (i32, i32) {
+        (ox + x, oy + y - lift - iround(tilt * f64::from(x - 15)) + if x < 10 { tail_dy } else { 0 })
+    };
+    let art: &[&str] = if shut { &SHARK_ART_SHUT } else { &SHARK_ART };
+    for (y, row) in art.iter().enumerate() {
+        for (x, ch) in row.bytes().enumerate() {
+            if let Some(&(_, col)) = SHARK_MAP.iter().find(|m| m.0 == ch) {
+                let q = at(x as i32, y as i32);
+                c.set(q.0, q.1, col);
+            }
+        }
+    }
+    if p.prop == Prop::Laptop { draw_laptop(c, cx + 15, g); }
+    if p.prop == Prop::Popcorn { draw_popcorn(c, cx + 16, g); }
+    if p.prop == Prop::Calendar { draw_calendar(c, cx + 16, oy + 4); }
+    if p.prop == Prop::Glass { draw_glass(c, cx + 16, oy + 5); }
+
+    // its eye: a dark square with a shine at the top, like the picture; a curve when shut or smiling
+    let e = at(17, 6);
+    let mut lid = |cells: &[(i32, i32)]| {
+        for dy in -1..=1 { for dx in -1..=1 { c.set(e.0 + dx, e.1 + dy, Col::Body); } }
+        for &(dx, dy) in cells { c.set(e.0 + dx, e.1 + dy, Col::Outline); }
+    };
+    match p.eyes {
+        Eyes::Closed | Eyes::Half => lid(&[(-1, -1), (-1, 0), (0, 1), (1, 0), (1, -1)]),
+        Eyes::Happy => lid(&[(-1, 1), (-1, 0), (0, -1), (1, 0), (1, 1)]),
+        Eyes::Angry | Eyes::Sad | Eyes::Dizzy => c.set(e.0, e.1 - 1, Col::Outline),
+        _ => {}
+    }
+    if p.blush { let b = at(15, 9); c.hline(b.0, b.0 + 1, b.1, Col::Blush); }
+    if p.phones {
+        // headphones fitted to its head: the pad behind its eye, the band over the top of its head
+        if p.outfit.hat == Hat::None || p.nightcap {
+            for (x, y) in [(14, 3), (15, 2), (16, 2), (17, 1), (18, 1), (19, 0), (20, 0), (21, -1), (22, -1), (23, -1), (24, -1)] {
+                let q = at(x, y); c.set(q.0, q.1, Col::Phones);
+            }
+        }
+        let pad = at(13, 4);
+        c.rect(pad.0, pad.1, 2, 3, Col::PhonesPad);
+    }
+    let (top, neck) = (at(24, 0), at(13, 10));
+    Anchors { head_x: top.0, head_top: top.1, head_w: 10, eyes: vec![e], profile: true, neck, hat_dx: 0 }
 }
 
 // MARK: - Outfits & extras
@@ -1139,9 +1350,12 @@ pub fn draw_accessory(c: &mut Canvas, o: Outfit) {
 
 /// Draws any pet with its extras.
 pub fn draw_pet(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
+    let mut p = *p;
+    let p = &mut p;
     let a = match sp {
         Species::Goose => draw_goose(c, p, cx),
-        Species::Parrot => draw_parrot(c, p, cx),
+        Species::Parrot => { let a = draw_parrot(c, p, cx); p.phones = false; a }          // it wears its own, fitted round its head
+        Species::Shark => { let a = draw_shark(c, p, cx); p.phones = false; a }
         Species::Bat => draw_bat(c, p, cx),
         _ => draw_quad(c, sp, p, cx),
     };
