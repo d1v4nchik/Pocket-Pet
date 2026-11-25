@@ -699,8 +699,12 @@ final class Pet {
             if world.items.contains(where: { $0.isBall && !$0.gone && reachable($0) }) { playUntil = t + 10; spawnBang(); begin(.ball); return }
         }
         // notice typing and videos whatever it's busy with, except moments it can't stop (held, falling, landing, eating)
-        // study mode: nothing else, until it's switched off (typing and videos don't pull it away from its book)
-        if studying && !inAir && ![.held, .glide, .drift, .landing, .dizzy, .study].contains(mode) && !forcedNap {
+        // study mode: a snack still gets eaten (then straight back to the book); toys, typing and videos don't pull it away
+        if studying && mode == .study && !inAir && hungry,
+           let f = world.items.first(where: { $0.isFood && !$0.gone && $0.claim == nil && !$0.refusedBy && reachable($0) }) {
+            f.claim = self; food = f; spawnBang(); begin(.eating); return
+        }
+        if studying && !inAir && ![.held, .glide, .drift, .landing, .dizzy, .study, .eating, .refusing].contains(mode) && !forcedNap {
             begin(.study); return
         }
         let cannot: Set<Mode> = [.held, .glide, .drift, .landing, .dizzy, .eating, .typing, .watching, .waking, .study,
@@ -1784,6 +1788,12 @@ final class Pet {
         switch mode {
         case .study where studyState == 2:
             startleStudying()
+            return
+        case .study:                                   // reading: a quiet happy answer, without leaving its book
+            hearts(1); blushUntil = t + 1.5
+            say([["♥", "HI!", "*SMILES*", "SHH... READING"].randomElement()!], 1.2)
+            world.synth.play(family == .cat ? purr : "chirp")
+            happiness = min(100, happiness + 1)
             return
         case .sleeping, .yawning, .catnap:
             forcedNap = false
