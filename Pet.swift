@@ -2126,6 +2126,8 @@ final class Pet {
             else if species == .redPanda { p.stance = .upright; p.arm = .raised; p.phase = t * 9; p.earsFlat = false }   // up on its hind legs, arms high: "back off"
             else if hopY <= 0 { p.stance = .crouch; p.wiggle = shake; p.tailUp = true }
         }
+        // the shark's jaws open and shut with its mouth while it chatters, gets cross, wriggles, munches popcorn or pants
+        if species == .shark && [.vocal, .angry, .held, .watching, .tired].contains(mode) { p.chomp = true }
         // "completely still": the same frame every time (no blinking, swaying, tapping or dancing; props stay)
         if stillness == 2 && [.idle, .typing, .watching, .listening].contains(mode) {
             p.bob = 0; p.phase = 0; p.tail = 0; p.wiggle = 0; p.headDX = 0; p.headDY = 0

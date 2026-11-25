@@ -59,6 +59,7 @@ struct Pose {
     var frontSit = false     // the fox: sitting facing you (its picture pose)
     var twirl = 0.0          // dancing: how far round it has spun on the spot (radians, 0 facing the usual way)
     var pitch = 0.0          // the shark swimming: how far its nose points up (+) or down (-) the screen, radians
+    var chomp = false        // the shark: its jaws follow `mouth` (chattering, cross, wriggling, munching), not just asleep
     var lean = 0, hop = 0, slide = 0     // dancing: sway (cells the top leans over), bounce up, step sideways
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
@@ -1921,7 +1922,9 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
-    let shut = p.mouth == .closed && ([.closed, .half].contains(p.eyes) || st == .eat)
+    // crawling, it snaps its jaws shut every few strides; it chomps along with its mouth when chattering or cross
+    let snap = st == .walk && sin(p.phase * 0.25) > 0.85
+    let shut = snap || (p.mouth == .closed && ([.closed, .half].contains(p.eyes) || st == .eat || p.chomp))
     // swimming and flopping: the tail swishes and the whole body tips nose up and nose down
     var tilt = 0.0, tailDY = 0
     switch st {
@@ -1934,10 +1937,13 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         tilt = sin(p.phase * 1.6) * 0.3
     case .eat:
         tilt = -0.2                                 // nose down to its snack
+    case .sit, .stand:
+        tailDY = Int((sin(p.tail) * 1.2).rounded())  // sat about, its tail sways lazily up and down
     default:
         break
     }
     if p.arm == .raised && ![.walk, .fly, .leap].contains(st) { tailDY = -2 }        // a flick of the tail
+    if st == .umbrella { drawUmbrella(&c, ux: cx + 2, top: oy - 10, handleTo: (cx + 2, oy + 6)) }   // the handle tucked behind it
     // crawling like a real shark out of water, in four clean beats: its tail (moved as one piece, so no pixels tear) sweeps
     // side to side, swinging towards you and away so it looks shorter, and up and down; the body slides forward on its belly
     let crawl = st == .walk
@@ -1971,7 +1977,17 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     switch p.eyes {
     case .closed, .half: lid([(-1, -1), (-1, 0), (0, 1), (1, 0), (1, -1)])                   // sleepy, curved down
     case .happy: lid([(-1, 1), (-1, 0), (0, -1), (1, 0), (1, 1)])                          // ^
-    case .angry, .sad, .dizzy: c.set(e.0, e.1 - 1, .outline)              // no shine
+    case .angry:                                                          // narrowed, under a cross brow
+        c.set(e.0 - 1, e.1 - 1, .body); c.set(e.0, e.1 - 1, .outline)
+        for (dx, dy) in [(-2, -3), (-1, -3), (0, -2), (1, -2)] { c.set(e.0 + dx, e.1 + dy, .outline) }
+    case .sad:                                                            // a worried brow, no shine
+        c.set(e.0, e.1 - 1, .outline)
+        for (dx, dy) in [(-2, -2), (-1, -3), (0, -3)] { c.set(e.0 + dx, e.1 + dy, .outline) }
+    case .dizzy:                                                          // x
+        lid([(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)])
+    case .wide:                                                           // startled: the white of its eye round a tiny pupil
+        for dy in -1...1 { for dx in -1...1 { c.set(e.0 + dx, e.1 + dy, .belly) } }
+        c.set(e.0, e.1, .outline)
     default: break
     }
     if p.blush { let b = at(15, 9); c.hline(b.0, b.0 + 1, b.1, .blush) }

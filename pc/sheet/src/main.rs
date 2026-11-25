@@ -55,6 +55,7 @@ fn check(path: &str) {
                     bob: n(9), head_dx: n(10), head_dy: n(11), tail_up: n(12) == 1, ears_flat: n(13) == 1, blush: n(14) == 1,
                     nightcap: n(15) == 1, phones: n(16) == 1, wiggle: n(17),
                     outfit: Outfit { hat: Hat::ALL[n(18) as usize], glasses: Glasses::ALL[n(19) as usize], neck: Neckwear::ALL[n(20) as usize] },
+                    chomp: false,
                 };
                 let mut c = Canvas::new(CANVAS_W, CANVAS_H);
                 let an = draw_pet(&mut c, sp, &p, CANVAS_W / 2);

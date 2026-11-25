@@ -111,6 +111,7 @@ pub struct Pose {
     pub phones: bool,
     pub wiggle: i32,
     pub outfit: Outfit,
+    pub chomp: bool,         // the shark: its jaws follow `mouth` (chattering, cross, wriggling, munching), not just asleep
 }
 
 impl Default for Pose {
@@ -118,7 +119,7 @@ impl Default for Pose {
         Pose {
             stance: Stance::Stand, phase: 0.0, bob: 0, head_dx: 0, head_dy: 0, eyes: Eyes::Open, mouth: Mouth::Closed,
             arm: Arm::Rest, tail: 0.0, tail_up: true, ears_flat: false, prop: Prop::None, blush: false, nightcap: false,
-            phones: false, wiggle: 0, outfit: Outfit::default(),
+            phones: false, wiggle: 0, outfit: Outfit::default(), chomp: false,
         }
     }
 }
@@ -1090,7 +1091,9 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let ox = cx - 15;
     let oy = g - (SHARK_ART.len() as i32 - 1) + p.bob - if airborne { 3 } else { 0 } + if st == Stance::Squash { 1 } else { 0 };
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
-    let shut = p.mouth == Mouth::Closed && (matches!(p.eyes, Eyes::Closed | Eyes::Half) || st == Stance::Eat);
+    // crawling, it snaps its jaws shut every few strides; it chomps along with its mouth when chattering or cross
+    let snap = st == Stance::Walk && (p.phase * 0.25).sin() > 0.85;
+    let shut = snap || (p.mouth == Mouth::Closed && (matches!(p.eyes, Eyes::Closed | Eyes::Half) || st == Stance::Eat || p.chomp));
     // flopping and swimming: the tail swishes and the whole body tips nose up and nose down
     let (mut tilt, mut tail_dy) = (0.0, 0);
     match st {
@@ -1100,9 +1103,11 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         }
         Stance::Held | Stance::Umbrella => tilt = (p.phase * 1.6).sin() * 0.3,
         Stance::Eat => tilt = -0.2,                 // nose down to its snack
+        Stance::Sit | Stance::Stand => tail_dy = iround(p.tail.sin() * 1.2),   // sat about, its tail sways lazily
         _ => {}
     }
     if p.arm == Arm::Raised && !matches!(st, Stance::Walk | Stance::Fly | Stance::Leap) { tail_dy = -2; }   // a flick of the tail
+    if st == Stance::Umbrella { draw_umbrella(c, cx + 2, oy - 10, (cx + 2, oy + 6)); }   // the handle tucked behind it
     // crawling like a real shark out of water, in four clean beats: its tail (moved as one piece, so no pixels tear) sweeps
     // side to side, swinging towards you and away so it looks shorter, and up and down; the body slides forward on its belly
     let crawl = st == Stance::Walk;
@@ -1139,7 +1144,19 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     match p.eyes {
         Eyes::Closed | Eyes::Half => lid(&[(-1, -1), (-1, 0), (0, 1), (1, 0), (1, -1)]),
         Eyes::Happy => lid(&[(-1, 1), (-1, 0), (0, -1), (1, 0), (1, 1)]),
-        Eyes::Angry | Eyes::Sad | Eyes::Dizzy => c.set(e.0, e.1 - 1, Col::Outline),
+        Eyes::Angry => {                                                  // narrowed, under a cross brow
+            c.set(e.0 - 1, e.1 - 1, Col::Body); c.set(e.0, e.1 - 1, Col::Outline);
+            for (dx, dy) in [(-2, -3), (-1, -3), (0, -2), (1, -2)] { c.set(e.0 + dx, e.1 + dy, Col::Outline); }
+        }
+        Eyes::Sad => {                                                    // a worried brow, no shine
+            c.set(e.0, e.1 - 1, Col::Outline);
+            for (dx, dy) in [(-2, -2), (-1, -3), (0, -3)] { c.set(e.0 + dx, e.1 + dy, Col::Outline); }
+        }
+        Eyes::Dizzy => lid(&[(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)]),
+        Eyes::Wide => {                                                   // startled: the white of its eye round a tiny pupil
+            for dy in -1..=1 { for dx in -1..=1 { c.set(e.0 + dx, e.1 + dy, Col::Belly); } }
+            c.set(e.0, e.1, Col::Outline);
+        }
         _ => {}
     }
     if p.blush { let b = at(15, 9); c.hline(b.0, b.0 + 1, b.1, Col::Blush); }
