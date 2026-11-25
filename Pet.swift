@@ -244,6 +244,8 @@ final class Pet {
     var purr: String { species == .redPanda ? "chirp" : "purr" }
     var eek: String { species == .redPanda ? "EEP!" : "EEK!" }
     var isBird: Bool { species.isBird }
+    /// What a bird says when startled, picked up or told off (the shark blows a bubble).
+    var birdCall: String { species == .shark ? "pop" : "squawk" }
     /// Walking the screen edges instead of the floor: zero gravity, or a fullscreen app (then only the top edge).
     var wallMode: Bool { !isBird && (!world.gravity || world.fullscreenUp || family == .bat) }
     var flyMode: Bool { isBird ? (!world.gravity || world.fullscreenUp) : batFlies }
@@ -847,7 +849,7 @@ final class Pet {
     func startleStudying() {
         spawnBang()
         say([["HUH?!", "I'M AWAKE!", "I WAS READING!"].randomElement()!], 1.4)
-        world.synth.play(isBird ? "squawk" : species.vocal.sound)
+        world.synth.play(isBird ? birdCall : species.vocal.sound)
         if !inPlace || stillness < 2 { hopV = 230 * s / 4 }
         studyState = 3; studyUntil = t + 1.3; dozeAt = t + rnd(300, 700)
     }
@@ -1503,6 +1505,11 @@ final class Pet {
     }
 
     func updateParticles(_ dt: Double) {
+        // the shark trails bubbles while it swims about (or flops along)
+        if species == .shark && (inAir || moving) && chance(dt * 1.8) {
+            spawn(.bubble, Double(head.x + 5 * facing) + rnd(-1, 1), Double(head.y) + rnd(2, 6), vx: rnd(-1.5, 1.5), vy: -rnd(4, 7),
+                  life: rnd(1.2, 2.0), size: chance(0.5) ? 1 : 0)
+        }
         guard !particles.isEmpty else { return }
         let floorRow = Double(chh - 2)
         for i in particles.indices {
@@ -1510,7 +1517,7 @@ final class Pet {
             particles[i].vy += particles[i].gravity * dt
             particles[i].x += particles[i].vx * dt
             particles[i].y += particles[i].vy * dt
-            if particles[i].kind == .z || particles[i].kind == .note { particles[i].x += sin(particles[i].life * 4) * 0.05 }
+            if particles[i].kind == .z || particles[i].kind == .note || particles[i].kind == .bubble { particles[i].x += sin(particles[i].life * 4) * 0.05 }
             if particles[i].y > floorRow {
                 particles[i].y = floorRow
                 particles[i].vy = 0
@@ -1644,7 +1651,7 @@ final class Pet {
         forcedNap = false
         spawnBang()
         say([family == .cat ? eek : family == .dog ? "YIKES!" : isBird ? "AAAH!" : "EEK!"], 1.6)
-        world.synth.play(family == .cat ? "hiss" : family == .bird ? "squawk" : species.vocal.sound)
+        world.synth.play(family == .cat ? "hiss" : family == .bird ? birdCall : species.vocal.sound)
         hopV = 260 * s / 4                     // a jolt, then it shrinks down and trembles
         scaredUntil = t + 2.4
         for i in 0..<3 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 + Double(i) * 0.45) { [weak self] in self?.spawnDrop() } }
@@ -1717,7 +1724,7 @@ final class Pet {
             // which sits behind where its head was
             grab = species == .turtle ? CGPoint(x: CGFloat(-8 * facing) * s, y: 11 * s) : CGPoint(x: 0, y: (isBird ? 14 : 22) * s)
             setMode(.held)
-            world.synth.play(family == .cat ? mrrp : (isBird ? "squawk" : "chirp"))
+            world.synth.play(family == .cat ? mrrp : (isBird ? birdCall : "chirp"))
             say([chance(0.5) ? "HEY!" : "WHEE!"], 1.2)
             world.closePopover()
         }
@@ -1896,6 +1903,7 @@ final class Pet {
             p.stance = .fly
             p.arm = [Arm.raised, .rest, .down, .rest][Int(flapT / 0.08) % 4]
             p.bob = 0; p.headDX = 0
+            if species == .shark { p.phase = t * 6 }                  // swimming: its tail strokes
         }
         switch mode {
         case .idle:
@@ -2151,6 +2159,16 @@ final class Pet {
             case 3: p.headDY = nod2 ? 2 : -1; p.headDX = nod2 ? 1 : 0                                     // double time
             default:
                 if bigMove { spin() } else { p.arm = .raised; p.mouth = .open; p.blush = true; p.eyes = .happy; p.hop = inBar < 3 ? bounce : 0 }
+            }
+        case .shark:
+            // chomps along to the beat with its eyes squeezed shut, flicks its tail, spins
+            p.stance = .stand
+            switch bar {
+            case 0: if nod { p.eyes = .closed; p.mouth = .closed }; p.hop = bounce; p.lean = Int((1.6 * sway).rounded())
+            case 1: p.arm = nod ? .raised : .rest; p.hop = bounce; p.slide = Int(beatT) % 2 == 0 ? 1 : -1
+            case 3: if nod2 { p.eyes = .closed; p.mouth = .closed }; p.hop = Int((abs(sin(beatT * 2 * pi)) * 1.5).rounded())
+            default:
+                if bigMove { spin() } else { p.eyes = .happy; p.blush = true; p.hop = inBar < 3 ? bounce : 0 }
             }
         case .goose:
             p.stance = .stand

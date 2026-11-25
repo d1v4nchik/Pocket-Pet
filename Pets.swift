@@ -90,7 +90,7 @@ struct QuadSpec {
 }
 
 enum Species: String, CaseIterable, Identifiable, Codable {
-    case goose, parrot, ginger, siamese, tuxedo, calico, dalmatian, fox, turtle, redPanda, bat
+    case goose, parrot, ginger, siamese, tuxedo, calico, dalmatian, fox, turtle, redPanda, bat, shark
     /// The pets you can pick (the red panda is shelved for now).
     static var lineup: [Species] { allCases.filter { $0 != .redPanda } }
     var id: String { rawValue }
@@ -109,7 +109,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
 
     var family: Family {
         switch self {
-        case .goose, .parrot: return .bird
+        case .goose, .parrot, .shark: return .bird          // the shark swims where birds fly
         case .dalmatian, .fox: return .dog
         case .bat: return .bat
         case .turtle: return .turtle
@@ -131,6 +131,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
         case .redPanda: return "Red panda"
         case .turtle: return "Tortoise"            // (the case keeps its first name so saved pets carry over)
         case .bat: return "Bat"
+        case .shark: return "Shark"
         }
     }
 
@@ -147,12 +148,14 @@ enum Species: String, CaseIterable, Identifiable, Codable {
         case .redPanda: return "Maple"
         case .turtle: return "Mossy"
         case .bat: return "Luna"
+        case .shark: return "Bubbles"
         }
     }
 
     var vocal: (word: String, sound: String) {
         if self == .parrot { return (["HELLO!", "SQUAWK!", "HI THERE", "PRETTY BIRD"].randomElement()!, "squawk") }
         if self == .fox { return ("YIP", "woof") }
+        if self == .shark { return (["CHOMP!", "BLUB", "NOM NOM"].randomElement()!, "pop") }
         if self == .redPanda { return ("EEP", "chirp") }          // a red panda's twitter
         switch family {
         case .bird: return ("HONK", "honk")
@@ -166,6 +169,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
     /// Snacks this pet loves the most.
     var favorites: Set<ItemKind> {
         if self == .parrot { return [.berry, .cookie] }
+        if self == .shark { return [.fish, .sausage] }
         if self == .fox { return [.berry, .sausage, .bone] }
         if self == .redPanda { return [.bamboo, .berry, .cookie] }   // bamboo is nearly all a red panda eats
         switch family {
@@ -218,6 +222,9 @@ enum Species: String, CaseIterable, Identifiable, Codable {
                     .accent: 0xffdd3d, .mark2: 0xffc10c, .wing: 0x378ada, .wingDark: 0x275fac, .speculum: 0x67b1d8,
                     .ring: 0x23b14b, .beak: 0xfaf6ed, .beakDark: 0x434a52, .nose: 0xf0dcaa, .inner: 0xd2a665,
                     .feet: 0x525d7d, .eye: 0x434a52, .outline: 0x351f12]
+        case .shark:        // the reference's soft blues, cream lips, a rosy mouth and a peachy belly
+            return [.body: 0x6496b8, .bodyShade: 0x4a74a0, .belly: 0xf0ece2, .mouth: 0x9a5a64, .tongue: 0xe07a68,
+                    .mark: 0xe8c4b4, .blush: 0xf4a0a8, .outline: 0x3a4560, .eye: 0x3a4560]
         case .calico:
             return [.body: 0xffffff, .bodyShade: 0xdfe0e8, .mark: 0xf4a24a, .mark2: 0x3b3645, .belly: 0xffffff]
         case .dalmatian:
@@ -1652,6 +1659,100 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     return Anchors(headX: hx + 8, headTop: hy, headW: 8, eyes: [(hx + 8, hy + 5)], profile: true, neck: (hx + 7, hy + 10))
 }
 
+// MARK: - Shark
+
+/// A little shark facing right with its mouth open in a big happy gape, after the reference picture.
+/// B blue, D deep blue, W cream (lips, teeth, the white of its eye), R inside its mouth, O tongue, P peachy belly, K lines.
+private let sharkArt = [
+    "..............BBBBBBBB..",
+    "...........BBBBBBBBBBBB.",
+    "..........BBBDDBBBBWWWW.",
+    "...BBB...BBBDKBBBBWWWWW.",
+    "...BBBB.BBBBKWKBBWKWKWW.",
+    "....BBBBBBBBBKBBBWRRRRW.",
+    ".....DBBBBBBBBBBBWRRRRW.",
+    ".....DBBBBBBBBBBBWRRRRW.",
+    "......DBBBBBBBBBBWROORW.",
+    ".BB...DDBBBBBBBBBWOOOOW.",
+    ".BDB.KDDBBBBBBBBBWKWKWW.",
+    "..DDBBDDBBBBBBBBBBWWWW..",
+    "...DDBDDBBBBBBBBBBWWW...",
+    "....DDDBBBBBBBBBBBBB....",
+    "...DDD.DBBBPPPPPPBBDD...",
+    "..DD....DBPPPPPPPPKDDD..",
+    "..D.....DK.PPPPPP..KDDD.",
+    ".......DD...............",
+]
+
+private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let g = c.h - 2
+    let st = p.stance
+    let airborne = [.fly, .held, .umbrella, .leap].contains(st)
+    let ox = cx - 12
+    let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
+    // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
+    let shut = p.mouth == .closed && ([.closed, .half].contains(p.eyes) || st == .eat)
+    // swimming and flopping: the tail swishes and the whole body tips nose up and nose down
+    var tilt = 0.0, tailDY = 0, lift = 0
+    switch st {
+    case .walk:                                     // out of the water (gravity on): a floppy wobble along the ground
+        let s = sin(p.phase)
+        tilt = s * 0.3; lift = Int((abs(s) * 3).rounded()); tailDY = s > 0 ? -1 : 1
+    case .fly, .leap:                               // swimming: a steady stroke of the tail
+        let s = sin(p.phase * 0.5)
+        tailDY = Int((s * 1.4).rounded()); tilt = s * 0.06
+    case .held, .umbrella:                          // held up: a wriggle
+        tilt = sin(p.phase * 1.6) * 0.3
+    case .eat:
+        tilt = -0.2                                 // nose down to its snack
+    default:
+        break
+    }
+    if p.arm == .raised && ![.walk, .fly, .leap].contains(st) { tailDY = -2 }        // a flick of the tail
+    func at(_ x: Int, _ y: Int) -> (Int, Int) {
+        (ox + x, oy + y - lift - Int((tilt * Double(x - 12)).rounded()) + (x < 8 ? tailDY : 0))
+    }
+    let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
+    for (y, row) in sharkArt.enumerated() {
+        for (x, ch) in row.enumerated() {
+            guard var col = map[ch] else { continue }
+            if shut && (ch == "R" || ch == "O") { col = y == 7 ? .outline : .belly }       // lips closed in a smile
+            let q = at(x, y)
+            c.set(q.0, q.1, col)
+        }
+    }
+    if p.prop == .laptop { drawLaptop(&c, lx: cx + 13, g: g) }
+    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 13, g: g) }
+    if p.prop == .calendar { drawCalendar(&c, x: cx + 13, y: oy + 2) }
+    if p.prop == .book { drawBook(&c, x: cx + 12, y: c.h - 7, turn: p.turn) }
+    if p.prop == .glass { drawGlass(&c, x: cx + 13, y: oy + 3) }
+
+    // its eye: a cream square ringed dark, like the picture; shut tight or smiling as a line
+    let e = at(13, 4)
+    switch p.eyes {
+    case .closed, .half:
+        c.set(e.0, e.1 - 1, .body); c.set(e.0, e.1 + 1, .body); c.hline(e.0 - 1, e.0 + 1, e.1, .outline)
+    case .happy:
+        c.set(e.0, e.1, .body); c.set(e.0, e.1 + 1, .body)
+        c.set(e.0 - 1, e.1, .outline); c.set(e.0 + 1, e.1, .outline); c.set(e.0, e.1 - 1, .outline)
+    case .angry, .sad, .dizzy:
+        c.set(e.0, e.1, .outline)
+    default:
+        break
+    }
+    if p.blush { let b = at(12, 6); c.hline(b.0, b.0 + 1, b.1, .blush) }
+    if p.phones {
+        // headphones fitted to its head: the pad behind its eye, the band over the top of its head
+        if p.outfit.hat == .none || p.nightcap {
+            for (x, y) in [(10, 1), (11, 0), (12, -1), (13, -1), (14, -1), (15, -1), (16, -1), (17, -1), (18, 0)] { let q = at(x, y); c.set(q.0, q.1, .phones) }
+        }
+        let pad = at(10, 2)
+        c.rect(pad.0, pad.1, 2, 3, .phonesPad)
+    }
+    let top = at(16, 0), neck = at(15, 12)
+    return Anchors(headX: top.0, headTop: top.1, headW: 10, eyes: [e], profile: true, neck: neck)
+}
+
 // MARK: - Outfits & extras
 
 private let hatArt: [Hat: ([String], [Character: Col])] = [
@@ -1897,6 +1998,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     switch sp {
     case .goose: a = drawGoose(&c, p, cx: cx)
     case .parrot: a = drawParrot(&c, p, cx: cx); p.phones = false          // it wears its own, fitted round its head
+    case .shark: a = drawShark(&c, p, cx: cx); p.phones = false
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)
     default: a = drawQuad(&c, sp, p, cx: cx)
@@ -2009,7 +2111,7 @@ func danceFrame(_ c: inout Canvas, _ a: Anchors, cx: Int, _ p: Pose) {
 
 // MARK: - Particles
 
-enum PKind { case heart, z, star, bang, question, kernel, crumb, drop, puff, note }
+enum PKind { case heart, z, star, bang, question, kernel, crumb, drop, puff, note, bubble }
 
 struct Particle {
     var kind: PKind
@@ -2035,5 +2137,8 @@ func drawParticle(_ c: inout Canvas, _ p: Particle) {
     case .drop: c.sprite(ix, iy, [".X", "XX"], ["X": .sweat])
     case .puff: c.sprite(ix - 2, iy - 1, [".XX.", "XXXX", ".XX."], ["X": .white])
     case .note: c.sprite(ix - 2, iy - 2, [".XXX", ".X.X", ".X..", "XX..", "XX.."], ["X": .note])
+    case .bubble:                   // the shark's: a little round bubble with a shine
+        if p.size > 0 { c.sprite(ix - 1, iy - 1, [".X.", "XWX", ".X."], ["X": .waterLight, "W": .white]) }
+        else { c.set(ix, iy, .waterLight) }
     }
 }
