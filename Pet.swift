@@ -1933,23 +1933,33 @@ final class Pet {
             }
         case .listening:
             if moving { break }
-            // bobbing along to the beat, and every other bar a happy little spin round on the spot
-            let beat = Int(t / 0.42) % 2
-            let bar = Int(t / 1.68) % 4
-            p.eyes = bar % 2 == 0 ? .happy : (blink ? .closed : .open)
-            if isBird {
-                p.stance = .stand
-                p.bob = beat; p.headDX = beat
-            } else {
-                p.stance = .sit; p.tailUp = true; p.tail = t * 4
-                p.headDY = beat
-            }
-            if bar % 2 == 1 {
-                let k = t.truncatingRemainder(dividingBy: 1.68) / 1.05          // the turn takes the first 2.5 beats
-                if k < 1 {
-                    p.twirl = Double.pi * 2 * k * k * (3 - 2 * k)                  // eases in and out of the turn
-                    p.eyes = .happy; p.bob = 0; p.headDX = 0; p.headDY = 0
+            // a little dance to the beat (0.42 s), four bars that go round: bounce and sway, side steps,
+            // the big spin and a ta-da, then a double-time bounce
+            let bt = 0.42, beatT = t / bt
+            let b = beatT.truncatingRemainder(dividingBy: 1)                      // how far through this beat
+            let bar = Int(t / (bt * 4)) % 4
+            let inBar = t.truncatingRemainder(dividingBy: bt * 4) / bt          // beats into the bar, 0..<4
+            if isBird { p.stance = .stand } else { p.stance = .sit; p.tailUp = true; p.tail = t * 6 }
+            p.eyes = b < 0.3 ? .happy : (blink ? .closed : .open)
+            let bounce = Int((sin(b * Double.pi) * 2).rounded())
+            switch bar {
+            case 0:
+                p.hop = bounce; p.lean = Int((2.4 * sin(Double.pi * beatT)).rounded())
+            case 1:
+                p.hop = bounce; p.slide = Int((2 * sin(Double.pi * beatT / 2)).rounded())
+                p.lean = -Int((1.6 * sin(Double.pi * beatT)).rounded())
+            case 2:
+                if inBar < 2 {
+                    let k = inBar / 2
+                    p.twirl = Double.pi * 2 * k * k * (3 - 2 * k)                   // eases in and out of the turn
+                    p.hop = Int((sin(k * Double.pi) * 3).rounded()); p.eyes = .happy
+                } else {
+                    p.hop = inBar < 3 ? Int((sin(b * Double.pi) * 3).rounded()) : 0
+                    p.eyes = .happy; p.blush = true; p.mouth = .open                // ta-da
                 }
+            default:
+                p.hop = Int((abs(sin(beatT * 2 * Double.pi)) * 1.5).rounded())
+                p.lean = Int((2 * sin(Double.pi * beatT)).rounded())
             }
         case .agenda:
             p.stance = .sit; p.prop = agendaProp; p.arm = isBird ? .forward : .hold; p.tailUp = false; p.bob = 0
@@ -2217,9 +2227,7 @@ final class Pet {
         if family == .bat && !(mode == .idle && act == .press) { pose.phase = t * 13 }      // wing beats (held open to say hi)
         var c = Canvas(cw, chh)
         let a = drawPet(&c, species, pose, cx: cx)
-        if pose.twirl != 0 {                                                  // spinning round to the music
-            turnFrame(&c, a, cx: cx, angle: pose.twirl, hop: Int((sin(pose.twirl / 2) * 2).rounded()))
-        }
+        danceFrame(&c, a, cx: cx, pose)                                     // dancing to the music
         if facing < 0 { c.mirror(around: cx) }
         head = (facing < 0 ? 2 * cx - a.headX : a.headX, a.headTop)
         hitCells = c.bounds()

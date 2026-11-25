@@ -58,6 +58,7 @@ struct Pose {
     var onBook = false       // study mode: dozing with its head on the book (otherwise the book is in front of it)
     var frontSit = false     // the fox: sitting facing you (its picture pose)
     var twirl = 0.0          // dancing: how far round it has spun on the spot (radians, 0 facing the usual way)
+    var lean = 0, hop = 0, slide = 0     // dancing: sway (cells the top leans over), bounce up, step sideways
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
 
@@ -1977,6 +1978,25 @@ func turnFrame(_ c: inout Canvas, _ a: Anchors, cx: Int, angle: Double, hop: Int
         now.px = Array(now.px[(hop * now.w)...]) + [UInt8](repeating: 0, count: hop * now.w)
     }
     c = now
+}
+
+/// The music dance on top of a drawn pet: the spin, leaning into the sway (its top further over than its feet),
+/// stepping side to side and bouncing up off the ground.
+func danceFrame(_ c: inout Canvas, _ a: Anchors, cx: Int, _ p: Pose) {
+    if p.twirl != 0 { turnFrame(&c, a, cx: cx, angle: p.twirl, hop: 0) }
+    guard p.lean != 0 || p.hop != 0 || p.slide != 0 else { return }
+    let g = c.h - 2
+    var out = [UInt8](repeating: 0, count: c.w * c.h)
+    for y in 0..<c.h {
+        let ny = y - p.hop
+        guard ny >= 0, ny < c.h else { continue }
+        let dx = p.slide + Int((Double(p.lean * max(0, g - y)) / 16).rounded())
+        for x in 0..<c.w {
+            let v = c.px[y * c.w + x], nx = x + dx
+            if v != 0, nx >= 0, nx < c.w { out[ny * c.w + nx] = v }
+        }
+    }
+    c.px = out
 }
 
 // MARK: - Particles
