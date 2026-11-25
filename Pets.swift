@@ -1629,6 +1629,14 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         c.hline(hx + 10, hx + 12, hy + 9, .beakDark); c.hline(hx + 10, hx + 11, hy + 10, .beakDark)
     }
     if p.blush { c.hline(hx + 7, hx + 8, hy + 7, .blush) }
+    if p.phones {
+        // headphones fitted to its head: the pad over its ear behind the eye, the band up round the back of its crown
+        if p.outfit.hat == .none || p.nightcap {
+            for (x, y) in [(4, 3), (4, 2), (5, 1), (6, 0), (7, 0), (8, -1), (9, -1), (10, 0)] { c.set(hx + x, hy + y, .phones) }
+        }
+        c.rect(hx + 4, hy + 4, 2, 3, .phonesPad)
+        c.set(hx + 3, hy + 5, .phones)
+    }
 
     switch p.arm {
     case .raised:
@@ -1888,7 +1896,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     let a: Anchors
     switch sp {
     case .goose: a = drawGoose(&c, p, cx: cx)
-    case .parrot: a = drawParrot(&c, p, cx: cx)
+    case .parrot: a = drawParrot(&c, p, cx: cx); p.phones = false          // it wears its own, fitted round its head
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)
     default: a = drawQuad(&c, sp, p, cx: cx)

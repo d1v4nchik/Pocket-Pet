@@ -1086,7 +1086,12 @@ final class Pet {
         if flyGoal == .wander && (!flyMode || shake >= 6 || (family == .bat && t > flyUntil)) { flyGoal = .land; afterLand = nil }
         if flyGoal == .wander {
             if frozen { flyTarget = CGPoint(x: x, y: y); nextFlyPick = t + 1; flyTo(flyTarget!, speed: 95, dt); return }   // hover by the open menu
-            if ambientInterrupt() && (mode != .fly || flyGoal == .land) { return }
+            // with music on it stays up and dances on the wing (notes float off it) instead of landing to listen
+            if ambientInterrupt(skipMusic: world.musicPlaying) && (mode != .fly || flyGoal == .land) { return }
+            if world.musicPlaying && t > nextNote && stillness < 2 {
+                nextNote = t + rnd(1.6, 2.6)
+                spawn(.note, Double(head.x) + rnd(-5, 5), Double(head.y) - 2, vx: rnd(-2.5, 2.5), vy: -rnd(3.5, 5.5), life: 1.8)
+            }
             let b = flyBounds()
             // a bat plays round your cursor: move it near a flying bat and it circles it
             if family == .bat {
@@ -1895,8 +1900,10 @@ final class Pet {
         switch mode {
         case .idle:
             if !inAir { idlePose(&p) }
-        case .walk, .fly:
+        case .walk:
             break
+        case .fly:
+            if inAir && world.musicPlaying { airDance(&p) }        // dancing on the wing
         case .typing:
             let tapping = t < world.tapUntil
             p.stance = .sit; p.prop = .laptop; p.bob = 0; p.tailUp = false
@@ -1933,34 +1940,7 @@ final class Pet {
             }
         case .listening:
             if moving { break }
-            // a little dance to the beat (0.42 s), four bars that go round: bounce and sway, side steps,
-            // the big spin and a ta-da, then a double-time bounce
-            let bt = 0.42, beatT = t / bt
-            let b = beatT.truncatingRemainder(dividingBy: 1)                      // how far through this beat
-            let bar = Int(t / (bt * 4)) % 4
-            let inBar = t.truncatingRemainder(dividingBy: bt * 4) / bt          // beats into the bar, 0..<4
-            if isBird { p.stance = .stand } else { p.stance = .sit; p.tailUp = true; p.tail = t * 6 }
-            p.eyes = b < 0.3 ? .happy : (blink ? .closed : .open)
-            let bounce = Int((sin(b * Double.pi) * 2).rounded())
-            switch bar {
-            case 0:
-                p.hop = bounce; p.lean = Int((2.4 * sin(Double.pi * beatT)).rounded())
-            case 1:
-                p.hop = bounce; p.slide = Int((2 * sin(Double.pi * beatT / 2)).rounded())
-                p.lean = -Int((1.6 * sin(Double.pi * beatT)).rounded())
-            case 2:
-                if inBar < 2 {
-                    let k = inBar / 2
-                    p.twirl = Double.pi * 2 * k * k * (3 - 2 * k)                   // eases in and out of the turn
-                    p.hop = Int((sin(k * Double.pi) * 3).rounded()); p.eyes = .happy
-                } else {
-                    p.hop = inBar < 3 ? Int((sin(b * Double.pi) * 3).rounded()) : 0
-                    p.eyes = .happy; p.blush = true; p.mouth = .open                // ta-da
-                }
-            default:
-                p.hop = Int((abs(sin(beatT * 2 * Double.pi)) * 1.5).rounded())
-                p.lean = Int((2 * sin(Double.pi * beatT)).rounded())
-            }
+            dance(&p, blink: blink)
         case .agenda:
             p.stance = .sit; p.prop = agendaProp; p.arm = isBird ? .forward : .hold; p.tailUp = false; p.bob = 0
             if family == .dog { p.mouth = .closed }
@@ -2140,6 +2120,118 @@ final class Pet {
     }
 
     /// Birds tuck their head down to sleep (k = 0...1).
+    /// The beat the pets dance to (0.42 s), and where we are in the four-bar routine that goes round.
+    private func beatClock() -> (beatT: Double, b: Double, bar: Int, inBar: Double) {
+        let bt = 0.42, beatT = t / bt
+        return (beatT, beatT.truncatingRemainder(dividingBy: 1), Int(t / (bt * 4)) % 4, t.truncatingRemainder(dividingBy: bt * 4) / bt)
+    }
+
+    /// Dancing to the music, each in its own way: four bars that go round, the third always the big move.
+    private func dance(_ p: inout Pose, blink: Bool) {
+        let (beatT, b, bar, inBar) = beatClock()
+        let pi = Double.pi
+        let bounce = Int((sin(b * pi) * 2).rounded())
+        let sway = sin(pi * beatT)                               // -1...1, side to side once every two beats
+        let nod = b < 0.35                                       // the first part of each beat
+        let nod2 = (b * 2).truncatingRemainder(dividingBy: 1) < 0.35       // double time
+        p.eyes = nod ? .happy : (blink ? .closed : .open)
+        // the big move's spin: two beats, easing in and out, a jump at the top
+        func spin(height: Int = 3) {
+            let k = inBar / 2
+            p.twirl = 2 * pi * k * k * (3 - 2 * k); p.hop = Int((sin(k * pi) * Double(height)).rounded()); p.eyes = .happy
+        }
+        let bigMove = bar == 2 && inBar < 2, taDa = bar == 2 && inBar >= 2
+        switch species {
+        case .parrot:
+            // parrots really do head-bang to a good beat
+            p.stance = .stand
+            switch bar {
+            case 0: p.headDY = nod ? 2 : -1; p.headDX = nod ? 1 : 0; p.hop = nod ? 0 : 1
+            case 1: p.arm = nod ? .raised : .rest; p.hop = bounce; p.lean = Int((1.6 * sway).rounded())      // wing pumps
+            case 3: p.headDY = nod2 ? 2 : -1; p.headDX = nod2 ? 1 : 0                                     // double time
+            default:
+                if bigMove { spin() } else { p.arm = .raised; p.mouth = .open; p.blush = true; p.eyes = .happy; p.hop = inBar < 3 ? bounce : 0 }
+            }
+        case .goose:
+            p.stance = .stand
+            switch bar {
+            case 0: p.headDX = Int((2 * sway).rounded()); p.hop = bounce                                 // neck sway
+            case 1:                                                                                     // stomp stomp
+                p.stance = .walk; p.phase = Int(beatT) % 2 == 0 ? 1.2 : 4.3
+                p.lean = Int(beatT) % 2 == 0 ? 1 : -1; p.headDY = nod ? 1 : 0
+            case 3: p.headDY = nod2 ? -2 : 1; p.headDX = nod2 ? 1 : 0                                    // neck pumps
+            default:
+                if bigMove { spin() } else { p.arm = .raised; p.mouth = .open; p.eyes = .happy; p.hop = inBar < 3 ? bounce : 0 }
+            }
+        case .fox, .dalmatian:
+            // on its feet, tail going, a bouncy play bow, and the fox's big move is its mouse pounce
+            p.stance = .stand; p.tailUp = true; p.tail = t * 14; p.mouth = .tongue
+            switch bar {
+            case 0: p.hop = bounce
+            case 1: p.stance = nod ? .crouch : .stand; p.hop = nod ? 0 : bounce                          // play bows
+            case 3: p.hop = Int((abs(sin(beatT * 2 * pi)) * 1.5).rounded()); p.lean = Int((1.4 * sway).rounded())
+            default:
+                if bigMove && species == .fox {
+                    let k = inBar / 2
+                    p.stance = k > 0.1 && k < 0.9 ? .leap : .crouch
+                    p.hop = Int((sin(k * pi) * 6).rounded()); p.slide = Int(((k - 0.5) * 6).rounded()); p.eyes = .wide
+                } else if bigMove { spin() }                                                            // chasing its tail
+                else { p.stance = .sit; p.eyes = .happy; p.blush = true; p.hop = inBar < 3 ? bounce : 0 }
+            }
+        case .redPanda:
+            // up on its hind legs, the way red pandas stand to look big, and twirls
+            p.tailUp = true; p.tail = t * 6
+            switch bar {
+            case 0: p.stance = .upright; p.lean = Int((2 * sway).rounded()); p.hop = bounce
+            case 1: p.stance = .sit; p.slide = Int((b * 2).truncatingRemainder(dividingBy: 1) < 0.5 ? 1 : -1)   // a wiggle
+            case 3: p.stance = .upright; p.hop = Int((abs(sin(beatT * 2 * pi)) * 1.5).rounded())
+            default:
+                p.stance = .upright
+                if bigMove { spin() } else { p.eyes = .happy; p.blush = true; p.mouth = .open }
+            }
+        case .turtle:
+            // slow and steady: a gentle rock at half speed, and a twirl
+            p.stance = .sit
+            switch bar {
+            case 2: if bigMove { spin(height: 2) } else { p.eyes = .happy; p.blush = true }
+            default: p.lean = Int((1.4 * sin(pi * beatT / 2)).rounded()); p.eyes = blink ? .closed : .happy
+            }
+        case .bat:
+            // hanging on: it swings like a little pendulum and flashes its wings open
+            switch bar {
+            case 0: p.lean = Int((3 * sway).rounded())
+            case 1: p.lean = Int((2 * sway).rounded()); if nod { p.stance = .leap; p.phase = 1.2 }
+            case 3: p.lean = Int((3 * sin(2 * pi * beatT)).rounded())
+            default:
+                if bigMove { let k = inBar / 2; p.twirl = 2 * pi * k * k * (3 - 2 * k); p.eyes = .happy }
+                else { p.stance = .leap; p.phase = 1.2; p.eyes = .happy; p.blush = true; p.mouth = .open }
+            }
+        default:
+            // the cats: sat down, a big tail swish, a butt wiggle, the spin
+            p.stance = .sit; p.tailUp = true; p.tail = t * 10
+            switch bar {
+            case 0: p.hop = bounce; p.lean = Int((2.4 * sway).rounded())
+            case 1: p.slide = (b * 2).truncatingRemainder(dividingBy: 1) < 0.5 ? 1 : -1; p.headDY = nod ? 1 : 0   // butt wiggle
+            case 3: p.hop = Int((abs(sin(beatT * 2 * pi)) * 1.5).rounded()); p.lean = Int((2 * sway).rounded())
+            default:
+                if bigMove { spin() } else { p.eyes = .happy; p.blush = true; p.mouth = .open; p.hop = inBar < 3 ? bounce : 0 }
+            }
+        }
+    }
+
+    /// Dancing in the air: bobbing up and down to the beat with a flap on each one, a barrel roll as the big move.
+    private func airDance(_ p: inout Pose) {
+        let (beatT, b, bar, inBar) = beatClock()
+        p.hop = Int((sin(b * Double.pi) * 3).rounded())
+        p.eyes = b < 0.35 ? .happy : .open
+        if family != .bat { p.arm = b < 0.5 ? .raised : .down } else { p.phase = b * 2 * Double.pi }
+        if bar == 1 { p.lean = Int((2 * sin(Double.pi * beatT)).rounded()) }
+        if bar == 2 && inBar < 2 {
+            let k = inBar / 2
+            p.twirl = 2 * Double.pi * k * k * (3 - 2 * k); p.hop = 0; p.eyes = .happy
+        }
+    }
+
     private func birdSleepHead(_ p: inout Pose, k: Double) {
         if species == .goose {
             p.headDX = Int((-1 * k).rounded()); p.headDY = 3 + Int(9 * k)
