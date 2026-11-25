@@ -243,6 +243,7 @@ struct RootView: View {
                     // pick which pet to feed, play with and dress up
                     ForEach(world.pets, id: \.id) { p in
                         Tile(img: world.faceImage(p.species), help: "Look after \(p.name)", selected: p === pet, size: 26) {
+                            if m.editing { world.rename(pet, m.draft); m.editing = false }   // a name half-typed for the last pet still counts
                             m.focus = p === world.pet ? nil : p.id
                         }
                     }
@@ -717,11 +718,21 @@ struct RootView: View {
     /// Three groups that fold away: the pet itself, what it connects to (each with a status and one control), the app.
     /// The menu's Settings: only the basics. Everything else is in the Advanced Settings window.
     func settingsTab(_ world: World) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        // several pets: the name is the one the menu is looking after (the pet you right-clicked); the rest is for all of them
+        let pet = world.focusedPet
+        let several = !world.companions.isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
+            if several {
+                HStack(spacing: 6) {
+                    Pixel(img: world.faceImage(pet.species)).frame(width: 18, height: 18)
+                    Text("\(pet.name)'s settings").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                }
+            }
             row("Name") {
-                TextField("Name", text: Binding(get: { m.editing ? m.draft : world.pet.name }, set: { m.draft = $0; m.editing = true }),
-                          onCommit: { world.rename(m.draft); m.editing = false })
+                TextField("Name", text: Binding(get: { m.editing ? m.draft : pet.name }, set: { m.draft = $0; m.editing = true }),
+                          onCommit: { world.rename(pet, m.draft); m.editing = false; m.refresh() })
                     .textFieldStyle(.roundedBorder).frame(width: 130)
+                    .id(pet.id)
             }
             row("Size") {
                 Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {

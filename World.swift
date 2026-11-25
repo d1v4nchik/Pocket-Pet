@@ -1635,6 +1635,9 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
 
     func rename(_ name: String) { rename(pet, name) }
 
+    /// The pet the menu is looking after: the one you right-clicked or picked, your main pet otherwise.
+    var focusedPet: Pet { pets.first { $0.id == ui.focus } ?? pet }
+
     /// Renames any of your pets; it says its new name.
     func rename(_ p: Pet, _ name: String) {
         let n = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20))
@@ -1899,7 +1902,9 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         popover.animates = true
         popover.delegate = self
         ui.world = self
-        let host = NSHostingController(rootView: RootView(m: ui))
+        // A tint under the menu: macOS 26's popover glass is so clear that over a bright, colourful window behind it
+        // the panel turned milky with smeared colours, and its white text and gray pictures were hard to read.
+        let host = NSHostingController(rootView: RootView(m: ui).background(Color(nsColor: .windowBackgroundColor).opacity(0.72)))
         if #available(macOS 13.0, *) { host.sizingOptions = [.preferredContentSize] }
         popover.contentViewController = host
     }
@@ -1918,13 +1923,19 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
     }
 
     func showPopover(for p: Pet) {
+        // a name half-typed for the pet the menu was about still counts (the close finishes later, after the menu
+        // has already moved on to the new pet)
+        if ui.editing { rename(focusedPet, ui.draft); ui.editing = false }
         if popover.isShown { popover.performClose(nil) }
+        let focus = p === pet ? nil : p.id          // the menu looks after the pet you clicked
         guard !p.inAir, p.edge == 0, p.mode != .held, p.mode != .glide, p.mode != .drift, let r = p.hitRectScreen() else {
+            // can't point at it right now (flying, climbing, held): open from the paw, but still about the pet you clicked
             statusClicked()
+            if popover.isShown { ui.focus = focus; ui.refresh() }
             return
         }
         popoverPet = p
-        ui.focus = p === pet ? nil : p.id          // the menu looks after the pet you clicked
+        ui.focus = focus
         p.freeze()
         let f = p.panel.frame
         open(from: p.view, rect: NSRect(x: r.minX - f.minX, y: f.maxY - r.maxY, width: r.width, height: r.height), edge: .maxY)
@@ -1955,7 +1966,7 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if let p = popoverPet, p.mode == .idle { p.actDur = 1 }
         popoverPet = nil
         // names typed but not confirmed with Return still count
-        if ui.editing { rename(ui.draft) }
+        if ui.editing { rename(focusedPet, ui.draft) }
         for (id, n) in ui.names { if let p = pets.first(where: { $0.id == id }) { rename(p, n) } }
         ui.editing = false; ui.names = [:]; ui.renaming = nil
         ui.tab = 0; ui.closetPart = 0              // the menu always opens on Pets again, whatever tab you left it on
