@@ -1827,11 +1827,97 @@ private func sharkTopOutfit(_ o: Outfit, _ put: (Int, Int, Col) -> Void) {
     }
 }
 
+/// The shark sitting facing you, for studying: its book lies open on the floor right in front of it, the way the turtle
+/// reads. Fin on top, round blue head, a dark eye either side, a rounded grin with little teeth and a tongue, fins out
+/// to the sides, peachy belly.
+private let sharkFront = [
+    "..........B..........",
+    ".........BBB.........",
+    ".......BBBBBBB.......",
+    ".....BBBBBBBBBBB.....",
+    "....BBBBBBBBBBBBB....",
+    "...BBBBBBBBBBBBBBB...",
+    "...BBWKBBBBBBBWKBB...",
+    "...BBKKBBBBBBBKKBB...",
+    "...BWWWWWWWWWWWWWB...",
+    "..BWWWKKKKKKKKKWWWB..",
+    "..BWWKWRWRWRWRWKWWB..",
+    ".DBWWKRRRRRRRRRKWWBD.",
+    "DDBWWKRRROOORRRKWWBDD",
+    "DD.BWWKRROOORRKWWB.DD",
+    "D..BWWWKKKKKKKWWWB..D",
+    "...DBWWWWWWWWWWWBD...",
+    "...DPPPPPPPPPPPPPD...",
+    "...DDPPPPPPPPPPPDD...",
+    "...DD.DDD...DDD.DD...",
+]
+
+/// The same with its mouth shut in a smile (dozed off over its book).
+private let sharkFrontShut = [
+    "..........B..........",
+    ".........BBB.........",
+    ".......BBBBBBB.......",
+    ".....BBBBBBBBBBB.....",
+    "....BBBBBBBBBBBBB....",
+    "...BBBBBBBBBBBBBBB...",
+    "...BBWKBBBBBBBWKBB...",
+    "...BBKKBBBBBBBKKBB...",
+    "...BWWWWWWWWWWWWWB...",
+    "..BWWWWWWWWWWWWWWWB..",
+    "..BWWWWWWWWWWWWWWWB..",
+    ".DBWWWKWWWWWWWKWWWBD.",
+    "DDBWWWWKKKKKKKWWWWBDD",
+    "DD.BWWWWWWWWWWWWWB.DD",
+    "D..BWWWWWWWWWWWWWB..D",
+    "...DBWWWWWWWWWWWBD...",
+    "...DPPPPPPPPPPPPPD...",
+    "...DDPPPPPPPPPPPDD...",
+    "...DD.DDD...DDD.DD...",
+]
+
+private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let g = c.h - 2
+    let ox = cx - 10, oy = g - (sharkFront.count - 1)
+    let shut = p.mouth == .closed && [.closed, .half].contains(p.eyes)
+    let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
+    c.sprite(ox, oy, shut ? sharkFrontShut : sharkFront, map)
+    let eyes = [(ox + 5, oy + 6), (ox + 14, oy + 6)]
+    for (ex, ey) in eyes {
+        switch p.eyes {
+        case .closed, .half:
+            c.rect(ex, ey, 2, 2, .body); c.hline(ex - 1, ex + 2, ey + 1, .outline)
+        case .happy:
+            c.rect(ex, ey, 2, 2, .body); c.set(ex - 1, ey + 1, .outline); c.hline(ex, ex + 1, ey, .outline); c.set(ex + 2, ey + 1, .outline)
+        case .angry, .sad, .dizzy:
+            c.set(ex, ey, .outline)                                       // no shine
+        default:
+            break
+        }
+    }
+    if p.blush { c.set(ox + 4, oy + 8, .blush); c.set(ox + 16, oy + 8, .blush) }
+    if p.phones {
+        // the band hugging its round head, the cups over the sides level with its eyes
+        if p.outfit.hat == .none || p.nightcap {
+            for (x, y) in [(2, 4), (3, 3), (4, 2), (5, 1), (6, 1), (14, 1), (15, 1), (16, 2), (17, 3), (18, 4)] { c.set(ox + x, oy + y, .phones) }
+            c.hline(ox + 7, ox + 13, oy, .phones)
+        }
+        c.rect(ox + 1, oy + 5, 2, 4, .phonesPad); c.rect(ox + 18, oy + 5, 2, 4, .phonesPad)
+    }
+    // the big book open on the floor right in front of it; a fin reaches over to turn the page
+    drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
+    if p.turn >= 0 && p.turn < 0.7 {
+        let a = Double.pi * min(1, p.turn), tx = cx + Int((7 * cos(a)).rounded()), ty = g - 3 - Int((6 * sin(a)).rounded())
+        c.thick(ox + 18, oy + 13, tx, ty, 2, .body)
+    }
+    return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16))
+}
+
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let st = p.stance
     if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
+    if p.prop == .book && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying: sat facing you behind its book
     let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
@@ -1867,7 +1953,6 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if p.prop == .laptop { drawLaptop(&c, lx: cx + 15, g: g) }
     if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 16, g: g) }
     if p.prop == .calendar { drawCalendar(&c, x: cx + 16, y: oy + 4) }
-    if p.prop == .book { drawUprightBook(&c, x: cx + 15, y: g - 8) }       // standing open in front of it, both pages showing, like the turtle's
     if p.prop == .glass { drawGlass(&c, x: cx + 16, y: oy + 5) }
 
     // its eye: a dark square with a shine at the top, like the picture; a curve when shut or smiling
