@@ -173,6 +173,7 @@ final class Pet {
     var canvas = Canvas(canvasW, canvasH)
     var hitCells: (Int, Int, Int, Int)?
     var head = (x: 32, y: 10)
+    var sharkPitch = 0.0                 // the swimming shark's nose angle, eased so it turns smoothly
     var nextZ = 0.0, nextSweat = 0.0, nextNote = 0.0
     var zoomLeft = 0, huntPhase = 0, huntT = 0.0, agendaUntil = 0.0
     var agendaProp = Prop.calendar, drinkUntil = 0.0      // what it holds up: the calendar, or a glass of water
@@ -1110,14 +1111,17 @@ final class Pet {
                     // short, flowing hops from where it is, not darts across the screen
                     let ang = Double.random(in: 0..<(2 * .pi)), d = CGFloat(rnd(120, 260))
                     flyTarget = CGPoint(x: clamp(x + cos(ang) * d, b.minX, b.maxX), y: clamp(y + sin(ang) * d * 0.6, b.minY, b.maxY))
+                } else if species == .shark {
+                    // a shark never stops: it cruises off somewhere new, all over the screen
+                    flyTarget = CGPoint(x: CGFloat.random(in: b.minX...b.maxX), y: CGFloat.random(in: b.minY...b.maxY))
                 } else if chance(0.3) {
                     flyTarget = CGPoint(x: x, y: y)
                 } else {
                     flyTarget = CGPoint(x: CGFloat.random(in: b.minX...b.maxX), y: CGFloat.random(in: min(b.maxY, b.minY + 40)...b.maxY))
                 }
-                nextFlyPick = t + (family == .bat ? rnd(1.2, 3) : rnd(3, 7))       // a bat flits about
+                nextFlyPick = t + (family == .bat ? rnd(1.2, 3) : species == .shark ? rnd(2.5, 5) : rnd(3, 7))       // a bat flits about
             }
-            flyTo(flyTarget!, speed: family == .bat ? 115 : 95, dt)
+            if flyTo(flyTarget!, speed: family == .bat ? 115 : species == .shark ? 80 : 95, dt) && species == .shark { nextFlyPick = t }   // straight on to the next spot
             return
         }
         if family == .bat {
@@ -1903,7 +1907,12 @@ final class Pet {
             p.stance = .fly
             p.arm = [Arm.raised, .rest, .down, .rest][Int(flapT / 0.08) % 4]
             p.bob = 0; p.headDX = 0
-            if species == .shark { p.phase = t * 6 }                  // swimming: its tail strokes
+            if species == .shark {
+                p.phase = t * 6                                       // swimming: its tail strokes
+                // its nose points the way it's going: up or down the screen as well as along it
+                if hypot(vx, vy) > 12 { sharkPitch += (atan2(Double(vy), Double(abs(vx))) - sharkPitch) * 0.15 }
+                p.pitch = sharkPitch
+            }
         }
         switch mode {
         case .idle:
