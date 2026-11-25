@@ -229,6 +229,21 @@ struct Canvas {
         px = out
     }
 
+    /// Squeezed sideways around column `m` to `k` of its width (nearest cell, so it stays crisp pixel art);
+    /// a negative `k` also flips it: the frames of a pet spinning round on the spot.
+    mutating func squashX(around m: Int, _ k: Double) {
+        guard abs(k) < 0.999 || k < 0 else { return }
+        let f = k < 0 ? min(-0.15, k) : max(0.15, k)             // never thinner than a sliver
+        var out = [UInt8](repeating: 0, count: w * h)
+        for y in 0..<h {
+            for x in 0..<w {
+                let sx = m + Int((Double(x - m) / f).rounded())
+                if sx >= 0, sx < w { out[y * w + x] = px[y * w + sx] }
+            }
+        }
+        px = out
+    }
+
     /// Upside down, resting on the same bottom row (for a dog rolling over).
     mutating func flipV() {
         guard let b = bounds() else { return }

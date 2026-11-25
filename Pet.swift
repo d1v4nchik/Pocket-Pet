@@ -12,7 +12,8 @@ enum Mode {
 enum IdleAct { case stand, look, preen, peck, sit, vocal, yawn, flap, hop, gaze, lie, groom, stretch, beg,
                 rear,       // a red panda standing up on its hind legs for a look around
                 hide,       // a turtle pulling into its shell for a moment
-                press }     // facing you, a paw pressed against the screen (click it for a high five)
+                press,      // facing you, a paw pressed against the screen (click it for a high five)
+                pose }      // the fox: sitting facing you, tail curled up beside it, like its picture
 enum FlyGoal { case wander, land }
 
 /// Things a pet has to be on the floor for.
@@ -1017,7 +1018,9 @@ final class Pet {
             case ..<0.79: zoomLeft = Int.random(in: 3...4); setMode(.zoomies); return
             case ..<0.84: act = .hop; actDur = 0.8; hopV = 300 * s / 4
             case ..<0.90: act = .gaze; actDur = rnd(2, 4)
-            default: act = .stand; actDur = rnd(2, 5)
+            default:
+                if species == .fox && chance(0.5) { act = .pose; actDur = rnd(6, 12) }     // sits facing you for a while
+                else { act = .stand; actDur = rnd(2, 5) }
             }
         }
         if energy < 30 && chance(0.3) { act = .yawn; actDur = 1.4 }
@@ -1930,18 +1933,23 @@ final class Pet {
             }
         case .listening:
             if moving { break }
+            // bobbing along to the beat, and every other bar a happy little spin round on the spot
             let beat = Int(t / 0.42) % 2
             let bar = Int(t / 1.68) % 4
             p.eyes = bar % 2 == 0 ? .happy : (blink ? .closed : .open)
             if isBird {
-                p.stance = bar == 1 ? .walk : .stand
-                p.phase = beat == 0 ? 1.2 : 4.3
+                p.stance = .stand
                 p.bob = beat; p.headDX = beat
-                if bar == 3 { p.arm = flapFast ? .raised : .rest }
             } else {
                 p.stance = .sit; p.tailUp = true; p.tail = t * 4
                 p.headDY = beat
-                if bar == 3 { p.arm = beat == 0 ? .raised : .rest }
+            }
+            if bar % 2 == 1 {
+                let k = t.truncatingRemainder(dividingBy: 1.68) / 1.05          // the turn takes the first 2.5 beats
+                if k < 1 {
+                    p.twirl = Double.pi * 2 * k * k * (3 - 2 * k)                  // eases in and out of the turn
+                    p.eyes = .happy; p.bob = 0; p.headDX = 0; p.headDY = 0
+                }
             }
         case .agenda:
             p.stance = .sit; p.prop = agendaProp; p.arm = isBird ? .forward : .hold; p.tailUp = false; p.bob = 0
@@ -2152,6 +2160,7 @@ final class Pet {
         default:
             switch act {
             case .sit: p.stance = .sit; p.tailUp = false
+            case .pose: p.stance = .sit; p.frontSit = true; p.eyes = blink ? .closed : .open
             case .lie:
                 p.stance = .lie
                 p.eyes = actT.truncatingRemainder(dividingBy: 4) < 1.2 ? .closed : (blink ? .closed : .half)   // the slow blink
@@ -2208,6 +2217,7 @@ final class Pet {
         if family == .bat && !(mode == .idle && act == .press) { pose.phase = t * 13 }      // wing beats (held open to say hi)
         var c = Canvas(cw, chh)
         let a = drawPet(&c, species, pose, cx: cx)
+        if pose.twirl != 0 { c.squashX(around: cx, cos(pose.twirl)) }       // spinning round to the music
         if facing < 0 { c.mirror(around: cx) }
         head = (facing < 0 ? 2 * cx - a.headX : a.headX, a.headTop)
         hitCells = c.bounds()

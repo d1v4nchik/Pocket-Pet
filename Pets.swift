@@ -56,6 +56,8 @@ struct Pose {
     var glassT = 0.0, glassIn = 1.0, highFive = -1.0     // paw on the glass: how long it's been there, how far in view, a high five
     var tuck = 0.0           // the turtle: how far it has pulled into its shell (0 out, 1 in)
     var onBook = false       // study mode: dozing with its head on the book (otherwise the book is in front of it)
+    var frontSit = false     // the fox: sitting facing you (its picture pose)
+    var twirl = 0.0          // dancing: how far round it has spun on the spot (radians, 0 facing the usual way)
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
 
@@ -200,7 +202,7 @@ enum Species: String, CaseIterable, Identifiable, Codable {
                     .nose: 0xe0889a, .inner: 0xd8d1b5, .mouth: 0xc9677a, .tongue: 0xe0889a, .outline: 0x392c24, .whisker: 0x392c24]
         case .fox:
             return [.body: 0xfd921e, .bodyShade: 0xe27c12, .mark: 0xfd921e, .mark2: 0x5b5257, .belly: 0xffffff,
-                    .eye: 0x2b2738, .nose: 0x2b2738, .inner: 0xffffff]
+                    .markShade: 0x8e6768, .eye: 0x2b2738, .nose: 0x2b2738, .inner: 0xffffff]
         case .redPanda:     // the reference's rust orange, cream face, plum-black legs and belly, red-brown tear marks
             return [.body: 0xcc7846, .bodyShade: 0xa85f38, .bodyLight: 0xdc8c5a, .belly: 0xf0d8c4, .bellyShade: 0xdcbfa9,
                     .mark: 0x332a34, .markShade: 0x241e27, .mark2: 0xebcdb3, .accent: 0x84543c,
@@ -210,10 +212,11 @@ enum Species: String, CaseIterable, Identifiable, Codable {
                     .mark2: 0xc0a860, .accent: 0x784800, .inner: 0xc07848, .belly: 0xc0a848, .bellyShade: 0xa89038,
                     .wing: 0x4878f0, .wingDark: 0x3a62cc, .ring: 0xf0d848, .tongue: 0x900000, .mouth: 0x161616,
                     .eye: 0x161616, .eyeHi: 0xffffff, .outline: 0x161616, .blush: 0xf09090]
-        case .parrot:       // green, with a red head, yellow cheeks and blue flight feathers
-            return [.body: 0x5cc24c, .bodyShade: 0x46a33c, .belly: 0xa9df63, .mark: 0xea4a3f, .accent: 0xffd447,
-                    .wing: 0x4cb047, .wingDark: 0x2f6fd6, .beak: 0xf2e6cc, .beakDark: 0x3a3340, .feet: 0x8d929c,
-                    .ring: 0xffffff, .speculum: 0xea4a3f]
+        case .parrot:       // a scarlet macaw, the reference's colours: red, a pale face, yellow and blue wings, a blue-edged tail
+            return [.body: 0xe15635, .bodyShade: 0x9c3435, .mark: 0xd42e30, .markShade: 0x783c44, .belly: 0xdac7b9,
+                    .accent: 0xffdd3d, .mark2: 0xffc10c, .wing: 0x378ada, .wingDark: 0x275fac, .speculum: 0x67b1d8,
+                    .ring: 0x23b14b, .beak: 0xfaf6ed, .beakDark: 0x434a52, .nose: 0xf0dcaa, .inner: 0xd2a665,
+                    .feet: 0x525d7d, .eye: 0x434a52, .outline: 0x351f12]
         case .calico:
             return [.body: 0xffffff, .bodyShade: 0xdfe0e8, .mark: 0xf4a24a, .mark2: 0x3b3645, .belly: 0xffffff]
         case .dalmatian:
@@ -565,7 +568,7 @@ private func quadAnchors(_ hx: Int, _ ht: Int) -> Anchors {
 }
 
 /// Coat markings on a side-view body spanning x0...x1, rows r0...rb.
-private func sideCoat(_ c: inout Canvas, _ q: QuadSpec, _ x0: Int, _ x1: Int, _ r0: Int, _ rb: Int) {
+private func sideCoat(_ c: inout Canvas, _ q: QuadSpec, _ x0: Int, _ x1: Int, _ r0: Int, _ rb: Int, lying: Bool = false) {
     let inBody = { (x: Int, y: Int) -> Bool in x >= x0 - 1 && x <= x1 + 1 && y >= r0 && y <= rb }
     switch q.coat {
     case .tabby:
@@ -586,8 +589,9 @@ private func sideCoat(_ c: inout Canvas, _ q: QuadSpec, _ x0: Int, _ x1: Int, _ 
     if q.coat == .redPanda { return }
     if q.coat == .tabbyWhite || q.coat == .fox {
         if q.coat == .tabbyWhite { for x in stride(from: x0 + 3, through: x1 - 4, by: 3) { c.paint(.body, .mark) { xx, y in xx == x && y >= r0 && y <= r0 + 2 } } }
-        // white chest and belly
-        c.patch(.belly) { x, y in inBody(x, y) && ((y == rb && x >= x0 + 2 && x <= x1 - 1) || (x >= x1 - 2 && y >= r0 + 2)) }
+        // white chest and belly (a fox lying down is lying on its belly: only the chest shows)
+        let belly = !(lying && q.coat == .fox)
+        c.patch(.belly) { x, y in inBody(x, y) && ((belly && y == rb && x >= x0 + 2 && x <= x1 - 1) || (x >= x1 - 2 && y >= r0 + 2)) }
     } else {
         c.paint(.body, .belly) { x, y in (y == rb && x >= x0 + 3 && x <= x1 - 3) || (y == rb - 1 && x >= x0 + 5 && x <= x1 - 5) }
     }
@@ -657,6 +661,9 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
         ht = r0 - 6 + p.headDY
         if crouch { hx += 2; ht += 2 }
         if p.stance == .eat { hx = x1 - 2 + p.headDX; ht = g - 7 + p.headDY }
+
+    case .sit where p.frontSit && q.coat == .fox:
+        return drawFrontSitFox(&c, p, cx: cx)
 
     case .sit:
         let top = g - 13 + p.bob
@@ -747,7 +754,7 @@ private func drawQuad(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> A
             sideTail(&c, q, bx: x0 + 1, by: g - 4, p)
         }
         c.spans(x0, g - 6, [(3, x1 - x0 - 3), (1, x1 - x0 - 1), (0, x1 - x0), (0, x1 - x0), (0, x1 - x0), (0, x1 - x0), (1, x1 - x0 - 1)], .body)
-        sideCoat(&c, q, x0, x1, g - 6, g)
+        sideCoat(&c, q, x0, x1, g - 6, g, lying: true)
         if sp.family == .cat {
             if q.coat == .redPanda { c.rect(cx + 3, g - 1, 3, 2, .mark) }      // black front paws
             c.hline(cx + 3, cx + 5, g, sk == .body ? .belly : sk)
@@ -915,6 +922,42 @@ private func drawSleepingFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     }
     if p.blush { c.set(ox + 1, oy + 5, .blush); c.set(ox + 9, oy + 5, .blush) }
     return Anchors(headX: ox + 5, headTop: oy + 2, headW: 9, eyes: [(ox + 2, oy + 4), (ox + 7, oy + 4)], profile: false, neck: (ox + 5, oy + 6))
+}
+
+/// Sitting facing you, after the reference picture: head tipped, one eye squeezed shut, a big white bib down to a
+/// point between the dark front legs, a haunch to one side and the tail curled up on the other with its white tip.
+/// O fur, W white, M legs and ear edges, K lines.
+private let foxFrontSit = [
+    "........W...........",
+    ".MW.....WO..........",
+    ".WWM...MWWO.........",
+    ".WWWM.OOWWO.........",
+    ".WWWOOOOOWO.........",
+    "..WWOOOOOOO.........",
+    "..WOOOOOOKKO........",
+    "...OOOOOOKKWO.......",
+    "...OKKOOKMWWW.......",
+    "...OOWOOWWWWW.......",
+    "...OWWWWWWWWO.......",
+    "....WWWWWWWWO.......",
+    "....WWWWWWWWO...WW..",
+    "....OWWWWWWWO...WWW.",
+    "....OWWWWWWWOK.WWWW.",
+    "...OKWWWWWWWKOKKWWW.",
+    "..OOOKWWWWWKMKOKKKO.",
+    ".OOOKMKWWWKMMKOOOOO.",
+    ".OOKMMMKWKMMMKOOOOO.",
+    ".OOKMMMKKKMMMKOOOO..",
+    ".OOKMKMMKMMKMKOOOO..",
+    ".OOKMKMMKMMKMKOOK...",
+]
+
+private func drawFrontSitFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let ox = cx - 9, oy = c.h - 2 - (foxFrontSit.count - 1)
+    c.sprite(ox, oy, foxFrontSit, ["O": .body, "W": .belly, "M": .markShade, "K": .outline])
+    if [.closed, .half, .happy].contains(p.eyes) { c.hline(ox + 9, ox + 10, oy + 6, .body) }     // a blink: the open eye shuts too
+    if p.blush { c.set(ox + 3, oy + 9, .blush); c.set(ox + 12, oy + 9, .blush) }
+    return Anchors(headX: ox + 7, headTop: oy + 3, headW: 10, eyes: [(ox + 4, oy + 8), (ox + 9, oy + 6)], profile: false, neck: (ox + 8, oy + 11))
 }
 
 /// Thinking very hard: round yellow ring eyes, and a loading spinner going round above the head.
@@ -1460,79 +1503,144 @@ private func drawSleepingRedPanda(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anch
 
 // MARK: - Parrot
 
-private func parrotWing(_ c: inout Canvas, _ arm: Arm, cx: Int, top: Int) {
-    switch arm {
-    case .raised:
-        c.region(cx - 1, top - 7, [(-6, -4), (-7, -2), (-7, -1), (-6, 0), (-5, 1), (-4, 1), (-3, 1), (-2, 1), (-1, 1)], fill: .wing, edge: .wingDark)
-    case .down:
-        c.region(cx - 1, top + 3, [(-1, 1), (-2, 1), (-3, 1), (-4, 0), (-5, -1), (-6, -2), (-7, -3), (-7, -5)], fill: .wing, edge: .wingDark)
-    case .forward, .scoop, .toMouth, .hold, .tap:
-        c.region(cx, top + 3, [(-2, 1), (-2, 2), (-2, 3), (-1, 4), (0, 4)], fill: .wing, edge: .wingDark)
-    default:        // folded along its side, the tips over the tail
-        c.region(cx, top + 2, [(-3, 0), (-4, 1), (-4, 1), (-4, 1), (-4, 1), (-5, 0), (-5, -1), (-6, -2), (-6, -3)], fill: .wing, edge: .wingDark)
-    }
-}
+// A scarlet macaw facing right, copied cell for cell from the reference picture. O red, R bright red, D dark red,
+// M plum, F pale face, W/c/T beak (white, cream, tan), G lower beak, Y/y yellow coverts, B/N/L blues, V the green
+// feather, S legs, K lines. Rows 0-9 are the head (it nods as one piece), the body hangs under it.
+private let macawHead = [
+    "........RO.....",
+    ".....DROOOO....",
+    "....DROOOOOD...",
+    "....RROFFOOD...",
+    "....ROFFFFOTT..",
+    "....DOFFFFcWWT.",
+    "....MOFFFFOWWW.",
+    "....DRRFFDGcWW.",
+    "....DODDDDGGGc.",
+    "...DOOODDGGG...",
+]
 
-/// A parrot, side view facing right: upright, green with a red head and yellow cheek, blue-edged wings,
-/// a long blue and red tail and a hooked beak.
+/// Rows 10-16: the body with its wing folded along the side.
+private let macawBody = [
+    "..DOOBBVDMN....",
+    "..yYOYBVDDDN...",
+    "..yYYYYBDODB...",
+    "..yYBYBBRORB...",
+    "..yBLBLROORB...",
+    ".LNLLNBRRRB....",
+    "LLNLLDRRRK.....",
+]
+
+/// The same rows with the near wing lifted off the side.
+private let macawBodyBare = [
+    "..DOORRODMN....",
+    "..DOOORODDDN...",
+    "..DDOORRDODB...",
+    "..DDOOORRORB...",
+    "..DDDOROORRB...",
+    "..DDDDDRRRB....",
+    "...DDDRRRK.....",
+]
+
+/// Rows 17-27: the long tail hanging straight down, as in the picture (flying, held up).
+private let macawTailHanging = [
+    "..KSDDDK.......",
+    "...SDDS........",
+    "..BDDDS........",
+    "..BDDDB........",
+    ".BBRDDB........",
+    ".LBRDK.........",
+    "..RRD..........",
+    "..ROD..........",
+    "..ROD..........",
+    "..ROD..........",
+    "..DR...........",
+]
+
+/// Standing or sitting: the tail laid back along the ground (from 10 cells left of the body, its last 4 rows).
+private let macawTailGround = [
+    "........BBBDDD",
+    ".....BBLRRRDDD",
+    "..BBLRROOODD..",
+    "LLRRROOODD....",
+]
+
+/// The near wing raised (from 2 cells left of the body, rows 1-9): red shoulder, yellow coverts, blue flight feathers.
+private let macawWingUp = [
+    "L.......",
+    "LB......",
+    "LBN.....",
+    ".LBN....",
+    ".LBBY...",
+    "..LBYY..",
+    "..LBYYO.",
+    "...BYYOO",
+    "....YOOO",
+]
+
+private let macawMap: [Character: Col] = ["O": .body, "D": .bodyShade, "R": .mark, "M": .markShade, "F": .belly, "G": .beakDark,
+    "W": .beak, "c": .nose, "T": .inner, "B": .wing, "N": .wingDark, "L": .speculum, "Y": .accent, "y": .mark2,
+    "V": .ring, "S": .feet, "K": .outline]
+
 private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let st = p.stance
     let sitting = st == .sit || st == .lie || st == .curl
     let airborne = st == .fly || st == .held || st == .umbrella || st == .leap
-    let bb = sitting ? g : (airborne ? g - 4 : g - 2)            // bottom row of the body
-    let top = bb - 11 + (st == .squash ? 2 : 0) + p.bob
+    let ox = cx - 8
+    // the body's bottom row: on its feet, sat on the ground, or in the air with the tail hanging down to the ground row
+    let bottom = (sitting ? g : (airborne ? g - 11 : g - 3)) + (st == .squash ? 1 : 0)
+    let oy = bottom - 16 + p.bob
 
-    // tail first, out behind and down to the ground (or trailing, in the air)
-    let tip = airborne ? (cx - 12, bb + 4) : (cx - 11, g)
-    c.thick(cx - 3, bb - 3, tip.0, tip.1 - 1, 2, .wingDark)
-    c.thick(cx - 3, bb - 4, tip.0 + 1, tip.1 - 2, 1, .speculum)
-    if !sitting {
-        if airborne { c.set(cx - 1, bb + 1, .feet); c.set(cx + 1, bb + 1, .feet) }
-        else { for fx in [cx - 1, cx + 2] { c.set(fx, g - 1, .feet); c.hline(fx - 1, fx + 1, g, .feet) } }
+    if airborne {
+        c.sprite(ox, oy + 17, macawTailHanging, macawMap)
+    } else {
+        c.sprite(ox - 10, g - 3, macawTailGround, macawMap)
+        if !sitting {
+            let step = st == .walk ? (sin(p.phase) > 0 ? 1 : 0) : 0
+            for (i, fx) in [ox + 5, ox + 8].enumerated() {
+                let lift = i == step && st == .walk ? 1 : 0
+                c.rect(fx + 1, g - 2, 1, 2 - lift, .feet); c.hline(fx, fx + 2, g - lift, .feet)
+            }
+        }
     }
-    // body: an upright oval, lighter breast
-    let widths: [(Int, Int)] = [(-2, 2), (-3, 3), (-4, 3), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 4), (-4, 3), (-3, 3), (-3, 2), (-2, 1)]
-    for (i, w) in widths.enumerated() where top + i <= bb { c.hline(cx + w.0, cx + w.1, top + i, .body) }
-    c.paint(.body, .belly) { x, y in x >= cx + 1 && y >= top + 3 && y <= bb - 1 }
+    let wingUp = p.arm == .raised
+    c.sprite(ox, oy + 10, wingUp ? macawBodyBare : macawBody, macawMap)
 
-    if p.prop == .laptop { drawLaptop(&c, lx: cx + 6, g: g) }
-    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 7, g: g) }
-    if p.prop == .calendar { drawCalendar(&c, x: cx + 6, y: top + 1) }
-    if p.prop == .book { drawBook(&c, x: cx, y: c.h - 7, turn: p.turn) }
-    if p.prop == .glass { drawGlass(&c, x: cx + 6, y: top + 2) }
-    if p.prop == .laptop && (p.arm == .tap || p.arm == .forward) {
-        // typing: the near wing reaches down to the keys and taps them
-        parrotWing(&c, .rest, cx: cx, top: top)
-        let tip = (cx + 6, g - (p.arm == .tap ? 2 : 3))
-        c.thick(cx, top + 3, tip.0 - 1, tip.1, 2, .wing)
+    if p.prop == .laptop { drawLaptop(&c, lx: cx + 9, g: g) }
+    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 9, g: g) }
+    if p.prop == .calendar { drawCalendar(&c, x: cx + 9, y: oy + 10) }
+    if p.prop == .book { drawBook(&c, x: cx + 3, y: c.h - 7, turn: p.turn) }
+    if p.prop == .glass { drawGlass(&c, x: cx + 9, y: oy + 11) }
+
+    // the head: nods and pecks move it a few cells, its bottom rows drawn along the way so the neck stays joined
+    var dx = max(-2, min(3, p.headDX)), dy = max(-3, min(3, p.headDY))
+    if st == .eat { dx = 2; dy = 3 }
+    let n = max(abs(dx), abs(dy)), neck = Array(macawHead.suffix(3))
+    for k in 0..<n {
+        let sx = Int((Double(dx * k) / Double(n)).rounded()), sy = Int((Double(dy * k) / Double(n)).rounded())
+        c.sprite(ox + sx, oy + 7 + sy, neck, macawMap)
+    }
+    c.sprite(ox + dx, oy + dy, macawHead, macawMap)
+    let hx = ox + dx, hy = oy + dy
+    profileEye(&c, p.eyes, hx + 8, hy + 5)
+    if p.mouth != .closed {
+        c.hline(hx + 10, hx + 12, hy + 8, .mouth)                     // the lower beak drops open
+        c.hline(hx + 10, hx + 12, hy + 9, .beakDark); c.hline(hx + 10, hx + 11, hy + 10, .beakDark)
+    }
+    if p.blush { c.hline(hx + 7, hx + 8, hy + 7, .blush) }
+
+    switch p.arm {
+    case .raised:
+        c.sprite(ox - 2, oy + 1, macawWingUp, macawMap)
+    case .forward, .tap, .hold, .scoop, .toMouth:
+        // reaching forward (typing, holding): the wing stretches out in front, blue tips last
+        let tip = p.prop == .laptop ? (cx + 10, g - (p.arm == .tap ? 2 : 3)) : (ox + 12, oy + 14)
+        c.thick(ox + 5, oy + 11, tip.0 - 1, tip.1, 2, .wing)
         c.hline(tip.0 - 1, tip.0 + 1, tip.1 + 1, .wingDark)
-    } else {
-        parrotWing(&c, p.arm, cx: cx, top: top)
+    default:
+        break
     }
-
-    // head, on a short neck; pecking and eating bring it down to the ground in front
-    var hx = cx - 1 + max(-3, min(4, p.headDX)), ht = top - 5 + max(-3, min(10, p.headDY))
-    if st == .eat { hx = cx + 3 + max(0, p.headDX); ht = g - 6 }
-    c.thick(cx - 1, top + 1, hx + 1, ht + 3, 3, .body)
-    c.spans(hx, ht, [(1, 4), (0, 5), (0, 5), (0, 5), (1, 4)], .mark)
-    c.hline(hx + 1, hx + 2, ht + 3, .accent)                         // yellow cheek
-    // a round, shiny eye like the other pets' (a lone dot in a white ring looked like it was staring)
-    switch p.eyes {
-    case .open, .wide, .up: c.rect(hx + 3, ht + 1, 2, 2, .eye); c.set(hx + 3, ht + 1, .eyeHi)
-    case .half: c.hline(hx + 3, hx + 4, ht + 2, .eye)
-    default: profileEye(&c, p.eyes, hx + 3, ht + 1)
-    }
-    // hooked beak
-    c.hline(hx + 6, hx + 7, ht + 1, .beak)
-    c.hline(hx + 6, hx + 8, ht + 2, .beak)
-    if p.mouth == .closed {
-        c.set(hx + 8, ht + 3, .beak); c.hline(hx + 6, hx + 7, ht + 3, .beakDark)
-    } else {
-        c.set(hx + 8, ht + 3, .beak); c.set(hx + 6, ht + 3, .mouth); c.hline(hx + 6, hx + 7, ht + 4, .beakDark)
-    }
-    if p.blush { c.hline(hx + 2, hx + 3, ht + 3, .blush) }
-    return Anchors(headX: hx + 2, headTop: ht, headW: 6, eyes: [(hx + 3, ht + 1)], profile: true, neck: (hx + 2, ht + 5))
+    return Anchors(headX: hx + 8, headTop: hy, headW: 8, eyes: [(hx + 8, hy + 5)], profile: true, neck: (hx + 7, hy + 10))
 }
 
 // MARK: - Outfits & extras
