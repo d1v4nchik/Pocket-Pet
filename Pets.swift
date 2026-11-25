@@ -1938,29 +1938,23 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         break
     }
     if p.arm == .raised && ![.walk, .fly, .leap].contains(st) { tailDY = -2 }        // a flick of the tail
-    // crawling like a real shark out of water: a wave runs down its body from head to tail, the tail sweeps side to side
-    // (so from the side it swings towards you and away, shortening and lengthening), the fins paddle in turn and each
-    // beat slides it forward a touch on its belly
+    // crawling like a real shark out of water, in four clean beats: its tail (moved as one piece, so no pixels tear) sweeps
+    // side to side, swinging towards you and away so it looks shorter, and up and down; the body slides forward on its belly
     let crawl = st == .walk
-    let surge = crawl ? Int((sin(p.phase) * 0.6).rounded()) : 0
-    let sweep = 0.72 + 0.28 * cos(p.phase), paddle = Int(cos(p.phase).rounded())
+    let beat = Int(floor(p.phase / (Double.pi / 2))) & 3
+    let tailBeat = [(0, 0), (1, -1), (0, 0), (1, 1)][beat], surge = crawl ? [0, 0, 1, 1][beat] : 0
     func at(_ x: Int, _ y: Int) -> (Int, Int) {
-        if crawl {
-            let amp = max(0, Double(14 - x) / 14) * 1.3
-            var dx = surge
-            if x < 11 { dx += Int((Double(11 - x) * (1 - sweep)).rounded()) }
-            if y >= 17 && x >= 19 { dx += paddle }                   // front fin
-            if y >= 17 && x >= 8 && x <= 14 { dx -= paddle }         // back fin
-            return (ox + x + dx, oy + y + Int((sin(p.phase - Double(x) * 0.3) * amp).rounded()))
-        }
+        if crawl { return x < 10 ? (ox + x + surge + tailBeat.0, oy + y + tailBeat.1) : (ox + x + surge, oy + y) }
         return (ox + x, oy + y - Int((tilt * Double(x - 15)).rounded()) + (x < 10 ? tailDY : 0))
     }
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
-    for (y, row) in (shut ? sharkArtShut : sharkArt).enumerated() {
-        for (x, ch) in row.enumerated() {
-            guard let col = map[ch] else { continue }
-            let q = at(x, y)
-            c.set(q.0, q.1, col)
+    for tail in [true, false] {                                     // the tail first, so the body covers the seam
+        for (y, row) in (shut ? sharkArtShut : sharkArt).enumerated() {
+            for (x, ch) in row.enumerated() where (x < 10) == tail {
+                guard let col = map[ch] else { continue }
+                let q = at(x, y)
+                c.set(q.0, q.1, col)
+            }
         }
     }
     if p.prop == .laptop { drawLaptop(&c, lx: cx + 15, g: g) }

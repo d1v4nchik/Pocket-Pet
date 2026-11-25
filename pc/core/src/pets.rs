@@ -1103,29 +1103,25 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         _ => {}
     }
     if p.arm == Arm::Raised && !matches!(st, Stance::Walk | Stance::Fly | Stance::Leap) { tail_dy = -2; }   // a flick of the tail
-    // crawling like a real shark out of water: a wave runs down its body from head to tail, the tail sweeps side to side
-    // (so from the side it swings towards you and away), the fins paddle in turn and each beat slides it forward a touch
+    // crawling like a real shark out of water, in four clean beats: its tail (moved as one piece, so no pixels tear) sweeps
+    // side to side, swinging towards you and away so it looks shorter, and up and down; the body slides forward on its belly
     let crawl = st == Stance::Walk;
-    let surge = if crawl { iround(p.phase.sin() * 0.6) } else { 0 };
-    let sweep = 0.72 + 0.28 * p.phase.cos();
-    let paddle = iround(p.phase.cos());
+    let beat = ((p.phase / (PI / 2.0)).floor() as i64).rem_euclid(4) as usize;
+    let tail_beat = [(0, 0), (1, -1), (0, 0), (1, 1)][beat];
+    let surge = if crawl { [0, 0, 1, 1][beat] } else { 0 };
     let at = |x: i32, y: i32| -> (i32, i32) {
-        if crawl {
-            let amp = (f64::from(14 - x) / 14.0).max(0.0) * 1.3;
-            let mut dx = surge;
-            if x < 11 { dx += iround(f64::from(11 - x) * (1.0 - sweep)); }
-            if y >= 17 && x >= 19 { dx += paddle; }                  // front fin
-            if y >= 17 && (8..=14).contains(&x) { dx -= paddle; }    // back fin
-            return (ox + x + dx, oy + y + iround((p.phase - f64::from(x) * 0.3).sin() * amp));
-        }
+        if crawl { return if x < 10 { (ox + x + surge + tail_beat.0, oy + y + tail_beat.1) } else { (ox + x + surge, oy + y) }; }
         (ox + x, oy + y - iround(tilt * f64::from(x - 15)) + if x < 10 { tail_dy } else { 0 })
     };
     let art: &[&str] = if shut { &SHARK_ART_SHUT } else { &SHARK_ART };
-    for (y, row) in art.iter().enumerate() {
-        for (x, ch) in row.bytes().enumerate() {
-            if let Some(&(_, col)) = SHARK_MAP.iter().find(|m| m.0 == ch) {
-                let q = at(x as i32, y as i32);
-                c.set(q.0, q.1, col);
+    for tail in [true, false] {                                     // the tail first, so the body covers the seam
+        for (y, row) in art.iter().enumerate() {
+            for (x, ch) in row.bytes().enumerate() {
+                if (x < 10) != tail { continue; }
+                if let Some(&(_, col)) = SHARK_MAP.iter().find(|m| m.0 == ch) {
+                    let q = at(x as i32, y as i32);
+                    c.set(q.0, q.1, col);
+                }
             }
         }
     }
