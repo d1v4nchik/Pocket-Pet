@@ -1662,27 +1662,60 @@ private func drawParrot(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
 
 // MARK: - Shark
 
-/// A little shark facing right with its mouth open in a big happy gape, after the reference picture.
-/// B blue, D deep blue, W cream (lips, teeth, the white of its eye), R inside its mouth, O tongue, P peachy belly, K lines.
+/// A little shark facing right, leaping with its mouth open in a big happy gape, copied cell for cell from the reference
+/// picture: its dorsal fin swept back, the cream face plate with a row of teeth top and bottom, the tail behind.
+/// B blue, D deep blue, W cream, R inside its mouth, O tongue, P peachy belly, K lines.
 private let sharkArt = [
-    "..............BBBBBBBB..",
-    "...........BBBBBBBBBBBB.",
-    "..........BBBDDBBBBWWWW.",
-    "...BBB...BBBDKBBBBWWWWW.",
-    "...BBBB.BBBBKWKBBWKWKWW.",
-    "....BBBBBBBBBKBBBWRRRRW.",
-    ".....DBBBBBBBBBBBWRRRRW.",
-    ".....DBBBBBBBBBBBWRRRRW.",
-    "......DBBBBBBBBBBWROORW.",
-    ".BB...DDBBBBBBBBBWOOOOW.",
-    ".BDB.KDDBBBBBBBBBWKWKWW.",
-    "..DDBBDDBBBBBBBBBBWWWW..",
-    "...DDBDDBBBBBBBBBBWWW...",
-    "....DDDBBBBBBBBBBBBB....",
-    "...DDD.DBBBPPPPPPBBDD...",
-    "..DD....DBPPPPPPPPKDDD..",
-    "..D.....DK.PPPPPP..KDDD.",
-    ".......DD...............",
+    "......................BBBBBB..",
+    "....................BBBBBBBB..",
+    "..................BBBBBBWWWW..",
+    "................BBBBBBWWWWWWW.",
+    "........BBBBBB.BBBBBBWWWWWWWW.",
+    "......BBBBBBBKBBKWKBWWKKKKKKW.",
+    "......DBBBBBKBBBKKKWWKWWWWWKW.",
+    ".......DDDBBKBBBKKKWKWRWRRWKW.",
+    "........DDDKBBBBBBWKRWRRRRRKW.",
+    ".........DKBBBBBBWWKRRRRRRKWW.",
+    "..B......DKBBBBBBWKRRRRRRRKW..",
+    "..DD......BBBBBBWWKOROOORKKW..",
+    "...DD....KBBBBBBWWKWOWOWOKWW..",
+    "...DDD..DDBBBBBBBWWKWWOWWKW...",
+    "....DDKDDDDBBBBBBWWWKKWWKWW...",
+    "....DDDDDDDKDDDBBWWWWWKKWW....",
+    ".....DDDDDKDDDDDKWWWWWWWWW....",
+    ".....DKDDDKDDDDDKPWWWWWPWK....",
+    "....KDKKPPKDDDDDKPWWWWPPKK....",
+    "....DD.KPPKDDDDKPPPPPPPKDDD...",
+    "...DD....KKDDDDKPPPPPPKKDDK...",
+    "...D......DDDDKPPPPPP..KKDD...",
+    "..........DD.............KK...",
+]
+
+/// The same with its mouth shut in a smile (asleep, or chewing).
+private let sharkArtShut = [
+    "......................BBBBBB..",
+    "....................BBBBBBBB..",
+    "..................BBBBBBWWWW..",
+    "................BBBBBBWWWWWWW.",
+    "........BBBBBB.BBBBBBWWWWWWWW.",
+    "......BBBBBBBKBBKWKBWWWWWWWWW.",
+    "......DBBBBBKBBBKKKWWWWWWWWWW.",
+    ".......DDDBBKBBBKKKWWWWWWWWWW.",
+    "........DDDKBBBBBBWWWWWWWWWWW.",
+    ".........DKBBBBBBWWKWWWWWWKWW.",
+    "..B......DKBBBBBBWWWKKKKKKWW..",
+    "..DD......BBBBBBWWWWWWWWWWWW..",
+    "...DD....KBBBBBBWWWWWWWWWWWW..",
+    "...DDD..DDBBBBBBBWWWWWWWWWW...",
+    "....DDKDDDDBBBBBBWWWWWWWWWW...",
+    "....DDDDDDDKDDDBBWWWWWWWWW....",
+    ".....DDDDDKDDDDDKWWWWWWWWW....",
+    ".....DKDDDKDDDDDKPWWWWWPWK....",
+    "....KDKKPPKDDDDDKPWWWWPPKK....",
+    "....DD.KPPKDDDDKPPPPPPPKDDD...",
+    "...DD....KKDDDDKPPPPPPKKDDK...",
+    "...D......DDDDKPPPPPP..KKDD...",
+    "..........DD.............KK...",
 ]
 
 /// Swimming (gravity off), seen from above like a real shark in the water, heading right: its broad head with an eye
@@ -1799,7 +1832,7 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let st = p.stance
     if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
-    let ox = cx - 12
+    let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
     let shut = p.mouth == .closed && ([.closed, .half].contains(p.eyes) || st == .eat)
@@ -1821,46 +1854,46 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     }
     if p.arm == .raised && ![.walk, .fly, .leap].contains(st) { tailDY = -2 }        // a flick of the tail
     func at(_ x: Int, _ y: Int) -> (Int, Int) {
-        (ox + x, oy + y - lift - Int((tilt * Double(x - 12)).rounded()) + (x < 8 ? tailDY : 0))
+        (ox + x, oy + y - lift - Int((tilt * Double(x - 15)).rounded()) + (x < 10 ? tailDY : 0))
     }
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
-    for (y, row) in sharkArt.enumerated() {
+    for (y, row) in (shut ? sharkArtShut : sharkArt).enumerated() {
         for (x, ch) in row.enumerated() {
-            guard var col = map[ch] else { continue }
-            if shut && (ch == "R" || ch == "O") { col = y == 7 ? .outline : .belly }       // lips closed in a smile
+            guard let col = map[ch] else { continue }
             let q = at(x, y)
             c.set(q.0, q.1, col)
         }
     }
-    if p.prop == .laptop { drawLaptop(&c, lx: cx + 13, g: g) }
-    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 13, g: g) }
-    if p.prop == .calendar { drawCalendar(&c, x: cx + 13, y: oy + 2) }
-    if p.prop == .book { drawBook(&c, x: cx + 12, y: c.h - 7, turn: p.turn) }
-    if p.prop == .glass { drawGlass(&c, x: cx + 13, y: oy + 3) }
+    if p.prop == .laptop { drawLaptop(&c, lx: cx + 15, g: g) }
+    if p.prop == .popcorn { drawPopcorn(&c, bx: cx + 16, g: g) }
+    if p.prop == .calendar { drawCalendar(&c, x: cx + 16, y: oy + 4) }
+    if p.prop == .book { drawUprightBook(&c, x: cx + 15, y: g - 8) }       // standing open in front of it, both pages showing, like the turtle's
+    if p.prop == .glass { drawGlass(&c, x: cx + 16, y: oy + 5) }
 
-    // its eye: a cream square ringed dark, like the picture; shut tight or smiling as a line
-    let e = at(13, 4)
-    switch p.eyes {
-    case .closed, .half:
-        c.set(e.0, e.1 - 1, .body); c.set(e.0, e.1 + 1, .body); c.hline(e.0 - 1, e.0 + 1, e.1, .outline)
-    case .happy:
-        c.set(e.0, e.1, .body); c.set(e.0, e.1 + 1, .body)
-        c.set(e.0 - 1, e.1, .outline); c.set(e.0 + 1, e.1, .outline); c.set(e.0, e.1 - 1, .outline)
-    case .angry, .sad, .dizzy:
-        c.set(e.0, e.1, .outline)
-    default:
-        break
+    // its eye: a dark square with a shine at the top, like the picture; a curve when shut or smiling
+    let e = at(17, 6)
+    func lid(_ cells: [(Int, Int)]) {
+        for dy in -1...1 { for dx in -1...1 { c.set(e.0 + dx, e.1 + dy, .body) } }
+        for (dx, dy) in cells { c.set(e.0 + dx, e.1 + dy, .outline) }
     }
-    if p.blush { let b = at(12, 6); c.hline(b.0, b.0 + 1, b.1, .blush) }
+    switch p.eyes {
+    case .closed, .half: lid([(-1, -1), (-1, 0), (0, 1), (1, 0), (1, -1)])                   // sleepy, curved down
+    case .happy: lid([(-1, 1), (-1, 0), (0, -1), (1, 0), (1, 1)])                          // ^
+    case .angry, .sad, .dizzy: c.set(e.0, e.1 - 1, .outline)              // no shine
+    default: break
+    }
+    if p.blush { let b = at(15, 9); c.hline(b.0, b.0 + 1, b.1, .blush) }
     if p.phones {
         // headphones fitted to its head: the pad behind its eye, the band over the top of its head
         if p.outfit.hat == .none || p.nightcap {
-            for (x, y) in [(10, 1), (11, 0), (12, -1), (13, -1), (14, -1), (15, -1), (16, -1), (17, -1), (18, 0)] { let q = at(x, y); c.set(q.0, q.1, .phones) }
+            for (x, y) in [(14, 3), (15, 2), (16, 2), (17, 1), (18, 1), (19, 0), (20, 0), (21, -1), (22, -1), (23, -1), (24, -1)] {
+                let q = at(x, y); c.set(q.0, q.1, .phones)
+            }
         }
-        let pad = at(10, 2)
+        let pad = at(13, 4)
         c.rect(pad.0, pad.1, 2, 3, .phonesPad)
     }
-    let top = at(16, 0), neck = at(15, 12)
+    let top = at(24, 0), neck = at(13, 10)
     return Anchors(headX: top.0, headTop: top.1, headW: 10, eyes: [e], profile: true, neck: neck)
 }
 
