@@ -1923,11 +1923,10 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
     let shut = p.mouth == .closed && ([.closed, .half].contains(p.eyes) || st == .eat)
     // swimming and flopping: the tail swishes and the whole body tips nose up and nose down
-    var tilt = 0.0, tailDY = 0, lift = 0
+    var tilt = 0.0, tailDY = 0
     switch st {
-    case .walk:                                     // out of the water (gravity on): a floppy wobble along the ground
-        let s = sin(p.phase)
-        tilt = s * 0.3; lift = Int((abs(s) * 3).rounded()); tailDY = s > 0 ? -1 : 1
+    case .walk:                                     // out of the water (gravity on): crawls along on its belly, see crawl below
+        break
     case .fly, .leap:                               // swimming: a steady stroke of the tail
         let s = sin(p.phase * 0.5)
         tailDY = Int((s * 1.4).rounded()); tilt = s * 0.06
@@ -1939,8 +1938,22 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         break
     }
     if p.arm == .raised && ![.walk, .fly, .leap].contains(st) { tailDY = -2 }        // a flick of the tail
+    // crawling like a real shark out of water: a wave runs down its body from head to tail, the tail sweeps side to side
+    // (so from the side it swings towards you and away, shortening and lengthening), the fins paddle in turn and each
+    // beat slides it forward a touch on its belly
+    let crawl = st == .walk
+    let surge = crawl ? Int((sin(p.phase) * 0.6).rounded()) : 0
+    let sweep = 0.72 + 0.28 * cos(p.phase), paddle = Int(cos(p.phase).rounded())
     func at(_ x: Int, _ y: Int) -> (Int, Int) {
-        (ox + x, oy + y - lift - Int((tilt * Double(x - 15)).rounded()) + (x < 10 ? tailDY : 0))
+        if crawl {
+            let amp = max(0, Double(14 - x) / 14) * 1.3
+            var dx = surge
+            if x < 11 { dx += Int((Double(11 - x) * (1 - sweep)).rounded()) }
+            if y >= 17 && x >= 19 { dx += paddle }                   // front fin
+            if y >= 17 && x >= 8 && x <= 14 { dx -= paddle }         // back fin
+            return (ox + x + dx, oy + y + Int((sin(p.phase - Double(x) * 0.3) * amp).rounded()))
+        }
+        return (ox + x, oy + y - Int((tilt * Double(x - 15)).rounded()) + (x < 10 ? tailDY : 0))
     }
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
     for (y, row) in (shut ? sharkArtShut : sharkArt).enumerated() {

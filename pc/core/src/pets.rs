@@ -1092,12 +1092,8 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
     let shut = p.mouth == Mouth::Closed && (matches!(p.eyes, Eyes::Closed | Eyes::Half) || st == Stance::Eat);
     // flopping and swimming: the tail swishes and the whole body tips nose up and nose down
-    let (mut tilt, mut tail_dy, mut lift) = (0.0, 0, 0);
+    let (mut tilt, mut tail_dy) = (0.0, 0);
     match st {
-        Stance::Walk => {                           // out of the water: a floppy wobble along the ground
-            let s = p.phase.sin();
-            tilt = s * 0.3; lift = iround(s.abs() * 3.0); tail_dy = if s > 0.0 { -1 } else { 1 };
-        }
         Stance::Fly | Stance::Leap => {
             let s = (p.phase * 0.5).sin();
             tail_dy = iround(s * 1.4); tilt = s * 0.06;
@@ -1107,8 +1103,22 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         _ => {}
     }
     if p.arm == Arm::Raised && !matches!(st, Stance::Walk | Stance::Fly | Stance::Leap) { tail_dy = -2; }   // a flick of the tail
+    // crawling like a real shark out of water: a wave runs down its body from head to tail, the tail sweeps side to side
+    // (so from the side it swings towards you and away), the fins paddle in turn and each beat slides it forward a touch
+    let crawl = st == Stance::Walk;
+    let surge = if crawl { iround(p.phase.sin() * 0.6) } else { 0 };
+    let sweep = 0.72 + 0.28 * p.phase.cos();
+    let paddle = iround(p.phase.cos());
     let at = |x: i32, y: i32| -> (i32, i32) {
-        (ox + x, oy + y - lift - iround(tilt * f64::from(x - 15)) + if x < 10 { tail_dy } else { 0 })
+        if crawl {
+            let amp = (f64::from(14 - x) / 14.0).max(0.0) * 1.3;
+            let mut dx = surge;
+            if x < 11 { dx += iround(f64::from(11 - x) * (1.0 - sweep)); }
+            if y >= 17 && x >= 19 { dx += paddle; }                  // front fin
+            if y >= 17 && (8..=14).contains(&x) { dx -= paddle; }    // back fin
+            return (ox + x + dx, oy + y + iround((p.phase - f64::from(x) * 0.3).sin() * amp));
+        }
+        (ox + x, oy + y - iround(tilt * f64::from(x - 15)) + if x < 10 { tail_dy } else { 0 })
     };
     let art: &[&str] = if shut { &SHARK_ART_SHUT } else { &SHARK_ART };
     for (y, row) in art.iter().enumerate() {
