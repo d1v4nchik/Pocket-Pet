@@ -1993,7 +1993,7 @@ private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
                 let col: Col
                 switch o.neck {
                 case .scarf: col = y % 3 == 0 ? .scarfStripe : .scarf
-                case .bandana: col = .bandana
+                case .bandana: col = y % 3 == 1 ? .white : .hatBand
                 default: col = x == 31 ? .collar : .hatBand
                 }
                 c.set(ox + x, oy + y, col)
@@ -2004,7 +2004,7 @@ private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
     switch o.neck {
     case .bowtie: knot = (["RR.RR", "RRKRR", "RR.RR"], ["R": .ruby, "K": .outline], 30, 11)
     case .bell: knot = ([".G.", "GWG", "GGG", ".K."], ["G": .gold, "W": .white, "K": .outline], 31, 12)
-    case .bandana: knot = (["BBBB", "BWB.", "BB.."], ["B": .bandana, "W": .white], 28, 13)
+    case .bandana: knot = (["BBBB", "BWB.", "BB.."], ["B": .hatBand, "W": .white], 28, 13)
     case .scarf: knot = (["SSS", "SWS", "S.S"], ["S": .scarf, "W": .scarfStripe], 28, 14)
     case .none: knot = nil
     }
@@ -2107,7 +2107,7 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         c.rect(pad.0, pad.1, 2, 3, .phonesPad)
     }
     sharkSideOutfit(&c, p.outfit, shut ? sharkArtShut : sharkArt, at)
-    if p.outfit.hat != .none && !p.nightcap { let h = at(18, 1); sharkHat(&c, p.outfit.hat, x: h.0, bottom: h.1) }
+    if p.outfit.hat != .none && !p.nightcap { let h = at(22, 0); sharkHat(&c, p.outfit.hat, x: h.0, bottom: h.1) }
     // hats sit on top of its head, above its eye, well back from its nose
     let top = at(20, 2), neck = at(13, 10)
     return Anchors(headX: top.0, headTop: top.1, headW: 8, eyes: [e], profile: true, neck: neck)
@@ -2134,32 +2134,28 @@ private func sharkSideOutfit(_ c: inout Canvas, _ o: Outfit, _ art: [String], _ 
         for x in 11...14 { put(x, 5, .frame) }
     }
     if o.neck == .none { return }
-    // the collar wraps round it just under its jaw
+    // the collar hugs its throat just under its jaw, curving down round the front of it like a necklace
+    let curve = [(15, 15), (16, 16), (17, 16), (18, 17), (19, 17), (20, 17), (21, 17), (22, 17), (23, 16), (24, 16), (25, 15)]
     func band(_ rows: Int, _ col: (Int, Int) -> Col) {
-        for x in 10...26 {
-            for k in 0..<rows {
-                let y = (rows == 3 ? 15 : 16) + k
-                if solid(x, y) { put(x, y, col(x, k)) }
-            }
-        }
+        for (x, y) in curve { for k in 0..<rows { put(x, y + k - (rows - 2), col(x, k)) } }
     }
     func stamp(_ rows: [String], _ x0: Int, _ y0: Int, _ map: [Character: Col]) {
         for (j, row) in rows.enumerated() { for (i, ch) in row.enumerated() { if let col = map[ch] { put(x0 + i, y0 + j, col) } } }
     }
     switch o.neck {
     case .scarf:
-        // a chunky knitted scarf, striped, its end hanging down its side
+        // a chunky striped scarf wrapped round its throat, its end hanging down its front
         band(3) { x, k in k == 1 && x % 3 == 0 ? .scarfStripe : .scarf }
-        for (x, y) in [(11, 18), (12, 18), (13, 18), (11, 19), (12, 19), (13, 19)] { put(x, y, y == 19 && x == 12 ? .scarfStripe : .scarf) }
-        put(11, 20, .scarf); put(13, 20, .scarf)                                // fringe
+        stamp(["SS", "WW", "SS", "S.S"], 19, 19, ["S": .scarf, "W": .scarfStripe])
     case .bowtie:
-        stamp(["RR.RR", "RRKRR", "RR.RR"], 18, 15, ["R": .ruby, "K": .outline])  // just the bow, at its throat
+        stamp(["RR.RR", "RRKRR", "RR.RR"], 18, 16, ["R": .ruby, "K": .outline])  // just the bow, at its throat
     case .bell:
         band(2) { _, k in k == 0 ? .collar : .hatBand }
-        for (x, y, col) in [(19, 18, Col.gold), (20, 18, .white), (21, 18, .gold), (19, 19, .gold), (20, 19, .gold), (21, 19, .gold), (20, 20, .outline)] { put(x, y, col) }
+        stamp([".G.", "GWG", "GGG", ".K."], 19, 19, ["G": .gold, "W": .white, "K": .outline])
     case .bandana:
-        band(2) { _, _ in .bandana }
-        stamp(["BBBBB", "BWBWB", ".BBB.", "..B.."], 18, 18, ["B": .bandana, "W": .white])
+        // red with white spots, so it shows up on its blue
+        band(2) { x, k in k == 0 && x % 3 == 1 ? .white : .hatBand }
+        stamp(["RRRRR", "RWRWR", ".RRR.", "..R.."], 18, 19, ["R": .hatBand, "W": .white])
     case .none: break
     }
 }
@@ -2171,7 +2167,7 @@ private func sharkHat(_ c: inout Canvas, _ hat: Hat, x: Int, bottom: Int) {
     let w = rows.map { $0.count }.max() ?? 0
     let x0 = x - w / 2, y0 = bottom - rows.count + 1
     for (i, ch) in rows[rows.count - 1].enumerated() where ch != "." {
-        for y in (bottom + 1)..<(bottom + 4) {
+        for y in (bottom + 1)..<(bottom + 2) {
             if c.get(x0 + i, y) != Col.clear.rawValue { break }
             c.set(x0 + i, y, .body)
         }
