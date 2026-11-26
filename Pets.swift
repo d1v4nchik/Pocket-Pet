@@ -1914,50 +1914,41 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16))
 }
 
-/// Asleep: lying flat out on the floor, head on the right, a big rounded back up to its dorsal fin, its tail lying
-/// low behind it, its front fin tucked down to the floor and its cream belly along the bottom (after the user's picture).
-/// B blue, W cream, K lines (the tail's edge and the front fin).
+/// Asleep, drawn exactly after the user's picture: lying flat out on the floor, its tail resting low on the left,
+/// a big rounded back rising to its dorsal fin, its front fin swept back along its side, its white belly along the
+/// floor, gill marks and a little mouth at its snout. B body, W belly, K lines.
 private let sharkSleeping = [
-    "...................B................",
-    "..................BBB...............",
-    "..................BBBB..............",
-    ".................BBBBBBB............",
-    "................BBBBBBBBB...........",
-    ".............BBBBBBBBBBBBBB.........",
-    "..BBBB......BBBBBBBBBBBBBBBBB.......",
-    ".BBBBBBB...BBBBBBBBBBBBBBBBBBBB.....",
-    ".BBBBBBBBKBBBBBBBBBBBBBBBBBBBBBB....",
-    ".BBBBBBBBKBBBBBBBBBBBBBBBBBBBBBBB...",
-    ".BBBBBBKBBBBBBBBBBBBBBBBBBBBBBBBBB..",
-    ".BBBBBKBBBBBBBBBBBBBKKBBBBBBBBBBBBB.",
-    ".BBBBKBBBBBBBBBBBBKBBBBBBBBBBBBBBBB.",
-    "BBBBBKBBBBBBBBBBBKBBBBBBBBBBBBBWWWW.",
-    "BBBBBKWWWWWWWWWWWKBBBBBBBBBBBWWWWWWW",
-    ".....KWWWWWWWWWWWWKBBBBBBBWWWWWWWWW.",
+    ".......................BBB................",
+    "......................BBBBB...............",
+    ".....................BBBBBBBB.............",
+    ".....................BBBBBBBBB............",
+    "....................BBBBBBBBBBB...........",
+    "..................BBBBBBBBBBBBBB..........",
+    "...............BBBBBBBBBBBBBBBBBBBB.......",
+    ".BBBBB.......BBBBBBBBBBBBBBBBBBBBBBBBB....",
+    ".BBBBBBB....BBBBBBBBBBBBBBBBBBBBBBBBBBBB..",
+    ".BBBBBBBBBKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB.",
+    ".BBBBBBBBKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB.",
+    ".BBBBBBBKBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    ".BBBBBBKBBBBBBBBBBBBBBBBBKBBBBBBBBBBBBBBBB",
+    ".BBBBBKBBBBBBBBBBBBBBBBKKBBBBBBBBBBBBBBBBB",
+    ".BBBBKBBBBBBBBBBBBBBBKKBBBBBBBBBBBBBBBBBBB",
+    "BBBBBKBBBBBBBBBBBBBBKBBBBBBBBBBBBBBBBBWWWW",
+    "BBBBBKWWWWWWWWWWWWWKBBBBBBBBBKBKBBWWWWWWKK",
+    "BBBBBKWWWWWWWWWWWWWKBBBBBBBBBKBKWWWWWWWWK.",
 ]
 
-/// The shark fast asleep: eyes curved shut, gill marks, a little mouth, a rosy cheek, and a sleepy bubble at its nose
-/// that grows and shrinks as it breathes.
+/// The shark fast asleep: its eye a sleepy little dash, popping open when something wakes it.
 private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
-    let ox = cx - 18, oy = g - (sharkSleeping.count - 1)
+    let ox = cx - 21, oy = g - (sharkSleeping.count - 1)
     c.sprite(ox, oy, sharkSleeping, ["B": .body, "W": .belly, "K": .outline])
-    let waking = p.eyes == .wide
-    if waking {
-        c.rect(ox + 29, oy + 12, 2, 2, .outline); c.set(ox + 29, oy + 12, .belly)       // its eye pops open
+    if p.eyes == .wide {
+        c.rect(ox + 35, oy + 14, 2, 2, .outline); c.set(ox + 35, oy + 14, .belly)       // its eye pops open
     } else {
-        for (x, y) in [(28, 12), (29, 13), (30, 13), (31, 12)] { c.set(ox + x, oy + y, .outline) }
+        c.hline(ox + 35, ox + 36, oy + 15, .outline)                                     // eye shut
     }
-    for (x, y) in [(23, 12), (23, 13), (25, 12), (25, 13)] { c.set(ox + x, oy + y, .bodyShade) }   // gills
-    for (x, y) in [(33, 14), (34, 14), (35, 13)] { c.set(ox + x, oy + y, .outline) }               // its mouth
-    c.hline(ox + 29, ox + 30, oy + 14, .blush)
-    if !waking {
-        // the sleepy bubble, in and out with each breath
-        let big = p.bob != 0
-        c.sprite(ox + 37, oy + (big ? 8 : 10), big ? [".LL.", "LWwL", "LwwL", ".LL."] : [".L.", "LwL", ".L."],
-                 ["L": .waterLight, "W": .white, "w": .bodyLight])
-    }
-    return Anchors(headX: ox + 29, headTop: oy + 8, headW: 9, eyes: [(ox + 29, oy + 12)], profile: true, neck: (ox + 24, oy + 11))
+    return Anchors(headX: ox + 34, headTop: oy + 7, headW: 8, eyes: [(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10))
 }
 
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
