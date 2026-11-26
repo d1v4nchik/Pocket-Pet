@@ -1245,6 +1245,8 @@ fn draw_shark_front(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         }
         c.rect(ox + 1, oy + 5, 2, 4, Col::PhonesPad); c.rect(ox + 18, oy + 5, 2, 4, Col::PhonesPad);
     }
+    // (head_dy 99: just its face, for the pet picker)
+    if p.head_dy == 99 { return Anchors { head_x: cx, head_top: oy + 2, head_w: 13, eyes, profile: false, neck: (cx, oy + 16), hat_dx: 0 }; }
     // typing: the laptop in front of it, the back of its screen towards you; it peeks over and taps with both fins
     let tap = p.arm == Arm::Tap;
     c.rect(cx - 6, g - 8, 13, 6, Col::LapDark);

@@ -2112,11 +2112,13 @@ final class World: NSObject, NSPopoverDelegate, UNUserNotificationCenterDelegate
         if !sp.isBird { p.stance = .sit; p.tailUp = false }
         if sp.family == .dog { p.mouth = .tongue }
         if sp == .turtle { p.stance = .upright; p.prop = .laptop; p.headDY = 99 }     // the front-facing face (no laptop drawn)
+        if sp == .shark { p.prop = .laptop; p.headDY = 99 }                           // its round face from the front, grinning
         var c = Canvas(canvasW, canvasH)
         let a = drawPet(&c, sp, p, cx: canvasW / 2)
         c.outline()
         let up = roomForHat || sp == .bat ? 8 : 4       // the bat's ears stick up
         let crop = sp == .turtle ? c.cropped(a.headX - 8, a.headTop - 1, a.headX + 8, a.headTop + 13)      // its whole round face
+            : sp == .shark ? c.cropped(a.headX - 10, a.headTop - (roomForHat ? 8 : 3), a.headX + 10, a.headTop + 13)   // fin to chin
             : a.profile
             ? c.cropped(a.headX - 4, a.headTop - up, a.headX + 8, a.headTop + 7)
             : c.cropped(a.headX - 7, a.headTop - up, a.headX + 7, a.headTop + 9)

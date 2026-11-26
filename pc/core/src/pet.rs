@@ -1984,8 +1984,10 @@ pub fn face_canvas(sp: Species, o: Outfit, room_for_hat: bool) -> Canvas {
     let mut p = Pose { outfit: o, ..Pose::default() };
     if !sp.is_bird() { p.stance = Stance::Sit; p.tail_up = false; }
     if sp.family() == Family::Dog { p.mouth = Mouth::Tongue; }
+    if sp == Species::Shark { p.stance = Stance::Sit; p.prop = Prop::Laptop; p.head_dy = 99; }     // its front-facing face (no laptop drawn)
     let a = draw_pet(&mut c, sp, &p, CANVAS_W / 2);
     c.outline();
+    if sp == Species::Shark { return c.cropped(a.head_x - 10, a.head_top - if room_for_hat { 8 } else { 3 }, a.head_x + 10, a.head_top + 13); }
     let up = if room_for_hat || sp == Species::Bat { 8 } else { 4 };       // the bat's ears stick up
     if a.profile { c.cropped(a.head_x - 4, a.head_top - up, a.head_x + 8, a.head_top + 7) }
     else { c.cropped(a.head_x - 7, a.head_top - up, a.head_x + 7, a.head_top + 9) }

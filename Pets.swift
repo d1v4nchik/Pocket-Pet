@@ -1919,6 +1919,8 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         }
         c.rect(ox + 1, oy + 5, 2, 4, .phonesPad); c.rect(ox + 18, oy + 5, 2, 4, .phonesPad)
     }
+    // (headDY 99: just its face, for the pet picker)
+    if p.headDY == 99 { return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16)) }
     if p.prop == .laptop {
         // typing, like the turtle: the laptop in front of it, the back of its screen towards you; it peeks over and
         // taps away with both fins
