@@ -2239,9 +2239,10 @@ func drawAccessory(_ c: inout Canvas, _ o: Outfit) {
 @discardableResult
 func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     var p = p
-    // the tortoise: nothing on while it's tucked in its shell (or on its way in), or asleep in its own nightcap
+    // the tortoise: nothing on while it's tucked in its shell (or on its way in), or asleep in its own nightcap;
+    // that goes for the headphones too, or they'd float on the shell where its head was
     if sp == .turtle && ([.curl, .squash, .crouch, .held, .umbrella].contains(p.stance) || p.onBook || p.tuck > 0.6) {
-        p.nightcap = false; p.outfit = Outfit()
+        p.nightcap = false; p.outfit = Outfit(); p.phones = false
     }
     if sp == .turtle && p.tuck > 0.3 { p.outfit.neck = .none }      // its neck is drawing in: the collar goes first
     lastBook = nil
