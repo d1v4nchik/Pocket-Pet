@@ -1894,7 +1894,8 @@ private let sharkFrontShut = [
 private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let ox = cx - 10, oy = g - (sharkFront.count - 1)
-    let shut = p.mouth == .closed && [.closed, .half].contains(p.eyes)
+    // behind its laptop its mouth is out of sight: just its smiling face shows over the lid
+    let shut = p.prop == .laptop || (p.mouth == .closed && [.closed, .half].contains(p.eyes))
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
     c.sprite(ox, oy, shut ? sharkFrontShut : sharkFront, map)
     let eyes = [(ox + 5, oy + 7), (ox + 14, oy + 7)]
@@ -1911,6 +1912,7 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         }
     }
     c.hline(ox + 4, ox + 5, oy + 10, .blush); c.hline(ox + 15, ox + 16, oy + 10, .blush)   // rosy cheeks
+    sharkFrontOutfit(&c, p, ox: ox, oy: oy)
     if p.phones {
         // the band hugging its round head, the cups over the sides level with its eyes
         if p.outfit.hat == .none || p.nightcap {
@@ -1922,14 +1924,16 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     // (headDY 99: just its face, for the pet picker)
     if p.headDY == 99 { return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16)) }
     if p.prop == .laptop {
-        // typing, like the turtle: the laptop in front of it, the back of its screen towards you; it peeks over and
-        // taps away with both fins
+        // typing, like the turtle: the laptop in front of it, the back of its screen towards you; its face peeks over
+        // the lid and its fins rest on the keyboard either side, tapping away
         let tap = p.arm == .tap
-        c.rect(cx - 6, g - 8, 13, 6, .lapDark)                                         // the lid
-        c.hline(cx - 6, cx + 6, g - 8, .lapLight); c.set(cx, g - 5, .lapLight)          // its edge and a little logo
-        c.rect(cx - 8, g - 2, 17, 2, .lapLight)                                        // the keyboard
+        c.rect(ox + 3, oy + 11, 15, 6, .lapDark)                                       // the lid
+        c.hline(ox + 3, ox + 17, oy + 11, .lapLight); c.set(cx, oy + 14, .lapLight)     // its top edge and a little logo
+        c.rect(ox + 1, g - 1, 19, 2, .lapLight)                                        // the keyboard
         let up = Int(p.phase * 10) % 2 == 0
-        c.rect(cx - 9, g - 4 - (tap && up ? 1 : 0), 3, 2, .body); c.rect(cx + 7, g - 4 - (tap && !up ? 1 : 0), 3, 2, .body)
+        let fin: [Character: Col] = ["B": .body, "D": .bodyShade]
+        c.sprite(ox, g - 4 - (tap && up ? 1 : 0), [".BB", "BBB", "DBB"], fin)
+        c.sprite(ox + 18, g - 4 - (tap && !up ? 1 : 0), ["BB.", "BBB", "BBD"], fin)
     } else {
         // the big book open on the floor right in front of it; a fin reaches over to turn the page
         drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
@@ -1939,6 +1943,38 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         }
     }
     return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16))
+}
+
+/// Glasses and hats made for the shark facing you (`drawPet` then leaves them off): the glasses sit right over its
+/// wide-set eyes with a bridge between, the hat sits snug on its crown in place of the tip of its fin.
+private func sharkFrontOutfit(_ c: inout Canvas, _ p: Pose, ox: Int, oy: Int) {
+    let o = p.outfit
+    func put(_ x: Int, _ y: Int, _ col: Col) { c.set(ox + x, oy + y, col) }
+    func mirror(_ x: Int) -> Int { 20 - x }
+    switch o.glasses {
+    case .none: break
+    case .shades:
+        // two dark rounded lenses with a glint, a bar across the top
+        for x in 3...17 { put(x, 6, .frame) }
+        for x0 in [4, 13] {
+            for y in 7...8 { for x in x0..<(x0 + 4) { put(x, y, .lens) } }
+            for x in (x0 + 1)..<(x0 + 3) { put(x, 9, .lens) }
+            put(x0 + 1, 7, .white)
+        }
+    case .hearts:
+        for (x, y) in [(3, 6), (4, 6), (6, 6), (7, 6), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7), (4, 8), (5, 8), (6, 8), (5, 9)] {
+            put(x, y, .lensPink); put(mirror(x), y, .lensPink)
+        }
+        put(4, 6, .white); put(mirror(7), 6, .white)
+        for x in 8...12 { put(x, 7, .frame) }
+    case .round:
+        // round frames, its eyes showing through
+        for (x, y) in [(4, 6), (5, 6), (6, 6), (7, 6), (3, 7), (3, 8), (3, 9), (8, 7), (8, 8), (8, 9), (4, 10), (5, 10), (6, 10), (7, 10)] {
+            put(x, y, .frame); put(mirror(x), y, .frame)
+        }
+        for x in 9...11 { put(x, 7, .frame) }
+    }
+    if o.hat != .none && !p.nightcap { sharkHat(&c, o.hat, x: ox + 10, bottom: oy + 2, facing: true) }
 }
 
 /// Asleep, drawn exactly after the user's picture: lying flat out on the floor, its tail resting low on the left,
@@ -2186,8 +2222,8 @@ private func sharkSideOutfit(_ c: inout Canvas, _ o: Outfit, _ art: [String], _ 
 
 /// A hat sat snug on the shark's head: centred on `x`, its bottom row on `bottom`, with the gap under its brim
 /// filled in so it never floats over the slope of its head.
-private func sharkHat(_ c: inout Canvas, _ hat: Hat, x: Int, bottom: Int) {
-    guard let (rows, map) = hatArtProfile[hat] ?? hatArt[hat] else { return }
+private func sharkHat(_ c: inout Canvas, _ hat: Hat, x: Int, bottom: Int, facing: Bool = false) {
+    guard let (rows, map) = facing ? hatArt[hat] : hatArtProfile[hat] ?? hatArt[hat] else { return }
     let w = rows.map { $0.count }.max() ?? 0
     let x0 = x - w / 2, y0 = bottom - rows.count + 1
     for (i, ch) in rows[rows.count - 1].enumerated() where ch != "." {
@@ -2449,7 +2485,8 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
         a = drawShark(&c, p, cx: cx); p.phones = false
         if sharkSleeps(p) { p.nightcap = false; p.outfit = Outfit() }              // drawn to fit already
         else if a.profile { p.outfit = Outfit() }                                   // drawn to fit already
-        else if p.prop == .laptop { p.outfit.neck = .none }                         // behind the laptop
+        else if p.prop == .laptop { p.outfit = Outfit() }                           // drawn to fit already; the collar is behind the laptop
+        else if p.prop == .book { p.outfit.hat = .none; p.outfit.glasses = .none }  // drawn to fit already
         if p.stance == .fly || p.stance == .leap { p.outfit = Outfit(); p.nightcap = false }   // drawn from above already
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)
