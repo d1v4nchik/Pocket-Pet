@@ -1734,50 +1734,49 @@ private let sharkArtShut = [
     "..........DD.............KK...",
 ]
 
-/// Swimming (gravity off), side on like a real shark gliding through the water, heading right: a pointed snout, a
-/// tall dorsal fin swept back, a crescent tail with its top lobe longer, a pectoral fin under its chest, gill slits,
-/// a white belly and a little smile. D darker back and fin edges, W belly, E eye, S its shine, K lines.
-private let sharkSwimArt = [
-    "...............D..................",
-    "D..............DB.................",
-    ".D.............DBB................",
-    ".B.............DBBB...............",
-    "..D.........DDBBBBBBDDDDDDDB......",
-    "..B.....BDDDBBBBBBBBBBBBBBBBBB....",
-    "..BB...DDBBBBBBBBBBBBBBBBBBBBBBB..",
-    "...BBDDBBBBBBBBBBBBBBBBDBDBBSEBBB.",
-    "...BBBBBBBBBBBBBBBBBBBBDBDBBEEBBBB",
-    "...BBBBBBBBBBBBBBBBBBBBDBDBKBWWBBB",
-    "...B...BBBBWBBBWWWWWWWWWWWWWKKKWW.",
-    "..B......BBWWWWWWWWWWWWWWWWWWWW...",
-    ".BB.........WWWWWWWWWWWWWWWWW.....",
-    ".D.........BB.......BBB...........",
-    "...........D.......BBB............",
-    "..................BD..............",
-    "..................D...............",
+/// Swimming (gravity off), seen from above like a real shark in the water, heading right: its broad head with an eye
+/// either side, pectoral fins swept back, the dark line of its back and a crescent tail. F fins, D back, L light, E eyes.
+private let sharkTopArt = [
+    ".............FF................",
+    "F.............FFF..............",
+    "FF.............FFFF............",
+    ".FF.............FFFFF.BBBBBB...",
+    ".FFF......BBBBBBBBBBBBBBBBBBBB.",
+    "..FFF.BBBBBBBBBBBBBBBBLLLLLEBBB",
+    "...BBBBBDDDDDDDDDDDDDDBBBBBBBBB",
+    "...BDDDDDDDDDDDDDDDDDDDDDBBBBBB",
+    "...BBBBBDDDDDDDDDDDDDDBBBBBBBBB",
+    "..FFF.BBBBBBBBBBBBBBBBLLLLLEBBB",
+    ".FFF......BBBBBBBBBBBBBBBBBBBB.",
+    ".FF.............FFFFF.BBBBBB...",
+    "FF.............FFFF............",
+    "F.............FFF..............",
+    ".............FF................",
 ]
 
 private func drawSharkTop(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     // drawn level first, then turned to point the way it's swimming (nose up when it swims up the screen)
     var f = Canvas(c.w, c.h)
-    let ox = cx - 17, oy = c.h - 2 - 27 + p.bob
-    let px = ox + 17, py = oy + 8                     // the middle of its body, what it turns about
-    // its tail beats as it swims: the back end flicks a little, the head stays steady
+    let ox = cx - 15, oy = c.h - 2 - 26 + p.bob
+    let px = ox + 15, py = oy + 7                     // the middle of its body, what it turns about
+    // a swimming wave runs down its body: the head steady, the tail sweeping side to side
     func dy(_ x: Int) -> Int {
-        let a = 1.3 * pow(max(0, 1 - Double(x) / 16), 1.5)
+        let a = 2.2 * pow(max(0, 1 - Double(x) / 30), 1.5)
         return Int((a * sin(p.phase - Double(x) * 0.35)).rounded())
     }
     func put(_ x: Int, _ y: Int, _ col: Col) { f.set(ox + x, oy + y + dy(x), col) }
-    let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "E": .eye, "S": .white, "K": .outline]
-    for (y, row) in sharkSwimArt.enumerated() {
+    let map: [Character: Col] = ["B": .body, "D": .bodyShade, "F": .bodyShade, "L": .bodyLight, "E": .eye]
+    for (y, row) in sharkTopArt.enumerated() {
         for (x, ch) in row.enumerated() { if let col = map[ch] { put(x, y, col) } }
     }
-    if [.closed, .half, .happy].contains(p.eyes) {                    // eyes shut: a line
-        for x in 28...29 { put(x, 7, .body); put(x, 8, .outline) }
+    if [.closed, .half, .happy].contains(p.eyes) { for ey in [5, 9] { put(26, ey, .outline); put(27, ey, .outline) } }
+    if p.blush { put(25, 6, .blush); put(25, 8, .blush) }
+    sharkTopOutfit(p.outfit, put)
+    if p.phones {
+        // from above: the band across the top of its head, a pad on each side
+        for y in 3...11 { put(24, y, .phones) }
+        for x in 23...25 { put(x, 1, .phonesPad); put(x, 2, .phonesPad); put(x, 12, .phonesPad); put(x, 13, .phonesPad) }
     }
-    if p.blush { put(25, 10, .blush); put(26, 10, .blush) }
-    sharkSwimOutfit(p, put)
-    if p.outfit.hat != .none && !p.nightcap { sharkHat(&f, p.outfit.hat, x: ox + 26, bottom: oy + 3 + dy(26)) }   // on its head, in front of its fin
     // turn it: each cell looks back to where it came from, so it stays crisp pixels with no holes
     let a = p.pitch, co = cos(a), si = sin(a)
     if abs(a) < 0.05 {
@@ -1796,47 +1795,51 @@ private func drawSharkTop(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         let rx = Double(ox + x - px), ry = Double(oy + y - py)
         return (px + Int((rx * co + ry * si).rounded()), py + Int((-rx * si + ry * co).rounded()))
     }
-    let h = turned(26, 4), e = turned(28, 7), n = turned(22, 8)
+    let h = turned(26, 3), e = turned(27, 5), n = turned(22, 7)
     return Anchors(headX: h.0, headTop: h.1, headW: 9, eyes: [e], profile: true, neck: n)
 }
 
-/// What it's wearing while it swims (`drawPet` leaves the generic ones off; the hat goes on with `sharkHat`): glasses over its eye with the arm running back, the headphones over its head, and a collar round
-/// it just behind its gills.
-private func sharkSwimOutfit(_ p: Pose, _ put: (Int, Int, Col) -> Void) {
-    let o = p.outfit
+/// What it's wearing, seen from above on its head and neck: hats as rings from the top, glasses across its eyes,
+/// a collar round its middle.
+private func sharkTopOutfit(_ o: Outfit, _ put: (Int, Int, Col) -> Void) {
+    func disc(_ r: Int, _ cols: [Col]) {       // rings out from the middle of its head (cols: middle first)
+        for y in -r...r {
+            for x in -r...r {
+                let d = Int((Double(x * x + y * y)).squareRoot().rounded())
+                if d <= r { put(24 + x, 7 + y, cols[min(cols.count - 1, d * cols.count / (r + 1))]) }
+            }
+        }
+    }
+    switch o.hat {
+    case .none: break
+    case .topHat: disc(3, [.hatBlack, .hatBand, .hatBlack])
+    case .crown: disc(2, [.ruby, .gold, .gold])
+    case .party: disc(2, [.star, .partyBlue, .partyPink])
+    case .witch: disc(3, [.witch, .witchBand, .witch])
+    case .cowboy: disc(3, [.cowboyDark, .cowboy, .cowboy])
+    case .santa: disc(2, [.white, .hatBand, .white])
+    case .bow:
+        for (i, row) in ["PP.", "PDP", ".D.", "PDP", "PP."].enumerated() {
+            for (x, ch) in row.enumerated() where ch != "." { put(23 + x, 5 + i, ch == "D" ? .bowDark : .bowPink) }
+        }
+    case .flower:
+        for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] { put(24 + dx, 7 + dy, .petal) }
+        put(24, 7, .popYellow)
+    }
     switch o.glasses {
     case .none: break
-    case .shades:
-        for x in 23...30 { put(x, 6, .frame) }
-        for y in 7...8 { for x in 27...30 { put(x, y, .lens) } }
-        put(28, 9, .lens); put(29, 9, .lens); put(28, 7, .white)
-    case .hearts:
-        for (x, y) in [(27, 6), (28, 6), (30, 6), (31, 6), (27, 7), (28, 7), (29, 7), (30, 7), (31, 7), (28, 8), (29, 8), (30, 8), (29, 9)] { put(x, y, .lensPink) }
-        put(27, 6, .white); for x in 23...26 { put(x, 6, .frame) }
-    case .round:
-        for x in 28...29 { put(x, 5, .frame); put(x, 10, .frame) }
-        for y in 6...9 { put(26, y, .frame); put(31, y, .frame) }
-        put(27, 5, .frame); put(30, 5, .frame); put(27, 10, .frame); put(30, 10, .frame)
-        for x in 23...25 { put(x, 7, .frame) }
+    case .shades: for y in 4...10 { put(28, y, y == 5 || y == 9 ? .lens : .frame) }; for y in [5, 9] { put(27, y, .lens) }
+    case .hearts: for y in 4...10 { put(28, y, .frame) }; for y in [5, 9] { put(27, y, .lensPink); put(28, y, .lensPink) }
+    case .round: for y in 4...10 { put(28, y, .frame) }; for y in [4, 6, 8, 10] { put(27, y, .frame) }
     }
     switch o.neck {
     case .none: break
     case .scarf:
-        for y in 4...12 { put(21, y, .scarf); put(22, y, y % 2 == 0 ? .scarfStripe : .scarf) }
-        for (x, y) in [(20, 13), (21, 13), (19, 14), (20, 14)] { put(x, y, .scarf) }       // the end trailing behind
-    case .bowtie:
-        for y in 4...12 { put(22, y, .ruby) }
-        for (x, y) in [(21, 12), (21, 14), (22, 13), (23, 12), (23, 14), (21, 13), (23, 13)] { put(x, y, .ruby) }
-    case .bell:
-        for y in 4...12 { put(22, y, .collar) }
-        for (x, y) in [(21, 13), (22, 13), (23, 13), (22, 14)] { put(x, y, .gold) }
-    case .bandana:
-        for y in 4...12 { put(21, y, .hatBand); put(22, y, y % 3 == 1 ? .white : .hatBand) }
-        for (x, y) in [(20, 13), (21, 13), (22, 13), (21, 14)] { put(x, y, .hatBand) }
-    }
-    if p.phones {
-        for (x, y) in [(25, 5), (25, 4), (26, 3), (27, 3), (28, 3), (29, 4), (29, 5)] { put(x, y, .phones) }
-        for y in 6...8 { put(25, y, .phonesPad); put(26, y, .phonesPad) }
+        for y in 4...10 { put(20, y, .scarf); put(21, y, y % 2 == 0 ? .scarfStripe : .scarf) }
+        for x in 16...19 { put(x, 11, .scarf) }                                   // the end trailing behind
+    case .bowtie: for (x, y) in [(20, 6), (20, 8), (21, 7), (22, 6), (22, 8), (21, 6), (21, 8)] { put(x, y, .ruby) }
+    case .bell: for y in 4...10 { put(21, y, .collar) }; put(21, 11, .gold); put(21, 3, .gold)
+    case .bandana: for y in 4...10 { put(20, y, .bandana); put(21, y, .bandana) }; put(19, 7, .white)
     }
 }
 
@@ -2071,7 +2074,7 @@ private func sharkSleeps(_ p: Pose) -> Bool {
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let st = p.stance
-    if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about, side on
+    if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
     if (p.prop == .book || p.prop == .laptop) && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying or typing: sat facing you
     if sharkSleeps(p) { return drawSleepingShark(&c, p, cx: cx) }
@@ -2486,7 +2489,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
         else if a.profile { p.outfit = Outfit() }                                   // drawn to fit already
         else if p.prop == .laptop { p.outfit = Outfit() }                           // drawn to fit already; the collar is behind the laptop
         else if p.prop == .book { p.outfit.hat = .none; p.outfit.glasses = .none }  // drawn to fit already
-        if p.stance == .fly || p.stance == .leap { p.outfit = Outfit(); p.nightcap = false }   // drawn to fit already
+        if p.stance == .fly || p.stance == .leap { p.outfit = Outfit(); p.nightcap = false }   // drawn from above already
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)
     default: a = drawQuad(&c, sp, p, cx: cx)
