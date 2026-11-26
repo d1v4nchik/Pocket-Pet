@@ -948,9 +948,9 @@ private let foxFrontSit = [
     "..WWWOOOOOOO.........",
     "..WWOOOOOKKO.........",
     "..WWOOOOOMKOO........",
-    "...OKKOOOMKWWO.......",
-    "...OOWKOKOWWW........",
-    "...OWWWWWWWWO........",
+    "...OKKKOOMKWWO.......",
+    "...OOMKOOOWWW........",
+    "...OWWWKKWWWO........",
     "....WWWWWWWWO........",
     "....OWWWWWWWO...WW...",
     "....OWWWWWWWO...WWW..",
@@ -1070,19 +1070,23 @@ private func drawGlassPress(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int
             small.px[y * nw + x] = pick
         }
     }
-    // the eyes, redrawn crisp after shrinking: a dark oval with a white shine, and the small one beside the patch;
-    // now and then a blink
+    // the eyes, redrawn crisp after shrinking. The squeezed-shut eye: the shrunk lines there turn to mush, so they're
+    // wiped (back to the patch or the fur) and redrawn as one clean ">"
+    let patch = small.get(7, 12), fur = small.get(15, 6)
+    for y in 7...12 { for x in 6...13 where [line, shine, Col.eye.rawValue].contains(small.get(x, y)) {
+        small.px[y * nw + x] = x <= 10 && y >= 8 ? patch : fur
+    } }
+    for (x, y) in [(10, 8), (11, 8), (12, 9), (11, 10), (10, 10)] { small.set(x, y, .eye) }
+    // the open eye: a dark oval with a white shine; now and then a blink
     let settled = p.glassIn >= 1
     let blink = settled && p.glassT.truncatingRemainder(dividingBy: 2.6) > 2.42
     if blink {
-        for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14), (12, 8), (13, 8), (12, 9), (13, 9)] {
-            small.set(x, y, .body)
-        }
-        small.hline(17, 19, 13, .eye); small.hline(12, 13, 9, .eye)
+        for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14)] { small.set(x, y, .body) }
+        for y in 11...14 { for x in 17...20 where [line, shine, Col.eye.rawValue].contains(small.get(x, y)) { small.set(x, y, .body) } }
+        small.hline(17, 19, 13, .eye)
     } else {
         for (x, y) in [(18, 11), (17, 12), (18, 12), (19, 12), (17, 13), (18, 13), (19, 13), (18, 14)] { small.set(x, y, .eye) }
         small.set(18, 12, .eyeHi)                 // the shine inside the eye, so it shows on white fur too
-        for (x, y) in [(12, 8), (13, 8), (12, 9), (13, 9)] { small.set(x, y, .eye) }
     }
     // it moves: rises into view (and sinks away at the end), breathes, presses one paw then the other on the glass;
     // a high five pushes the right paw up to meet you with a little squish
@@ -1104,7 +1108,7 @@ private func drawGlassPress(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int
             if ty <= g && ty >= 0 { c.px[ty * c.w + ox + x] = v }
         }
     }
-    return Anchors(headX: ox + 12, headTop: oy + 4 + drop, headW: 11, eyes: [(ox + 12, oy + 8 + drop), (ox + 17, oy + 12 + drop)], profile: false, neck: (ox + 12, oy + 18 + drop))
+    return Anchors(headX: ox + 12, headTop: oy + 4 + drop, headW: 11, eyes: [(ox + 11, oy + 9 + drop), (ox + 17, oy + 12 + drop)], profile: false, neck: (ox + 12, oy + 18 + drop))
 }
 
 private func drawGlassPressFull(_ c: inout Canvas, _ sp: Species, cx: Int) -> Anchors {
