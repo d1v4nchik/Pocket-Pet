@@ -948,7 +948,7 @@ private let foxFrontSit = [
     "..WWWOOOOOOO.........",
     "..WWOOOOOKKO.........",
     "..WWOOOOOMKOO........",
-    "...OKKKOOMKWWO.......",
+    "...OKKKOOMKWO........",
     "...OOMKOOOWWW........",
     "...OWWWKKWWWO........",
     "....WWWWWWWWO........",
@@ -956,13 +956,13 @@ private let foxFrontSit = [
     "....OWWWWWWWO...WWW..",
     "....OWWWWWWWWO.WWWWW.",
     "...OOKWWWWWWKO.WWWWWW",
-    "..OOOOKWWWWWKO.KWWWWO",
+    "..OOOOKWWWWKOO.WWWWWO",
     ".OOOOKMMWWWKMKOOKKKOO",
-    "OOOKOMMMMWMMMKOKOOOOO",
-    "OOOOKMMMMKMMMKOKOOOOO",
-    "OOOKMKMMMKMMMKOKOOOO.",
-    "OOOKMMKMMKMKMKOKOOOO.",
-    ".OOKMMKMMKMKMKOKOO...",
+    "OOOKOMMMMWMMMKOOOOOOO",
+    "OOOOKMMMMKMMMKOOOOOOO",
+    "OOOOKMMMMKMMMKOOOOOO.",
+    "OOOOKMKMMKMKMKOOOOO..",
+    ".OOOKMKMMKMKMKOOOO...",
 ]
 
 private func drawFrontSitFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
