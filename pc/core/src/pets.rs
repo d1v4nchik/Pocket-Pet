@@ -1222,11 +1222,11 @@ fn draw_shark_front(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
     let (ox, oy) = (cx - 10, g - (SHARK_FRONT.len() as i32 - 1));
     // behind its laptop its mouth is out of sight: just its smiling face shows over the lid
-    let shut = p.prop == Prop::Laptop || (p.mouth == Mouth::Closed && matches!(p.eyes, Eyes::Closed | Eyes::Half));
+    let shut = (p.prop == Prop::Laptop && p.head_dy != 99) || (p.mouth == Mouth::Closed && matches!(p.eyes, Eyes::Closed | Eyes::Half));
     let map = [(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'R', Col::Mouth), (b'O', Col::Tongue), (b'P', Col::Mark), (b'K', Col::Outline)];
     c.sprite(ox, oy, if shut { &SHARK_FRONT_SHUT } else { &SHARK_FRONT }, &map);
     // a tall dorsal fin on top (a hat sits in its place)
-    if p.outfit.hat == Hat::None && !p.nightcap { c.sprite(ox + 7, oy - 3, &["...B...", "..BBD..", "..BBD..", ".BBBDD.", ".BBBBD."], &[(b'B', Col::Body), (b'D', Col::BodyShade)]); }
+    if p.outfit.hat == Hat::None && !p.nightcap && p.head_dy != 99 { c.sprite(ox + 7, oy - 3, &["...B...", "..BBD..", "..BBD..", ".BBBDD.", ".BBBBD."], &[(b'B', Col::Body), (b'D', Col::BodyShade)]); }
     let eyes = vec![(ox + 5, oy + 7), (ox + 14, oy + 7)];
     for &(ex, ey) in &eyes {
         match p.eyes {

@@ -1892,11 +1892,11 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let ox = cx - 10, oy = g - (sharkFront.count - 1)
     // behind its laptop its mouth is out of sight: just its smiling face shows over the lid
-    let shut = p.prop == .laptop || (p.mouth == .closed && [.closed, .half].contains(p.eyes))
+    let shut = (p.prop == .laptop && p.headDY != 99) || (p.mouth == .closed && [.closed, .half].contains(p.eyes))
     let map: [Character: Col] = ["B": .body, "D": .bodyShade, "W": .belly, "R": .mouth, "O": .tongue, "P": .mark, "K": .outline]
     c.sprite(ox, oy, shut ? sharkFrontShut : sharkFront, map)
     // a tall dorsal fin on top (a hat sits in its place)
-    if p.outfit.hat == .none && !p.nightcap { c.sprite(ox + 7, oy - 3, ["...B...", "..BBD..", "..BBD..", ".BBBDD.", ".BBBBD."], ["B": .body, "D": .bodyShade]) }
+    if p.outfit.hat == .none && !p.nightcap && p.headDY != 99 { c.sprite(ox + 7, oy - 3, ["...B...", "..BBD..", "..BBD..", ".BBBDD.", ".BBBBD."], ["B": .body, "D": .bodyShade]) }
     let eyes = [(ox + 5, oy + 7), (ox + 14, oy + 7)]
     for (ex, ey) in eyes {
         switch p.eyes {
