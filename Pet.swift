@@ -2144,8 +2144,32 @@ final class Pet {
         return (beatT, beatT.truncatingRemainder(dividingBy: 1), Int(t / (bt * 4)) % 4, t.truncatingRemainder(dividingBy: bt * 4) / bt)
     }
 
+    /// Every sixth time round the four bars (about once every 40 seconds) the pet breaks into its own little dance,
+    /// spin and all; the rest of the time it just bobs its head to the beat.
+    private func dancingShow() -> Bool { Int(t / (0.42 * 16)) % 6 == 5 }
+
+    /// The everyday groove: sat (or stood, for the birds) bobbing its head on the beat, a paw or wing up now and then.
+    private func headBob(_ p: inout Pose, blink: Bool) {
+        let beat = Int(t / 0.42) % 2
+        let bar = Int(t / 1.68) % 4
+        p.eyes = bar % 2 == 0 ? .happy : (blink ? .closed : .open)
+        if isBird {
+            let flapFast = Int(t / 0.09) % 2 == 0
+            p.stance = bar == 1 ? .walk : .stand
+            p.phase = beat == 0 ? 1.2 : 4.3
+            p.bob = beat; p.headDX = beat
+            if bar == 3 { p.arm = flapFast ? .raised : .rest }
+        } else {
+            p.stance = .sit; p.tailUp = true; p.tail = t * 4
+            p.headDY = beat
+            if bar == 3 { p.arm = beat == 0 ? .raised : .rest }
+        }
+    }
+
     /// Dancing to the music, each in its own way: four bars that go round, the third always the big move.
+    /// Only now and then (see `dancingShow`); otherwise it's the head bob.
     private func dance(_ p: inout Pose, blink: Bool) {
+        if !dancingShow() && species != .bat { headBob(&p, blink: blink); return }
         let (beatT, b, bar, inBar) = beatClock()
         let pi = Double.pi
         let bounce = Int((sin(b * pi) * 2).rounded())
@@ -2231,7 +2255,7 @@ final class Pet {
             case 1: p.lean = Int((2 * sway).rounded()); if nod { p.stance = .leap; p.phase = 1.2 }
             case 3: p.lean = Int((3 * sin(2 * pi * beatT)).rounded())
             default:
-                if bigMove { let k = inBar / 2; p.twirl = 2 * pi * k * k * (3 - 2 * k); p.eyes = .happy }
+                if bigMove && dancingShow() { let k = inBar / 2; p.twirl = 2 * pi * k * k * (3 - 2 * k); p.eyes = .happy }
                 else { p.stance = .leap; p.phase = 1.2; p.eyes = .happy; p.blush = true; p.mouth = .open }
             }
         default:
@@ -2254,7 +2278,7 @@ final class Pet {
         p.eyes = b < 0.35 ? .happy : .open
         if family != .bat { p.arm = b < 0.5 ? .raised : .down } else { p.phase = b * 2 * Double.pi }
         if bar == 1 { p.lean = Int((2 * sin(Double.pi * beatT)).rounded()) }
-        if bar == 2 && inBar < 2 {
+        if bar == 2 && inBar < 2 && dancingShow() {                  // the barrel roll only now and then
             let k = inBar / 2
             p.twirl = 2 * Double.pi * k * k * (3 - 2 * k); p.hop = 0; p.eyes = .happy
         }
