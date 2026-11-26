@@ -2047,7 +2047,6 @@ final class Pet {
             else { p.stance = family == .dog ? .upright : .sit; p.tailUp = false; p.mouth = modeT < 0.8 ? .open : .closed }
         case .held:
             p.stance = .held; p.bob = 0; p.headDX = 0
-            p.phones = false                                   // the headphones come off when it's picked up
             p.phase = t * 6
             if isBird {
                 p.arm = flapFast ? .raised : .rest; p.eyes = .wide
