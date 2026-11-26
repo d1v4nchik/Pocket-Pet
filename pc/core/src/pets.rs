@@ -1085,49 +1085,48 @@ const SHARK_MAP: &[(u8, Col)] = &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'
 
 /// Bubbles the shark, side on. (The Mac app also has it seen from above while it swims, and facing you behind its book
 /// when it studies; this port has neither swimming nor study mode, so it's always side on.)
-/// Asleep: lying flat out on the floor the way a real shark rests, drawn true to life: a long torpedo body, the tall
-/// swept-back dorsal fin, gill slits, the big pectoral fin resting on the floor, the tail's long upper lobe, and its
-/// cream underside meeting the blue along the side. B blue, D deep blue, W cream.
+/// Asleep: curled up like a croissant, belly on the floor, its head resting on the right and its tail curling up and
+/// over its back towards its nose. B blue, D deep blue, W cream, P peachy belly.
 const SHARK_SLEEPING: [&str; 16] = [
-    "DD...................D..................",
-    ".DDD................DD..................",
-    "..DDD..............DDD..................",
-    "...DDD............DDDD..................",
-    "....DDD.........DDDDDD..................",
-    ".....DDD....DDDDBBBBBBDDDDDD............",
-    "......DDDDDDBBBBBBBBBBBBBBBBBDDDD.......",
-    ".......BBBBBBBBBBBBBBBBBBBBBBBBBBBD.....",
-    "........BBBBBBBBBBBBBBBBBDBDBDBBBBBBD...",
-    ".......BBBBBBBBBBBBBBBBBBDBDBDBBBBBBBBB.",
-    "......DDDBBBBBBBBBBWWWWWWWWWWWWWWWWWWWW.",
-    ".....DDD..WWWWWWWWWWWWWWWWWWWWWWWWWWW...",
-    "....DDD....DDWWWWWWWWWWWWDDDWWWWWWW.....",
-    "...DDD....DDD....WWWWWWWDDDD............",
-    ".......................DDDD.............",
-    "......................DDDD..............",
+    ".........DD...................",
+    ".......DDD....................",
+    ".....DDDD.DD..................",
+    "....DDDDDDD...................",
+    "...DDDD.......................",
+    "...DDD........................",
+    "...DDD..............BBBBBB....",
+    "...DDD.......B....BBBBBBBBBB..",
+    "...DDDB.....BB...BBBBBBBBBBBB.",
+    "...DDBBB...BBB..BBBBBBBBBBBBBB",
+    "....DBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "....BBBBBBBBBBBBBBBBBWWWWWWWBB",
+    ".....BBBBBBBBBBBBBBWWWWWWWWWWB",
+    "......BBBBBBBBBBBWWWWWWWWWWWW.",
+    ".......DDPPPPPPPPPPPPWWWWWWW..",
+    ".........DDD......DDDD........",
 ];
 
-/// The shark fast asleep: eyes curved shut, a little smile under its snout, and a sleepy bubble at its nose that
-/// grows and shrinks as it breathes.
+/// The shark fast asleep and curled up: eyes curved shut, a tiny smile, rosy cheek, and a sleepy bubble at its nose
+/// that grows and shrinks as it breathes.
 fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
-    let (ox, oy) = (cx - 20, g - (SHARK_SLEEPING.len() as i32 - 1));
-    c.sprite(ox, oy, &SHARK_SLEEPING, &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly)]);
+    let (ox, oy) = (cx - 15, g - (SHARK_SLEEPING.len() as i32 - 1));
+    c.sprite(ox, oy, &SHARK_SLEEPING, &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'P', Col::Mark)]);
     let waking = p.eyes == Eyes::Wide;
     if waking {
-        c.rect(ox + 33, oy + 7, 2, 2, Col::Outline); c.set(ox + 33, oy + 7, Col::Belly);      // its eye pops open
+        c.rect(ox + 23, oy + 8, 2, 2, Col::Outline); c.set(ox + 23, oy + 8, Col::Belly);      // its eye pops open
     } else {
-        for (x, y) in [(32, 7), (33, 8), (34, 8), (35, 7)] { c.set(ox + x, oy + y, Col::Outline); }
+        for (x, y) in [(22, 8), (23, 9), (24, 9), (25, 8)] { c.set(ox + x, oy + y, Col::Outline); }
     }
-    for (x, y) in [(30, 11), (31, 12), (32, 12), (33, 12), (34, 11)] { c.set(ox + x, oy + y, Col::Outline); }
-    if p.blush { c.hline(ox + 31, ox + 32, oy + 10, Col::Blush); }
+    c.hline(ox + 24, ox + 25, oy + 13, Col::Outline);                                  // a tiny smile
+    c.hline(ox + 20, ox + 21, oy + 11, Col::Blush);
     if !waking {
         // the sleepy bubble, in and out with each breath
         let big = p.bob != 0;
         let rows: &[&str] = if big { &[".LL.", "LWwL", "LwwL", ".LL."] } else { &[".L.", "LwL", ".L."] };
-        c.sprite(ox + 40, oy + if big { 4 } else { 6 }, rows, &[(b'L', Col::WaterLight), (b'W', Col::White), (b'w', Col::BodyLight)]);
+        c.sprite(ox + 29, oy + if big { 4 } else { 6 }, rows, &[(b'L', Col::WaterLight), (b'W', Col::White), (b'w', Col::BodyLight)]);
     }
-    Anchors { head_x: ox + 32, head_top: oy + 6, head_w: 7, eyes: vec![(ox + 33, oy + 7)], profile: true, neck: (ox + 26, oy + 9), hat_dx: 0 }
+    Anchors { head_x: ox + 23, head_top: oy + 6, head_w: 9, eyes: vec![(ox + 23, oy + 8)], profile: true, neck: (ox + 18, oy + 11), hat_dx: 0 }
 }
 
 fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
