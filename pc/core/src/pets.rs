@@ -1225,6 +1225,8 @@ fn draw_shark_front(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let shut = p.prop == Prop::Laptop || (p.mouth == Mouth::Closed && matches!(p.eyes, Eyes::Closed | Eyes::Half));
     let map = [(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'R', Col::Mouth), (b'O', Col::Tongue), (b'P', Col::Mark), (b'K', Col::Outline)];
     c.sprite(ox, oy, if shut { &SHARK_FRONT_SHUT } else { &SHARK_FRONT }, &map);
+    // a tall dorsal fin on top (a hat sits in its place)
+    if p.outfit.hat == Hat::None && !p.nightcap { c.sprite(ox + 7, oy - 3, &["...B...", "..BBD..", "..BBD..", ".BBBDD.", ".BBBBD."], &[(b'B', Col::Body), (b'D', Col::BodyShade)]); }
     let eyes = vec![(ox + 5, oy + 7), (ox + 14, oy + 7)];
     for &(ex, ey) in &eyes {
         match p.eyes {
@@ -1297,6 +1299,87 @@ fn shark_front_outfit(c: &mut Canvas, p: &Pose, ox: i32, oy: i32) {
     if o.hat != Hat::None && !p.nightcap { shark_hat(c, o.hat, ox + 10, oy + 2, true); }
 }
 
+/// Swimming (gravity off), side on like a real shark gliding through the water, heading right: a pointed snout, a
+/// tall dorsal fin swept back, a crescent tail, a pectoral fin under its chest, gill slits, a white belly and a smile.
+const SHARK_SWIM: [&str; 17] = [
+    "...............D..................",
+    "D..............DB.................",
+    ".D.............DBB................",
+    ".B.............DBBB...............",
+    "..D.........DDBBBBBBDDDDDDDB......",
+    "..B.....BDDDBBBBBBBBBBBBBBBBBB....",
+    "..BB...DDBBBBBBBBBBBBBBBBBBBBBBB..",
+    "...BBDDBBBBBBBBBBBBBBBBDBDBBSEBBB.",
+    "...BBBBBBBBBBBBBBBBBBBBDBDBBEEBBBB",
+    "...BBBBBBBBBBBBBBBBBBBBDBDBKBWWBBB",
+    "...B...BBBBWBBBWWWWWWWWWWWWWKKKWW.",
+    "..B......BBWWWWWWWWWWWWWWWWWWWW...",
+    ".BB.........WWWWWWWWWWWWWWWWW.....",
+    ".D.........BB.......BBB...........",
+    "...........D.......BBB............",
+    "..................BD..............",
+    "..................D...............",
+];
+
+fn draw_shark_swim(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
+    let (ox, oy) = (cx - 17, c.h - 2 - 27 + p.bob);
+    // its tail beats as it swims: the back end flicks a little, the head stays steady
+    let dy = |x: i32| -> i32 { let a = 1.3 * (1.0 - x as f64 / 16.0).max(0.0).powf(1.5); iround(a * (p.phase - x as f64 * 0.35).sin()) };
+    let put = |c: &mut Canvas, x: i32, y: i32, col: Col| c.set(ox + x, oy + y + dy(x), col);
+    for (y, row) in SHARK_SWIM.iter().enumerate() {
+        for (x, ch) in row.bytes().enumerate() {
+            let col = match ch { b'B' => Col::Body, b'D' => Col::BodyShade, b'W' => Col::Belly, b'E' => Col::Eye, b'S' => Col::White, b'K' => Col::Outline, _ => continue };
+            put(c, x as i32, y as i32, col);
+        }
+    }
+    if matches!(p.eyes, Eyes::Closed | Eyes::Half | Eyes::Happy) { for x in 28..=29 { put(c, x, 7, Col::Body); put(c, x, 8, Col::Outline); } }
+    if p.blush { put(c, 25, 10, Col::Blush); put(c, 26, 10, Col::Blush); }
+    let o = p.outfit;
+    match o.glasses {
+        Glasses::None => {}
+        Glasses::Shades => {
+            for x in 23..=30 { put(c, x, 6, Col::Frame); }
+            for y in 7..=8 { for x in 27..=30 { put(c, x, y, Col::Lens); } }
+            put(c, 28, 9, Col::Lens); put(c, 29, 9, Col::Lens); put(c, 28, 7, Col::White);
+        }
+        Glasses::Hearts => {
+            for (x, y) in [(27, 6), (28, 6), (30, 6), (31, 6), (27, 7), (28, 7), (29, 7), (30, 7), (31, 7), (28, 8), (29, 8), (30, 8), (29, 9)] { put(c, x, y, Col::LensPink); }
+            put(c, 27, 6, Col::White); for x in 23..=26 { put(c, x, 6, Col::Frame); }
+        }
+        Glasses::Round => {
+            for x in 28..=29 { put(c, x, 5, Col::Frame); put(c, x, 10, Col::Frame); }
+            for y in 6..=9 { put(c, 26, y, Col::Frame); put(c, 31, y, Col::Frame); }
+            put(c, 27, 5, Col::Frame); put(c, 30, 5, Col::Frame); put(c, 27, 10, Col::Frame); put(c, 30, 10, Col::Frame);
+            for x in 23..=25 { put(c, x, 7, Col::Frame); }
+        }
+    }
+    match o.neck {
+        Neckwear::None => {}
+        Neckwear::Scarf => {
+            for y in 4..=12 { put(c, 21, y, Col::Scarf); put(c, 22, y, if y % 2 == 0 { Col::ScarfStripe } else { Col::Scarf }); }
+            for (x, y) in [(20, 13), (21, 13), (19, 14), (20, 14)] { put(c, x, y, Col::Scarf); }
+        }
+        Neckwear::Bowtie => {
+            for y in 4..=12 { put(c, 22, y, Col::Ruby); }
+            for (x, y) in [(21, 12), (21, 14), (22, 13), (23, 12), (23, 14), (21, 13), (23, 13)] { put(c, x, y, Col::Ruby); }
+        }
+        Neckwear::Bell => {
+            for y in 4..=12 { put(c, 22, y, Col::Collar); }
+            for (x, y) in [(21, 13), (22, 13), (23, 13), (22, 14)] { put(c, x, y, Col::Gold); }
+        }
+        Neckwear::Bandana => {
+            for y in 4..=12 { put(c, 21, y, Col::HatBand); put(c, 22, y, if y % 3 == 1 { Col::White } else { Col::HatBand }); }
+            for (x, y) in [(20, 13), (21, 13), (22, 13), (21, 14)] { put(c, x, y, Col::HatBand); }
+        }
+    }
+    if p.phones {
+        for (x, y) in [(25, 5), (25, 4), (26, 3), (27, 3), (28, 3), (29, 4), (29, 5)] { put(c, x, y, Col::Phones); }
+        for y in 6..=8 { put(c, 25, y, Col::PhonesPad); put(c, 26, y, Col::PhonesPad); }
+    }
+    if o.hat != Hat::None && !p.nightcap { shark_hat(c, o.hat, ox + 26, oy + 3 + dy(26), false); }
+    Anchors { head_x: ox + 26, head_top: oy + 4, head_w: 9, eyes: vec![(ox + 28, oy + 7)], profile: true, neck: (ox + 22, oy + 8), hat_dx: 0 }
+}
+
 /// Lying asleep on the floor (drawn with `draw_sleeping_shark`).
 fn shark_sleeps(p: &Pose) -> bool {
     (p.asleep || (p.nightcap && p.eyes == Eyes::Closed)) && !matches!(p.stance, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap | Stance::Walk)
@@ -1306,6 +1389,7 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
     let st = p.stance;
     let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
+    if matches!(st, Stance::Fly | Stance::Leap) { return draw_shark_swim(c, p, cx); }   // swimming about, side on
     if shark_sleeps(p) { return draw_sleeping_shark(c, p, cx); }
     if p.prop == Prop::Laptop && !airborne { return draw_shark_front(c, p, cx); }   // typing: sat facing you, like the turtle
     let ox = cx - 15;
@@ -1686,6 +1770,7 @@ pub fn draw_pet(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
             p.phones = false;
             if shark_sleeps(p) { p.nightcap = false; p.outfit = Outfit::default(); }      // drawn to fit already
             else if a.profile { let night = p.nightcap; p.outfit = Outfit::default(); p.nightcap = night; }   // drawn to fit already
+            if matches!(p.stance, Stance::Fly | Stance::Leap) { p.nightcap = false; }      // swimming: drawn to fit already
             else if p.prop == Prop::Laptop { p.outfit = Outfit::default(); }             // drawn to fit already; the collar is behind the laptop
             a
         }
