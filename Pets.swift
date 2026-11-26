@@ -1905,11 +1905,22 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         }
         c.rect(ox + 1, oy + 5, 2, 4, .phonesPad); c.rect(ox + 18, oy + 5, 2, 4, .phonesPad)
     }
-    // the big book open on the floor right in front of it; a fin reaches over to turn the page
-    drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
-    if p.turn >= 0 && p.turn < 0.7 {
-        let a = Double.pi * min(1, p.turn), tx = cx + Int((7 * cos(a)).rounded()), ty = g - 3 - Int((6 * sin(a)).rounded())
-        c.thick(ox + 18, oy + 13, tx, ty, 2, .body)
+    if p.prop == .laptop {
+        // typing, like the turtle: the laptop in front of it, the back of its screen towards you; it peeks over and
+        // taps away with both fins
+        let tap = p.arm == .tap
+        c.rect(cx - 6, g - 8, 13, 6, .lapDark)                                         // the lid
+        c.hline(cx - 6, cx + 6, g - 8, .lapLight); c.set(cx, g - 5, .lapLight)          // its edge and a little logo
+        c.rect(cx - 8, g - 2, 17, 2, .lapLight)                                        // the keyboard
+        let up = Int(p.phase * 10) % 2 == 0
+        c.rect(cx - 9, g - 4 - (tap && up ? 1 : 0), 3, 2, .body); c.rect(cx + 7, g - 4 - (tap && !up ? 1 : 0), 3, 2, .body)
+    } else {
+        // the big book open on the floor right in front of it; a fin reaches over to turn the page
+        drawBook(&c, x: cx - 8, y: g - 5, turn: p.turn)
+        if p.turn >= 0 && p.turn < 0.7 {
+            let a = Double.pi * min(1, p.turn), tx = cx + Int((7 * cos(a)).rounded()), ty = g - 3 - Int((6 * sin(a)).rounded())
+            c.thick(ox + 18, oy + 13, tx, ty, 2, .body)
+        }
     }
     return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16))
 }
@@ -1962,6 +1973,39 @@ private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
         // its nightcap pulled on over its head, the tip flopping down in front of its nose
         c.sprite(ox + 31, oy + 2, sharkSleepingCap, ["C": .cap, "W": .white])
     }
+    let o = p.outfit
+    // glasses over its eye, the arm running back along its head
+    if o.glasses == .shades || o.glasses == .hearts {
+        c.rect(ox + 34, oy + 14, 4, 2, o.glasses == .shades ? .lens : .lensPink)
+        if o.glasses == .hearts { c.set(ox + 36, oy + 14, .body); c.set(ox + 35, oy + 14, .white) }
+    } else if o.glasses == .round {
+        c.hline(ox + 34, ox + 37, oy + 13, .frame); c.set(ox + 33, oy + 14, .frame); c.set(ox + 38, oy + 14, .frame)
+        c.hline(ox + 34, ox + 37, oy + 16, .frame)
+    }
+    if o.glasses != .none { c.hline(ox + 30, ox + 33, oy + 13, .frame) }
+    // its collar wraps round it behind its head, the knot down at its throat
+    if o.neck != .none {
+        let grid = sharkSleeping.map { Array($0) }
+        for y in 0..<16 {
+            for x in 31...(o.neck == .scarf ? 33 : 32) where grid[y][x] != "." {
+                let col: Col
+                switch o.neck {
+                case .scarf: col = (x + y) % 3 == 0 ? .scarfStripe : .scarf
+                case .bandana: col = .bandana
+                default: col = .collar
+                }
+                c.set(ox + x, oy + y, col)
+            }
+        }
+        func k(_ cells: [(Int, Int)], _ col: Col) { for (x, y) in cells { c.set(ox + x, oy + y, col) } }
+        switch o.neck {
+        case .scarf: k([(30, 12), (30, 13), (29, 13), (29, 14), (28, 14), (28, 15)], .scarf); c.set(ox + 29, oy + 14, .scarfStripe)
+        case .bowtie: k([(30, 13), (30, 14), (30, 15), (31, 14), (32, 14), (33, 13), (33, 14), (33, 15)], .ruby)
+        case .bell: k([(32, 14), (33, 14), (32, 15), (33, 15)], .gold); c.set(ox + 32, oy + 14, .white)
+        case .bandana: k([(30, 13), (30, 14), (29, 14), (29, 15), (28, 15)], .bandana)
+        case .none: break
+        }
+    }
     return Anchors(headX: ox + 34, headTop: oy + 7, headW: 8, eyes: [(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10))
 }
 
@@ -1975,7 +2019,7 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let st = p.stance
     if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
-    if p.prop == .book && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying: sat facing you behind its book
+    if (p.prop == .book || p.prop == .laptop) && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying or typing: sat facing you
     if sharkSleeps(p) { return drawSleepingShark(&c, p, cx: cx) }
     let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
@@ -2059,8 +2103,55 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
         let pad = at(13, 4)
         c.rect(pad.0, pad.1, 2, 3, .phonesPad)
     }
-    let top = at(24, 0), neck = at(13, 10)
-    return Anchors(headX: top.0, headTop: top.1, headW: 10, eyes: [e], profile: true, neck: neck)
+    sharkSideOutfit(&c, p.outfit, shut ? sharkArtShut : sharkArt, at)
+    // hats sit on top of its head, above its eye, well back from its nose
+    let top = at(20, 2), neck = at(13, 10)
+    return Anchors(headX: top.0, headTop: top.1, headW: 8, eyes: [e], profile: true, neck: neck)
+}
+
+/// Glasses and neckwear made for the shark's side view (`drawPet` then leaves them off): the glasses sit over its eye
+/// with the arm running back along its head; a shark has no neck, so the collar wraps round it just under its jaw,
+/// with the bow tie, bell or bandana knot at its throat.
+private func sharkSideOutfit(_ c: inout Canvas, _ o: Outfit, _ art: [String], _ at: (Int, Int) -> (Int, Int)) {
+    func put(_ x: Int, _ y: Int, _ col: Col) { let q = at(x, y); c.set(q.0, q.1, col) }
+    let grid = art.map { Array($0) }
+    func solid(_ x: Int, _ y: Int) -> Bool { y >= 0 && y < grid.count && x >= 0 && x < grid[y].count && grid[y][x] != "." }
+    switch o.glasses {
+    case .none: break
+    case .shades:
+        for y in 5...7 { for x in 15...19 { put(x, y, .lens) } }
+        put(16, 5, .frame); for x in 11...14 { put(x, 5, .frame) }
+    case .hearts:
+        for (x, y) in [(15, 5), (16, 5), (18, 5), (19, 5), (15, 6), (16, 6), (17, 6), (18, 6), (19, 6), (16, 7), (17, 7), (18, 7), (17, 8)] { put(x, y, .lensPink) }
+        put(16, 5, .white); for x in 11...14 { put(x, 5, .frame) }
+    case .round:
+        for x in 16...18 { put(x, 4, .frame); put(x, 8, .frame) }
+        for y in 5...7 { put(15, y, .frame); put(19, y, .frame) }
+        for x in 11...14 { put(x, 5, .frame) }
+    }
+    if o.neck == .none { return }
+    for y in 15...(o.neck == .scarf ? 17 : 16) {
+        for x in 8...26 where solid(x, y) {
+            let col: Col
+            switch o.neck {
+            case .scarf: col = (x + y) % 3 == 0 ? .scarfStripe : .scarf
+            case .bandana: col = .bandana
+            default: col = .collar
+            }
+            put(x, y, col)
+        }
+    }
+    switch o.neck {
+    case .scarf:                                                          // its end hanging down its side
+        for (x, y) in [(11, 18), (12, 18), (11, 19), (12, 19), (10, 20), (11, 20), (10, 21), (11, 21)] { put(x, y, .scarf) }
+        put(11, 19, .scarfStripe); put(10, 21, .scarfStripe)
+    case .bowtie: for (x, y) in [(19, 14), (19, 15), (19, 16), (19, 17), (20, 15), (20, 16), (21, 15), (21, 16), (22, 14), (22, 15), (22, 16), (22, 17)] { put(x, y, .ruby) }
+    case .bell: for (x, y) in [(20, 17), (21, 17), (19, 18), (20, 18), (21, 18), (22, 18)] { put(x, y, .gold) }; put(20, 17, .white)
+    case .bandana:
+        for (x, y) in [(18, 17), (19, 17), (20, 17), (21, 17), (22, 17), (19, 18), (20, 18), (21, 18), (20, 19)] { put(x, y, .bandana) }
+        put(20, 17, .white); put(19, 18, .white)
+    case .none: break
+    }
 }
 
 // MARK: - Outfits & extras
@@ -2311,7 +2402,9 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     case .parrot: a = drawParrot(&c, p, cx: cx); p.phones = false          // it wears its own, fitted round its head
     case .shark:
         a = drawShark(&c, p, cx: cx); p.phones = false
-        if sharkSleeps(p) { p.nightcap = false }                                   // it wore its own
+        if sharkSleeps(p) { p.nightcap = false; p.outfit.glasses = .none; p.outfit.neck = .none }   // drawn to fit already
+        else if a.profile { p.outfit.glasses = .none; p.outfit.neck = .none }      // drawn to fit already
+        else if p.prop == .laptop { p.outfit.neck = .none }                         // behind the laptop
         if p.stance == .fly || p.stance == .leap { p.outfit = Outfit(); p.nightcap = false }   // drawn from above already
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)

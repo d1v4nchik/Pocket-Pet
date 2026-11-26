@@ -1133,7 +1133,123 @@ fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         // its nightcap pulled on over its head, the tip flopping down in front of its nose
         c.sprite(ox + 31, oy + 2, &SHARK_SLEEPING_CAP, &[(b'C', Col::Cap), (b'W', Col::White)]);
     }
+    let o = &p.outfit;
+    // glasses over its eye, the arm running back along its head
+    let lens = match o.glasses { Glasses::Shades => Some(Col::Lens), Glasses::Hearts => Some(Col::LensPink), _ => None };
+    if let Some(l) = lens {
+        c.rect(ox + 34, oy + 14, 4, 2, l);
+        if o.glasses == Glasses::Hearts { c.set(ox + 36, oy + 14, Col::Body); c.set(ox + 35, oy + 14, Col::White); }
+    } else if o.glasses == Glasses::Round {
+        c.hline(ox + 34, ox + 37, oy + 13, Col::Frame); c.set(ox + 33, oy + 14, Col::Frame); c.set(ox + 38, oy + 14, Col::Frame);
+        c.hline(ox + 34, ox + 37, oy + 16, Col::Frame);
+    }
+    if o.glasses != Glasses::None { c.hline(ox + 30, ox + 33, oy + 13, Col::Frame); }
+    // its collar wraps round it behind its gills, the knot down at its throat
+    if o.neck != Neckwear::None {
+        for y in 0..16 {
+            for x in 31..=32 + if o.neck == Neckwear::Scarf { 1 } else { 0 } {
+                if SHARK_SLEEPING[y as usize].as_bytes()[x as usize] == b'.' { continue; }
+                let col = match o.neck {
+                    Neckwear::Scarf => if (x + y) % 3 == 0 { Col::ScarfStripe } else { Col::Scarf },
+                    Neckwear::Bandana => Col::Bandana,
+                    _ => Col::Collar,
+                };
+                c.set(ox + x, oy + y, col);
+            }
+        }
+        let k = |c: &mut Canvas, cells: &[(i32, i32)], col: Col| for &(x, y) in cells { c.set(ox + x, oy + y, col); };
+        match o.neck {
+            Neckwear::Scarf => { k(c, &[(30, 12), (30, 13), (29, 13), (29, 14), (28, 14), (28, 15)], Col::Scarf); c.set(ox + 29, oy + 14, Col::ScarfStripe); }
+            Neckwear::Bowtie => k(c, &[(30, 13), (30, 14), (30, 15), (31, 14), (32, 14), (33, 13), (33, 14), (33, 15)], Col::Ruby),
+            Neckwear::Bell => { k(c, &[(32, 14), (33, 14), (32, 15), (33, 15)], Col::Gold); c.set(ox + 32, oy + 14, Col::White); }
+            Neckwear::Bandana => k(c, &[(30, 13), (30, 14), (29, 14), (29, 15), (28, 15)], Col::Bandana),
+            Neckwear::None => {}
+        }
+    }
     Anchors { head_x: ox + 34, head_top: oy + 7, head_w: 8, eyes: vec![(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10), hat_dx: 0 }
+}
+
+/// The shark sitting facing you, typing like the turtle (the Mac app also reads this way): fin on top, a round blue
+/// head, shiny eyes set wide, rosy cheeks, a tiny open chomp in a cream face, fins out to the sides, peachy belly.
+const SHARK_FRONT: [&str; 19] = [
+    "..........B..........",
+    ".........BBB.........",
+    ".......BBBBBBB.......",
+    ".....BBBBBBBBBBB.....",
+    "....BBBBBBBBBBBBB....",
+    "...BBBBBBBBBBBBBBB...",
+    "...BBBBBBBBBBBBBBB...",
+    "..BBBWKBBBBBBBWKBBB..",
+    "..BDBKKBBBBBBBKKBDB..",
+    "..BDBKKWWWWWWWKKBDB..",
+    ".DBBWWWWKKKKKWWWWBBD.",
+    "DDBWWWWKWRRRWKWWWWBDD",
+    "DDBWWWWWKRORKWWWWWBDD",
+    "D.BWWWWWWKKKWWWWWWB.D",
+    "...BWWWWWWWWWWWWWB...",
+    "...DBWWWWWWWWWWWBD...",
+    "...DPPPPPPPPPPPPPD...",
+    "...DDPPPPPPPPPPPDD...",
+    "...DD.DDD...DDD.DD...",
+];
+/// The same with its mouth shut in a smile.
+const SHARK_FRONT_SHUT: [&str; 19] = [
+    "..........B..........",
+    ".........BBB.........",
+    ".......BBBBBBB.......",
+    ".....BBBBBBBBBBB.....",
+    "....BBBBBBBBBBBBB....",
+    "...BBBBBBBBBBBBBBB...",
+    "...BBBBBBBBBBBBBBB...",
+    "..BBBWKBBBBBBBWKBBB..",
+    "..BDBKKBBBBBBBKKBDB..",
+    "..BDBKKWWWWWWWKKBDB..",
+    ".DBBWWWWWWWWWWWWWBBD.",
+    "DDBWWWWKWWWWWKWWWWBDD",
+    "DDBWWWWWKKKKKWWWWWBDD",
+    "D.BWWWWWWWWWWWWWWWB.D",
+    "...BWWWWWWWWWWWWWB...",
+    "...DBWWWWWWWWWWWBD...",
+    "...DPPPPPPPPPPPPPD...",
+    "...DDPPPPPPPPPPPDD...",
+    "...DD.DDD...DDD.DD...",
+];
+
+fn draw_shark_front(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
+    let g = c.h - 2;
+    let (ox, oy) = (cx - 10, g - (SHARK_FRONT.len() as i32 - 1));
+    let shut = p.mouth == Mouth::Closed && matches!(p.eyes, Eyes::Closed | Eyes::Half);
+    let map = [(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'R', Col::Mouth), (b'O', Col::Tongue), (b'P', Col::Mark), (b'K', Col::Outline)];
+    c.sprite(ox, oy, if shut { &SHARK_FRONT_SHUT } else { &SHARK_FRONT }, &map);
+    let eyes = vec![(ox + 5, oy + 7), (ox + 14, oy + 7)];
+    for &(ex, ey) in &eyes {
+        match p.eyes {
+            Eyes::Closed | Eyes::Half => {                                    // sleepy, curved down
+                c.rect(ex, ey, 2, 3, Col::Body); c.set(ex - 1, ey + 1, Col::Outline); c.hline(ex, ex + 1, ey + 2, Col::Outline); c.set(ex + 2, ey + 1, Col::Outline);
+            }
+            Eyes::Happy => {                                                  // ^ ^
+                c.rect(ex, ey, 2, 3, Col::Body); c.set(ex - 1, ey + 2, Col::Outline); c.hline(ex, ex + 1, ey + 1, Col::Outline); c.set(ex + 2, ey + 2, Col::Outline);
+            }
+            Eyes::Angry | Eyes::Sad | Eyes::Dizzy => c.set(ex, ey, Col::Outline),   // no shine
+            _ => {}
+        }
+    }
+    c.hline(ox + 4, ox + 5, oy + 10, Col::Blush); c.hline(ox + 15, ox + 16, oy + 10, Col::Blush);   // rosy cheeks
+    if p.phones {
+        if p.outfit.hat == Hat::None || p.nightcap {
+            for (x, y) in [(2, 4), (3, 3), (4, 2), (5, 1), (6, 1), (14, 1), (15, 1), (16, 2), (17, 3), (18, 4)] { c.set(ox + x, oy + y, Col::Phones); }
+            c.hline(ox + 7, ox + 13, oy, Col::Phones);
+        }
+        c.rect(ox + 1, oy + 5, 2, 4, Col::PhonesPad); c.rect(ox + 18, oy + 5, 2, 4, Col::PhonesPad);
+    }
+    // typing: the laptop in front of it, the back of its screen towards you; it peeks over and taps with both fins
+    let tap = p.arm == Arm::Tap;
+    c.rect(cx - 6, g - 8, 13, 6, Col::LapDark);
+    c.hline(cx - 6, cx + 6, g - 8, Col::LapLight); c.set(cx, g - 5, Col::LapLight);
+    c.rect(cx - 8, g - 2, 17, 2, Col::LapLight);
+    let up = ((p.phase * 10.0) as i32) % 2 == 0;
+    c.rect(cx - 9, g - 4 - if tap && up { 1 } else { 0 }, 3, 2, Col::Body); c.rect(cx + 7, g - 4 - if tap && !up { 1 } else { 0 }, 3, 2, Col::Body);
+    Anchors { head_x: cx, head_top: oy + 2, head_w: 13, eyes, profile: false, neck: (cx, oy + 16), hat_dx: 0 }
 }
 
 /// Lying asleep on the floor (drawn with `draw_sleeping_shark`).
@@ -1146,6 +1262,7 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let st = p.stance;
     let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
     if shark_sleeps(p) { return draw_sleeping_shark(c, p, cx); }
+    if p.prop == Prop::Laptop && !airborne { return draw_shark_front(c, p, cx); }   // typing: sat facing you, like the turtle
     let ox = cx - 15;
     let oy = g - (SHARK_ART.len() as i32 - 1) + p.bob - if airborne { 3 } else { 0 } + if st == Stance::Squash { 1 } else { 0 };
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
@@ -1228,8 +1345,58 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         let pad = at(13, 4);
         c.rect(pad.0, pad.1, 2, 3, Col::PhonesPad);
     }
-    let (top, neck) = (at(24, 0), at(13, 10));
-    Anchors { head_x: top.0, head_top: top.1, head_w: 10, eyes: vec![e], profile: true, neck, hat_dx: 0 }
+    shark_side_outfit(c, &p.outfit, art, &at);
+    // hats sit on top of its head, above its eye, well back from its nose
+    let (top, neck) = (at(20, 2), at(13, 10));
+    Anchors { head_x: top.0, head_top: top.1, head_w: 8, eyes: vec![e], profile: true, neck, hat_dx: 0 }
+}
+
+/// Glasses and neckwear made for the shark's side view (`draw_pet` then leaves them off): the glasses sit over its eye
+/// with the arm running back along its head; a shark has no neck, so a collar wraps right round its body behind its
+/// gills, with the bow tie, bell or bandana knot at its throat.
+fn shark_side_outfit(c: &mut Canvas, o: &Outfit, art: &[&str], at: &dyn Fn(i32, i32) -> (i32, i32)) {
+    let mut put = |x: i32, y: i32, col: Col| { let q = at(x, y); c.set(q.0, q.1, col); };
+    let solid = |x: i32, y: i32| art.get(y as usize).and_then(|r| r.as_bytes().get(x as usize)).map_or(false, |&b| b != b'.');
+    match o.glasses {
+        Glasses::None => {}
+        Glasses::Shades => {
+            for y in 5..=7 { for x in 15..=19 { put(x, y, Col::Lens); } }
+            put(16, 5, Col::Frame); for x in 11..=14 { put(x, 5, Col::Frame); }
+        }
+        Glasses::Hearts => {
+            for (x, y) in [(15, 5), (16, 5), (18, 5), (19, 5), (15, 6), (16, 6), (17, 6), (18, 6), (19, 6), (16, 7), (17, 7), (18, 7), (17, 8)] { put(x, y, Col::LensPink); }
+            put(16, 5, Col::White); for x in 11..=14 { put(x, 5, Col::Frame); }
+        }
+        Glasses::Round => {
+            for x in 16..=18 { put(x, 4, Col::Frame); put(x, 8, Col::Frame); }
+            for y in 5..=7 { put(15, y, Col::Frame); put(19, y, Col::Frame); }
+            for x in 11..=14 { put(x, 5, Col::Frame); }
+        }
+    }
+    if o.neck == Neckwear::None { return; }
+    // the collar wraps round it just under its jaw, where its head meets its body
+    let rows = if o.neck == Neckwear::Scarf { 15..=17 } else { 15..=16 };
+    for y in rows {
+        for x in 8..=26 {
+            if !solid(x, y) { continue; }
+            let col = match o.neck {
+                Neckwear::Scarf => if (x + y) % 3 == 0 { Col::ScarfStripe } else { Col::Scarf },
+                Neckwear::Bandana => Col::Bandana,
+                _ => Col::Collar,
+            };
+            put(x, y, col);
+        }
+    }
+    match o.neck {
+        Neckwear::Scarf => {                                              // its end hanging down its side
+            for (x, y) in [(11, 18), (12, 18), (11, 19), (12, 19), (10, 20), (11, 20), (10, 21), (11, 21)] { put(x, y, Col::Scarf); }
+            put(11, 19, Col::ScarfStripe); put(10, 21, Col::ScarfStripe);
+        }
+        Neckwear::Bowtie => { for (x, y) in [(19, 14), (19, 15), (19, 16), (19, 17), (20, 15), (20, 16), (21, 15), (21, 16), (22, 14), (22, 15), (22, 16), (22, 17)] { put(x, y, Col::Ruby); } }
+        Neckwear::Bell => { for (x, y) in [(20, 17), (21, 17), (19, 18), (20, 18), (21, 18), (22, 18)] { put(x, y, Col::Gold); } put(20, 17, Col::White); }
+        Neckwear::Bandana => { for (x, y) in [(18, 17), (19, 17), (20, 17), (21, 17), (22, 17), (19, 18), (20, 18), (21, 18), (20, 19)] { put(x, y, Col::Bandana); } put(20, 17, Col::White); put(19, 18, Col::White); }
+        Neckwear::None => {}
+    }
 }
 
 // MARK: - Outfits & extras
@@ -1436,7 +1603,14 @@ pub fn draw_pet(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
     let a = match sp {
         Species::Goose => draw_goose(c, p, cx),
         Species::Parrot => { let a = draw_parrot(c, p, cx); p.phones = false; a }          // it wears its own, fitted round its head
-        Species::Shark => { let a = draw_shark(c, p, cx); p.phones = false; if shark_sleeps(p) { p.nightcap = false; } a }   // asleep it wears its own cap
+        Species::Shark => {
+            let a = draw_shark(c, p, cx);
+            p.phones = false;
+            if shark_sleeps(p) { p.nightcap = false; p.outfit.glasses = Glasses::None; p.outfit.neck = Neckwear::None; }   // drawn to fit already
+            else if a.profile { p.outfit.glasses = Glasses::None; p.outfit.neck = Neckwear::None; }   // drawn to fit already
+            else if p.prop == Prop::Laptop { p.outfit.neck = Neckwear::None; }            // behind the laptop
+            a
+        }
         Species::Bat => draw_bat(c, p, cx),
         _ => draw_quad(c, sp, p, cx),
     };
