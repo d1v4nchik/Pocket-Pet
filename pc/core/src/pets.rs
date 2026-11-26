@@ -1133,6 +1133,7 @@ fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         // its nightcap pulled on over its head, the tip flopping down in front of its nose
         c.sprite(ox + 31, oy + 2, &SHARK_SLEEPING_CAP, &[(b'C', Col::Cap), (b'W', Col::White)]);
     }
+    if p.outfit.hat != Hat::None && !p.nightcap { shark_hat(c, p.outfit.hat, ox + 35, oy + 6); }
     let o = &p.outfit;
     // glasses over its eye, the arm running back along its head
     let lens = match o.glasses { Glasses::Shades => Some(Col::Lens), Glasses::Hearts => Some(Col::LensPink), _ => None };
@@ -1144,28 +1145,30 @@ fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         c.hline(ox + 34, ox + 37, oy + 16, Col::Frame);
     }
     if o.glasses != Glasses::None { c.hline(ox + 30, ox + 33, oy + 13, Col::Frame); }
-    // its collar wraps round it behind its gills, the knot down at its throat
-    if o.neck != Neckwear::None {
+    // its collar wraps round it behind its head, the bow tie, bell or bandana knot low down at its throat
+    if o.neck != Neckwear::None && o.neck != Neckwear::Bowtie {
+        let wide = if o.neck == Neckwear::Scarf { 3 } else { 2 };
         for y in 0..16 {
-            for x in 31..=32 + if o.neck == Neckwear::Scarf { 1 } else { 0 } {
+            for x in 31..31 + wide {
                 if SHARK_SLEEPING[y as usize].as_bytes()[x as usize] == b'.' { continue; }
                 let col = match o.neck {
-                    Neckwear::Scarf => if (x + y) % 3 == 0 { Col::ScarfStripe } else { Col::Scarf },
+                    Neckwear::Scarf => if y % 3 == 0 { Col::ScarfStripe } else { Col::Scarf },
                     Neckwear::Bandana => Col::Bandana,
-                    _ => Col::Collar,
+                    _ => if x == 31 { Col::Collar } else { Col::HatBand },
                 };
                 c.set(ox + x, oy + y, col);
             }
         }
-        let k = |c: &mut Canvas, cells: &[(i32, i32)], col: Col| for &(x, y) in cells { c.set(ox + x, oy + y, col); };
-        match o.neck {
-            Neckwear::Scarf => { k(c, &[(30, 12), (30, 13), (29, 13), (29, 14), (28, 14), (28, 15)], Col::Scarf); c.set(ox + 29, oy + 14, Col::ScarfStripe); }
-            Neckwear::Bowtie => k(c, &[(30, 13), (30, 14), (30, 15), (31, 14), (32, 14), (33, 13), (33, 14), (33, 15)], Col::Ruby),
-            Neckwear::Bell => { k(c, &[(32, 14), (33, 14), (32, 15), (33, 15)], Col::Gold); c.set(ox + 32, oy + 14, Col::White); }
-            Neckwear::Bandana => k(c, &[(30, 13), (30, 14), (29, 14), (29, 15), (28, 15)], Col::Bandana),
-            Neckwear::None => {}
-        }
     }
+    let art: (&[&str], &[(u8, Col)]) = match o.neck {
+        Neckwear::Bowtie => (&["RR.RR", "RRKRR", "RR.RR"], &[(b'R', Col::Ruby), (b'K', Col::Outline)]),
+        Neckwear::Bell => (&[".G.", "GWG", "GGG", ".K."], &[(b'G', Col::Gold), (b'W', Col::White), (b'K', Col::Outline)]),
+        Neckwear::Bandana => (&["BBBB", "BWB.", "BB.."], &[(b'B', Col::Bandana), (b'W', Col::White)]),
+        Neckwear::Scarf => (&["SSS", "SWS", "S.S"], &[(b'S', Col::Scarf), (b'W', Col::ScarfStripe)]),
+        Neckwear::None => (&[], &[]),
+    };
+    let (kx, ky) = match o.neck { Neckwear::Bowtie => (30, 11), Neckwear::Bell => (31, 12), Neckwear::Bandana => (28, 13), _ => (28, 14) };
+    c.sprite(ox + kx, oy + ky, art.0, art.1);
     Anchors { head_x: ox + 34, head_top: oy + 7, head_w: 8, eyes: vec![(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10), hat_dx: 0 }
 }
 
@@ -1346,6 +1349,7 @@ fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
         c.rect(pad.0, pad.1, 2, 3, Col::PhonesPad);
     }
     shark_side_outfit(c, &p.outfit, art, &at);
+    if p.outfit.hat != Hat::None && !p.nightcap { let h = at(18, 1); shark_hat(c, p.outfit.hat, h.0, h.1); }
     // hats sit on top of its head, above its eye, well back from its nose
     let (top, neck) = (at(20, 2), at(13, 10));
     Anchors { head_x: top.0, head_top: top.1, head_w: 8, eyes: vec![e], profile: true, neck, hat_dx: 0 }
@@ -1374,29 +1378,68 @@ fn shark_side_outfit(c: &mut Canvas, o: &Outfit, art: &[&str], at: &dyn Fn(i32, 
         }
     }
     if o.neck == Neckwear::None { return; }
-    // the collar wraps round it just under its jaw, where its head meets its body
-    let rows = if o.neck == Neckwear::Scarf { 15..=17 } else { 15..=16 };
-    for y in rows {
-        for x in 8..=26 {
-            if !solid(x, y) { continue; }
-            let col = match o.neck {
-                Neckwear::Scarf => if (x + y) % 3 == 0 { Col::ScarfStripe } else { Col::Scarf },
-                Neckwear::Bandana => Col::Bandana,
-                _ => Col::Collar,
-            };
-            put(x, y, col);
+    // the collar wraps round it just under its jaw, dipping a little at each side as it goes round
+    let dip = |_x: i32| 0;
+    let band = |rows: i32, put: &mut dyn FnMut(i32, i32, Col), col: &dyn Fn(i32, i32) -> Col| {
+        for x in 10..=26 {
+            for k in 0..rows {
+                let y = if rows == 3 { 15 } else { 16 } + dip(x) + k;
+                if solid(x, y) { put(x, y, col(x, k)); }
+            }
         }
-    }
+    };
     match o.neck {
-        Neckwear::Scarf => {                                              // its end hanging down its side
-            for (x, y) in [(11, 18), (12, 18), (11, 19), (12, 19), (10, 20), (11, 20), (10, 21), (11, 21)] { put(x, y, Col::Scarf); }
-            put(11, 19, Col::ScarfStripe); put(10, 21, Col::ScarfStripe);
+        Neckwear::Scarf => {
+            // a chunky knitted scarf, striped, its end hanging down its side
+            band(3, &mut put, &|x, k| if k == 1 && x % 3 == 0 { Col::ScarfStripe } else { Col::Scarf });
+            for (x, y) in [(11, 18), (12, 18), (13, 18), (11, 19), (12, 19), (13, 19)] { put(x, y, if y == 19 && x == 12 { Col::ScarfStripe } else { Col::Scarf }); }
+            put(11, 20, Col::Scarf); put(13, 20, Col::Scarf);                       // fringe
         }
-        Neckwear::Bowtie => { for (x, y) in [(19, 14), (19, 15), (19, 16), (19, 17), (20, 15), (20, 16), (21, 15), (21, 16), (22, 14), (22, 15), (22, 16), (22, 17)] { put(x, y, Col::Ruby); } }
-        Neckwear::Bell => { for (x, y) in [(20, 17), (21, 17), (19, 18), (20, 18), (21, 18), (22, 18)] { put(x, y, Col::Gold); } put(20, 17, Col::White); }
-        Neckwear::Bandana => { for (x, y) in [(18, 17), (19, 17), (20, 17), (21, 17), (22, 17), (19, 18), (20, 18), (21, 18), (20, 19)] { put(x, y, Col::Bandana); } put(20, 17, Col::White); put(19, 18, Col::White); }
+        Neckwear::Bowtie => {
+            // just the bow, at its throat
+            let bow = ["RR.RR", "RRKRR", "RR.RR"];
+            for (j, row) in bow.iter().enumerate() {
+                for (i, ch) in row.bytes().enumerate() {
+                    let col = match ch { b'R' => Col::Ruby, b'K' => Col::Outline, _ => continue };
+                    put(18 + i as i32, 15 + j as i32, col);
+                }
+            }
+        }
+        Neckwear::Bell => {
+            band(2, &mut put, &|_, k| if k == 0 { Col::Collar } else { Col::HatBand });
+            for (x, y, col) in [(19, 18, Col::Gold), (20, 18, Col::White), (21, 18, Col::Gold), (19, 19, Col::Gold), (20, 19, Col::Gold), (21, 19, Col::Gold), (20, 20, Col::Outline)] { put(x, y, col); }
+        }
+        Neckwear::Bandana => {
+            band(2, &mut put, &|_, _| Col::Bandana);
+            let tri = ["BBBBB", "BWBWB", ".BBB.", "..B.."];
+            for (j, row) in tri.iter().enumerate() {
+                for (i, ch) in row.bytes().enumerate() {
+                    let col = match ch { b'B' => Col::Bandana, b'W' => Col::White, _ => continue };
+                    put(18 + i as i32, 18 + j as i32, col);
+                }
+            }
+        }
         Neckwear::None => {}
     }
+}
+
+/// A hat sat snug on the shark's head: centred on `at`, its bottom row on `bottom`, with the gap under its brim
+/// filled in so it never floats over the slope of its head.
+fn shark_hat(c: &mut Canvas, hat: Hat, x: i32, bottom: i32) {
+    let art = hat_art_profile(hat).or_else(|| hat_art(hat));
+    let Some((rows, map)) = art else { return };
+    let w = rows.iter().map(|r| r.len() as i32).max().unwrap_or(0);
+    let (x0, y0) = (x - w / 2, bottom - rows.len() as i32 + 1);
+    let last = rows[rows.len() - 1].as_bytes();
+    for (i, &ch) in last.iter().enumerate() {
+        if ch == b'.' { continue; }
+        let hx = x0 + i as i32;
+        for y in bottom + 1..bottom + 4 {
+            if c.get(hx, y) != Col::Clear.raw() { break; }
+            c.set(hx, y, Col::Body);
+        }
+    }
+    c.sprite(x0, y0, rows, map);
 }
 
 // MARK: - Outfits & extras
@@ -1606,8 +1649,8 @@ pub fn draw_pet(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
         Species::Shark => {
             let a = draw_shark(c, p, cx);
             p.phones = false;
-            if shark_sleeps(p) { p.nightcap = false; p.outfit.glasses = Glasses::None; p.outfit.neck = Neckwear::None; }   // drawn to fit already
-            else if a.profile { p.outfit.glasses = Glasses::None; p.outfit.neck = Neckwear::None; }   // drawn to fit already
+            if shark_sleeps(p) { p.nightcap = false; p.outfit = Outfit::default(); }      // drawn to fit already
+            else if a.profile { let night = p.nightcap; p.outfit = Outfit::default(); p.nightcap = night; }   // drawn to fit already
             else if p.prop == Prop::Laptop { p.outfit.neck = Neckwear::None; }            // behind the laptop
             a
         }
