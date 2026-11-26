@@ -939,36 +939,41 @@ private func drawSleepingFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
 /// point between the dark front legs, a haunch to one side and the tail curled up on the other with its white tip.
 /// O fur, W white, M legs and ear edges, K lines.
 private let foxFrontSit = [
-    "........W...........",
-    ".MW.....WO..........",
-    ".WWM...MWWO.........",
-    ".WWWM.OOWWO.........",
-    ".WWWOOOOOWO.........",
-    "..WWOOOOOOO.........",
-    "..WOOOOOOKKO........",
-    "...OOOOOOKKWO.......",
-    "...OKKOOKMWWW.......",
-    "...OOWOOWWWWW.......",
-    "...OWWWWWWWWO.......",
-    "....WWWWWWWWO.......",
-    "....WWWWWWWWO...WW..",
-    "....OWWWWWWWO...WWW.",
-    "....OWWWWWWWOK.WWWW.",
-    "...OKWWWWWWWKOKKWWW.",
-    "..OOOKWWWWWKMKOKKKO.",
-    ".OOOKMKWWWKMMKOOOOO.",
-    ".OOKMMMKWKMMMKOOOOO.",
-    ".OOKMMMKKKMMMKOOOO..",
-    ".OOKMKMMKMMKMKOOOO..",
-    ".OOKMKMMKMMKMKOOK...",
+    ".........W...........",
+    ".........WW..........",
+    ".MM.....MWW..........",
+    ".WWM....MWWO.........",
+    ".WWWM...OWWO.........",
+    "..WWWMOOOOWO.........",
+    "..WWWOOOOOOO.........",
+    "..WWOOOOOKKO.........",
+    "..WWOOOOOMKOO........",
+    "...OKKOOOMKWWO.......",
+    "...OOWKOKOWWW........",
+    "...OWWWWWWWWO........",
+    "....WWWWWWWWO........",
+    "....OWWWWWWWO...WW...",
+    "....OWWWWWWWO...WWW..",
+    "....OWWWWWWWWO.WWWWW.",
+    "...OOKWWWWWWKO.WWWWWW",
+    "..OOOOKWWWWWKO.KWWWWO",
+    ".OOOOKMMWWWKMKOOKKKOO",
+    "OOOKOMMMMWMMMKOKOOOOO",
+    "OOOOKMMMMKMMMKOKOOOOO",
+    "OOOKMKMMMKMMMKOKOOOO.",
+    "OOOKMMKMMKMKMKOKOOOO.",
+    ".OOKMMKMMKMKMKOKOO...",
 ]
 
 private func drawFrontSitFox(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
-    let ox = cx - 9, oy = c.h - 2 - (foxFrontSit.count - 1)
+    let ox = cx - 10, oy = c.h - 2 - (foxFrontSit.count - 1)
     c.sprite(ox, oy, foxFrontSit, ["O": .body, "W": .belly, "M": .markShade, "K": .outline])
-    if [.closed, .half, .happy].contains(p.eyes) { c.hline(ox + 9, ox + 10, oy + 6, .body) }     // a blink: the open eye shuts too
-    if p.blush { c.set(ox + 3, oy + 9, .blush); c.set(ox + 12, oy + 9, .blush) }
-    return Anchors(headX: ox + 7, headTop: oy + 3, headW: 10, eyes: [(ox + 4, oy + 8), (ox + 9, oy + 6)], profile: false, neck: (ox + 8, oy + 11))
+    if [.closed, .half, .happy].contains(p.eyes) {                       // a blink: the open eye squeezes shut too
+        for (x, y) in [(9, 7), (10, 7), (9, 9), (10, 9)] { c.set(ox + x, oy + y, .body) }
+        c.hline(ox + 9, ox + 10, oy + 8, .outline)
+    }
+    if p.blush { c.set(ox + 3, oy + 10, .blush); c.set(ox + 12, oy + 10, .blush) }
+    return Anchors(headX: ox + 7, headTop: oy + 4, headW: 10, eyes: [(ox + 5, oy + 9), (ox + 10, oy + 8)], profile: false, neck: (ox + 8, oy + 12))
 }
 
 /// Thinking very hard: round yellow ring eyes, and a loading spinner going round above the head.
