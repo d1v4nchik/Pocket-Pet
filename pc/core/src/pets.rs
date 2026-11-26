@@ -1109,6 +1109,16 @@ const SHARK_SLEEPING: [&str; 18] = [
     "BBBBBKWWWWWWWWWWWWWKBBBBBBBBBKBKWWWWWWWWK.",
 ];
 
+/// The sleeping shark's own nightcap, sat on the slope of its head (C cap, W white).
+const SHARK_SLEEPING_CAP: [&str; 6] = [
+    ".....CCCC......",
+    "...CCCCCCCC....",
+    "..CCCCCCCCCCCC.",
+    ".CCCCCCCCCCCCCC",
+    "WWWWWWCCCC...WW",
+    "......WWWW...WW",
+];
+
 /// The shark fast asleep: its eye a sleepy little dash, popping open when something wakes it.
 fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
@@ -1119,14 +1129,23 @@ fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     } else {
         c.hline(ox + 35, ox + 36, oy + 15, Col::Outline);                                       // eye shut
     }
+    if p.nightcap {
+        // its nightcap pulled on over its head, the tip flopping down in front of its nose
+        c.sprite(ox + 31, oy + 2, &SHARK_SLEEPING_CAP, &[(b'C', Col::Cap), (b'W', Col::White)]);
+    }
     Anchors { head_x: ox + 34, head_top: oy + 7, head_w: 8, eyes: vec![(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10), hat_dx: 0 }
+}
+
+/// Lying asleep on the floor (drawn with `draw_sleeping_shark`).
+fn shark_sleeps(p: &Pose) -> bool {
+    (p.asleep || (p.nightcap && p.eyes == Eyes::Closed)) && !matches!(p.stance, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap | Stance::Walk)
 }
 
 fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
     let st = p.stance;
     let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
-    if (p.asleep || (p.nightcap && p.eyes == Eyes::Closed)) && !airborne && st != Stance::Walk { return draw_sleeping_shark(c, p, cx); }
+    if shark_sleeps(p) { return draw_sleeping_shark(c, p, cx); }
     let ox = cx - 15;
     let oy = g - (SHARK_ART.len() as i32 - 1) + p.bob - if airborne { 3 } else { 0 } + if st == Stance::Squash { 1 } else { 0 };
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
@@ -1417,7 +1436,7 @@ pub fn draw_pet(c: &mut Canvas, sp: Species, p: &Pose, cx: i32) -> Anchors {
     let a = match sp {
         Species::Goose => draw_goose(c, p, cx),
         Species::Parrot => { let a = draw_parrot(c, p, cx); p.phones = false; a }          // it wears its own, fitted round its head
-        Species::Shark => { let a = draw_shark(c, p, cx); p.phones = false; a }
+        Species::Shark => { let a = draw_shark(c, p, cx); p.phones = false; if shark_sleeps(p) { p.nightcap = false; } a }   // asleep it wears its own cap
         Species::Bat => draw_bat(c, p, cx),
         _ => draw_quad(c, sp, p, cx),
     };

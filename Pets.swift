@@ -1938,6 +1938,16 @@ private let sharkSleeping = [
     "BBBBBKWWWWWWWWWWWWWKBBBBBBBBBKBKWWWWWWWWK.",
 ]
 
+/// The sleeping shark's own nightcap, sat on the slope of its head (C cap, W white).
+private let sharkSleepingCap = [
+    ".....CCCC......",
+    "...CCCCCCCC....",
+    "..CCCCCCCCCCCC.",
+    ".CCCCCCCCCCCCCC",
+    "WWWWWWCCCC...WW",
+    "......WWWW...WW",
+]
+
 /// The shark fast asleep: its eye a sleepy little dash, popping open when something wakes it.
 private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
@@ -1948,7 +1958,16 @@ private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors
     } else {
         c.hline(ox + 35, ox + 36, oy + 15, .outline)                                     // eye shut
     }
+    if p.nightcap {
+        // its nightcap pulled on over its head, the tip flopping down in front of its nose
+        c.sprite(ox + 31, oy + 2, sharkSleepingCap, ["C": .cap, "W": .white])
+    }
     return Anchors(headX: ox + 34, headTop: oy + 7, headW: 8, eyes: [(ox + 35, oy + 15)], profile: true, neck: (ox + 30, oy + 10))
+}
+
+/// Lying asleep on the floor (drawn with `drawSleepingShark`).
+private func sharkSleeps(_ p: Pose) -> Bool {
+    (p.asleep || (p.nightcap && p.eyes == .closed)) && ![.fly, .held, .umbrella, .leap, .walk].contains(p.stance)
 }
 
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
@@ -1957,7 +1976,7 @@ private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
     if p.prop == .book && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying: sat facing you behind its book
-    if (p.asleep || (p.nightcap && p.eyes == .closed)) && !airborne && st != .walk { return drawSleepingShark(&c, p, cx: cx) }
+    if sharkSleeps(p) { return drawSleepingShark(&c, p, cx: cx) }
     let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
@@ -2292,6 +2311,7 @@ func drawPet(_ c: inout Canvas, _ sp: Species, _ p: Pose, cx: Int) -> Anchors {
     case .parrot: a = drawParrot(&c, p, cx: cx); p.phones = false          // it wears its own, fitted round its head
     case .shark:
         a = drawShark(&c, p, cx: cx); p.phones = false
+        if sharkSleeps(p) { p.nightcap = false }                                   // it wore its own
         if p.stance == .fly || p.stance == .leap { p.outfit = Outfit(); p.nightcap = false }   // drawn from above already
     case .bat: a = drawBat(&c, p, cx: cx)
     case .turtle: a = drawTurtle(&c, p, cx: cx)
