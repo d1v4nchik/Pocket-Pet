@@ -2137,15 +2137,23 @@ private func sharkSideOutfit(_ c: inout Canvas, _ o: Outfit, _ art: [String], _ 
     switch o.glasses {
     case .none: break
     case .shades:
-        for y in 5...7 { for x in 15...19 { put(x, y, .lens) } }
-        put(16, 5, .frame); for x in 11...14 { put(x, 5, .frame) }
+        // a bar across the top, a rounded dark lens with a glint, the arm running back
+        for x in 11...20 { put(x, 5, .frame) }
+        for y in 6...7 { for x in 15...19 { put(x, y, .lens) } }
+        for x in 16...18 { put(x, 8, .lens) }
+        put(16, 6, .white)
     case .hearts:
         for (x, y) in [(15, 5), (16, 5), (18, 5), (19, 5), (15, 6), (16, 6), (17, 6), (18, 6), (19, 6), (16, 7), (17, 7), (18, 7), (17, 8)] { put(x, y, .lensPink) }
         put(16, 5, .white); for x in 11...14 { put(x, 5, .frame) }
     case .round:
-        for x in 16...18 { put(x, 4, .frame); put(x, 8, .frame) }
-        for y in 5...7 { put(15, y, .frame); put(19, y, .frame) }
-        for x in 11...14 { put(x, 5, .frame) }
+        // a big round frame with clear glass, its eye showing through
+        for x in 16...18 { put(x, 3, .frame); put(x, 9, .frame) }
+        for y in [4, 8] { put(15, y, .frame); put(19, y, .frame) }
+        for y in 5...7 { put(14, y, .frame); put(20, y, .frame) }
+        for y in 4...8 { for x in 15...19 where !((x == 15 || x == 19) && (y == 4 || y == 8)) { put(x, y, .page) } }
+        for (x, y) in [(17, 5), (18, 5), (17, 6), (18, 6), (17, 7), (18, 7)] { put(x, y, .outline) }
+        put(17, 5, .white)
+        for x in 11...13 { put(x, 5, .frame) }
     }
     if o.neck == .none { return }
     // the collar hugs its throat just under its jaw, curving down round the front of it like a necklace

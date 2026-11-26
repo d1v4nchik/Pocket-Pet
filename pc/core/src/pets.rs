@@ -1364,17 +1364,25 @@ fn shark_side_outfit(c: &mut Canvas, o: &Outfit, art: &[&str], at: &dyn Fn(i32, 
     match o.glasses {
         Glasses::None => {}
         Glasses::Shades => {
-            for y in 5..=7 { for x in 15..=19 { put(x, y, Col::Lens); } }
-            put(16, 5, Col::Frame); for x in 11..=14 { put(x, 5, Col::Frame); }
+            // a bar across the top, a rounded dark lens with a glint, the arm running back
+            for x in 11..=20 { put(x, 5, Col::Frame); }
+            for y in 6..=7 { for x in 15..=19 { put(x, y, Col::Lens); } }
+            for x in 16..=18 { put(x, 8, Col::Lens); }
+            put(16, 6, Col::White);
         }
         Glasses::Hearts => {
             for (x, y) in [(15, 5), (16, 5), (18, 5), (19, 5), (15, 6), (16, 6), (17, 6), (18, 6), (19, 6), (16, 7), (17, 7), (18, 7), (17, 8)] { put(x, y, Col::LensPink); }
             put(16, 5, Col::White); for x in 11..=14 { put(x, 5, Col::Frame); }
         }
         Glasses::Round => {
-            for x in 16..=18 { put(x, 4, Col::Frame); put(x, 8, Col::Frame); }
-            for y in 5..=7 { put(15, y, Col::Frame); put(19, y, Col::Frame); }
-            for x in 11..=14 { put(x, 5, Col::Frame); }
+            // a big round frame with light glass round its eye, so the eye still shows through
+            for x in 16..=18 { put(x, 3, Col::Frame); put(x, 9, Col::Frame); }
+            for y in [4, 8] { put(15, y, Col::Frame); put(19, y, Col::Frame); }
+            for y in 5..=7 { put(14, y, Col::Frame); put(20, y, Col::Frame); }
+            for y in 4..=8 { for x in 15..=19 { if (x == 15 || x == 19) && (y == 4 || y == 8) { continue; } put(x, y, Col::Page); } }
+            for (x, y) in [(17, 5), (18, 5), (17, 6), (18, 6), (17, 7), (18, 7)] { put(x, y, Col::Outline); }   // its eye through the glass
+            put(17, 5, Col::White);
+            for x in 11..=13 { put(x, 5, Col::Frame); }
         }
     }
     if o.neck == Neckwear::None { return; }
