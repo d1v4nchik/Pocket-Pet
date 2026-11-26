@@ -2261,6 +2261,7 @@ final class Pet {
     }
 
     private func birdSleepHead(_ p: inout Pose, k: Double) {
+        p.asleep = k >= 0.5                     // the shark lies down flat to sleep
         if species == .goose {
             p.headDX = Int((-1 * k).rounded()); p.headDY = 3 + Int(9 * k)
         } else {

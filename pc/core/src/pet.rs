@@ -1845,6 +1845,7 @@ impl Pet {
 
     /// Birds tuck their head down to sleep (k = 0...1).
     fn bird_sleep_head(&self, p: &mut Pose, k: f64) {
+        p.asleep = k >= 0.5;                    // the shark lies down flat to sleep
         if self.species == Species::Goose {
             p.head_dx = iround(-k); p.head_dy = 3 + (9.0 * k) as i32;
         } else {

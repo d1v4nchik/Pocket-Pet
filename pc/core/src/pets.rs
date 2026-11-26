@@ -112,6 +112,7 @@ pub struct Pose {
     pub wiggle: i32,
     pub outfit: Outfit,
     pub chomp: bool,         // the shark: its jaws follow `mouth` (chattering, cross, wriggling, munching), not just asleep
+    pub asleep: bool,        // settled down to sleep (the shark lies flat on its belly for it)
 }
 
 impl Default for Pose {
@@ -119,7 +120,7 @@ impl Default for Pose {
         Pose {
             stance: Stance::Stand, phase: 0.0, bob: 0, head_dx: 0, head_dy: 0, eyes: Eyes::Open, mouth: Mouth::Closed,
             arm: Arm::Rest, tail: 0.0, tail_up: true, ears_flat: false, prop: Prop::None, blush: false, nightcap: false,
-            phones: false, wiggle: 0, outfit: Outfit::default(), chomp: false,
+            phones: false, wiggle: 0, outfit: Outfit::default(), chomp: false, asleep: false,
         }
     }
 }
@@ -1084,10 +1085,50 @@ const SHARK_MAP: &[(u8, Col)] = &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'
 
 /// Bubbles the shark, side on. (The Mac app also has it seen from above while it swims, and facing you behind its book
 /// when it studies; this port has neither swimming nor study mode, so it's always side on.)
+/// Asleep: lying flat out on its belly, nose to the right, dorsal fin up, tail resting on the floor, its fins tucked under.
+const SHARK_SLEEPING: [&str; 12] = [
+    "................B...............",
+    "...............BB...............",
+    "..............BBB...............",
+    "...........BBBBBBBBBBBB.........",
+    "........BBBBBBBBBBBBBBBBBBB.....",
+    "B.....BBBBBBBBBBBBBBBBBBBBBBB...",
+    "BB..BBBBBBBBBBBBBDBDBBBBBBBBBB..",
+    ".BBBBBBBBBBBBBBBBDBDBBBBBBBBBBB.",
+    ".BBDDDBBBBBBBBBBBBBBBBBWWWWWWWWB",
+    "BB..DDDDDDPPPPPPPPPPPWWWWWWWWWW.",
+    "B.......DDDPPPPPPPPPPPWWWWWWWW..",
+    ".........DDDD.....DDDD..........",
+];
+
+/// The shark fast asleep: eyes curved shut, a little smile along its cream jaw, and a sleepy bubble at its nose that
+/// grows and shrinks as it breathes.
+fn draw_sleeping_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
+    let g = c.h - 2;
+    let (ox, oy) = (cx - 16, g - (SHARK_SLEEPING.len() as i32 - 1));
+    c.sprite(ox, oy, &SHARK_SLEEPING, &[(b'B', Col::Body), (b'D', Col::BodyShade), (b'W', Col::Belly), (b'P', Col::Mark)]);
+    let waking = p.eyes == Eyes::Wide;
+    if waking {
+        c.rect(ox + 24, oy + 5, 2, 2, Col::Belly); c.set(ox + 25, oy + 6, Col::Outline);       // one eye pops open
+    } else {
+        for (x, y) in [(24, 5), (25, 6), (26, 6), (27, 5)] { c.set(ox + x, oy + y, Col::Outline); }
+    }
+    for (x, y) in [(23, 8), (24, 9), (25, 9), (26, 9), (27, 9), (28, 8)] { c.set(ox + x, oy + y, Col::Outline); }
+    if p.blush { c.hline(ox + 22, ox + 23, oy + 7, Col::Blush); }
+    if !waking {
+        // the sleepy bubble, in and out with each breath
+        let big = p.bob != 0;
+        let rows: &[&str] = if big { &[".LL.", "LWwL", "LwwL", ".LL."] } else { &[".L.", "LwL", ".L."] };
+        c.sprite(ox + 31, oy + if big { 3 } else { 5 }, rows, &[(b'L', Col::WaterLight), (b'W', Col::White), (b'w', Col::BodyLight)]);
+    }
+    Anchors { head_x: ox + 24, head_top: oy + 4, head_w: 8, eyes: vec![(ox + 25, oy + 6)], profile: true, neck: (ox + 19, oy + 8), hat_dx: 0 }
+}
+
 fn draw_shark(c: &mut Canvas, p: &Pose, cx: i32) -> Anchors {
     let g = c.h - 2;
     let st = p.stance;
     let airborne = matches!(st, Stance::Fly | Stance::Held | Stance::Umbrella | Stance::Leap);
+    if (p.asleep || (p.nightcap && p.eyes == Eyes::Closed)) && !airborne && st != Stance::Walk { return draw_sleeping_shark(c, p, cx); }
     let ox = cx - 15;
     let oy = g - (SHARK_ART.len() as i32 - 1) + p.bob - if airborne { 3 } else { 0 } + if st == Stance::Squash { 1 } else { 0 };
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing

@@ -60,6 +60,7 @@ struct Pose {
     var twirl = 0.0          // dancing: how far round it has spun on the spot (radians, 0 facing the usual way)
     var pitch = 0.0          // the shark swimming: how far its nose points up (+) or down (-) the screen, radians
     var chomp = false        // the shark: its jaws follow `mouth` (chattering, cross, wriggling, munching), not just asleep
+    var asleep = false       // settled down to sleep (the shark lies flat on its belly for it)
     var lean = 0, hop = 0, slide = 0     // dancing: sway (cells the top leans over), bounce up, step sideways
     var turn = -1.0          // study mode: a page turning over, 0 (lifting on the right) to 1 (landed on the left); -1 none
 }
@@ -1913,12 +1914,52 @@ private func drawSharkFront(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     return Anchors(headX: cx, headTop: oy + 2, headW: 13, eyes: eyes, profile: false, neck: (cx, oy + 16))
 }
 
+/// Asleep: lying flat out on its belly, nose to the right, dorsal fin up, tail resting on the floor, its fins tucked under.
+private let sharkSleeping = [
+    "................B...............",
+    "...............BB...............",
+    "..............BBB...............",
+    "...........BBBBBBBBBBBB.........",
+    "........BBBBBBBBBBBBBBBBBBB.....",
+    "B.....BBBBBBBBBBBBBBBBBBBBBBB...",
+    "BB..BBBBBBBBBBBBBDBDBBBBBBBBBB..",
+    ".BBBBBBBBBBBBBBBBDBDBBBBBBBBBBB.",
+    ".BBDDDBBBBBBBBBBBBBBBBBWWWWWWWWB",
+    "BB..DDDDDDPPPPPPPPPPPWWWWWWWWWW.",
+    "B.......DDDPPPPPPPPPPPWWWWWWWW..",
+    ".........DDDD.....DDDD..........",
+]
+
+/// The shark fast asleep: eyes curved shut, a little smile along its cream jaw, and a sleepy bubble at its nose that
+/// grows and shrinks as it breathes.
+private func drawSleepingShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
+    let g = c.h - 2
+    let ox = cx - 16, oy = g - (sharkSleeping.count - 1)
+    c.sprite(ox, oy, sharkSleeping, ["B": .body, "D": .bodyShade, "W": .belly, "P": .mark])
+    let waking = p.eyes == .wide
+    if waking {
+        c.rect(ox + 24, oy + 5, 2, 2, .belly); c.set(ox + 25, oy + 6, .outline)         // one eye pops open
+    } else {
+        for (x, y) in [(24, 5), (25, 6), (26, 6), (27, 5)] { c.set(ox + x, oy + y, .outline) }
+    }
+    for (x, y) in [(23, 8), (24, 9), (25, 9), (26, 9), (27, 9), (28, 8)] { c.set(ox + x, oy + y, .outline) }
+    if p.blush { c.hline(ox + 22, ox + 23, oy + 7, .blush) }
+    if !waking {
+        // the sleepy bubble, in and out with each breath
+        let big = p.bob != 0
+        c.sprite(ox + 31, oy + (big ? 3 : 5), big ? [".LL.", "LWwL", "LwwL", ".LL."] : [".L.", "LwL", ".L."],
+                 ["L": .waterLight, "W": .white, "w": .bodyLight])
+    }
+    return Anchors(headX: ox + 24, headTop: oy + 4, headW: 8, eyes: [(ox + 25, oy + 6)], profile: true, neck: (ox + 19, oy + 8))
+}
+
 private func drawShark(_ c: inout Canvas, _ p: Pose, cx: Int) -> Anchors {
     let g = c.h - 2
     let st = p.stance
     if st == .fly || st == .leap { return drawSharkTop(&c, p, cx: cx) }      // swimming about: seen from above
     let airborne = [.fly, .held, .umbrella, .leap].contains(st)
     if p.prop == .book && !airborne { return drawSharkFront(&c, p, cx: cx) }   // studying: sat facing you behind its book
+    if (p.asleep || (p.nightcap && p.eyes == .closed)) && !airborne && st != .walk { return drawSleepingShark(&c, p, cx: cx) }
     let ox = cx - 15
     let oy = g - (sharkArt.count - 1) + p.bob - (airborne ? 3 : 0) + (st == .squash ? 1 : 0)
     // always grinning, mouth wide open, except when it's asleep, chomping (eyes squeezed shut) or chewing
