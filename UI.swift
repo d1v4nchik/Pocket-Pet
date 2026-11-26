@@ -20,8 +20,8 @@ final class UIModel: ObservableObject {
     @Published var songQuery = ""
     @Published var closetPart = 0
     /// Which Settings groups are unfolded.
-    @Published var open: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "openSections") ?? ["Connections"]) {
-        didSet { UserDefaults.standard.set(Array(open), forKey: "openSections") }
+    @Published var open: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "openGroups") ?? ["Your pet"]) {
+        didSet { UserDefaults.standard.set(Array(open), forKey: "openGroups") }
     }
     @Published var spotifyID = ""
     @Published var habitText = ""
@@ -716,8 +716,8 @@ struct RootView: View {
         ["none": "Nothing", "scarf": "Scarf", "bowtie": "Bow tie", "bell": "Bell collar", "bandana": "Bandana"][n.rawValue] ?? n.rawValue
     }
 
-    /// Three groups that fold away: the pet itself, what it connects to (each with a status and one control), the app.
-    /// The menu's Settings: only the basics. Everything else is in the Advanced Settings window.
+    /// The menu's Settings: only the basics, with your pet and several pets in groups that fold away
+    /// (which ones are open is remembered). Everything else is in the Advanced Settings window.
     func settingsTab(_ world: World) -> some View {
         // several pets: the name is the one the menu is looking after (the pet you right-clicked); the rest is for all of them
         let pet = world.focusedPet
@@ -729,29 +729,6 @@ struct RootView: View {
                     Text("\(pet.name)'s settings").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 }
             }
-            row("Name") {
-                TextField("Name", text: Binding(get: { m.editing ? m.draft : pet.name }, set: { m.draft = $0; m.editing = true }),
-                          onCommit: { world.rename(pet, m.draft); m.editing = false; m.refresh() })
-                    .textFieldStyle(.roundedBorder).frame(width: 130)
-                    .id(pet.id)
-            }
-            row("Size") {
-                Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
-                    Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
-                }
-                .pickerStyle(.segmented).frame(width: 108)
-            }
-            row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
-            row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() })) }
-                .help("Off: your pet walks on every edge of the screen, and birds fly about")
-            row("Several pets") { toggle(Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() })) }
-                .help("Pick extra pets in the Pets tab: up to five on your desktop together")
-            if world.multiPets {
-                row("   Play together") { toggle(Binding(get: { world.playTogether }, set: { world.playTogether = $0; world.save(); m.refresh() })) }
-                    .help("They visit each other, play tag and nap side by side")
-                row("   Nap and modes for all") { toggle(Binding(get: { world.modesTogether }, set: { world.modesTogether = $0; m.refresh() })) }
-                    .help("On: nap, stay put, freeze and study apply to all your pets. Off: just to the one you're looking after")
-            }
             row("Water") {
                 HStack(spacing: 2) {
                     Text("\(world.waterText(world.waterToday, unit: false)) / \(world.waterText(world.waterGoalML))")
@@ -761,6 +738,35 @@ struct RootView: View {
                 }
             }
             .help("Goal, units and reminders are in Advanced Settings › Water")
+            section("Your pet")
+            if m.open.contains("Your pet") {
+                row("Name") {
+                    TextField("Name", text: Binding(get: { m.editing ? m.draft : pet.name }, set: { m.draft = $0; m.editing = true }),
+                              onCommit: { world.rename(pet, m.draft); m.editing = false; m.refresh() })
+                        .textFieldStyle(.roundedBorder).frame(width: 130)
+                        .id(pet.id)
+                }
+                row("Size") {
+                    Picker("", selection: Binding(get: { world.sizeSetting }, set: { world.setSize($0); m.refresh() })) {
+                        Text("S").tag(3); Text("M").tag(4); Text("L").tag(5)
+                    }
+                    .pickerStyle(.segmented).frame(width: 108)
+                }
+                row("Sounds") { toggle(Binding(get: { world.soundOn }, set: { world.setSound($0); m.refresh() })) }
+                row("Gravity") { toggle(Binding(get: { world.gravity }, set: { world.setGravity($0); m.refresh() })) }
+                    .help("Off: your pet walks on every edge of the screen, and birds fly about")
+            }
+            section("Several pets", note: world.multiPets ? "On" : "Off")
+            if m.open.contains("Several pets") {
+                row("Several at once") { toggle(Binding(get: { world.multiPets }, set: { world.setMultiPets($0); m.refresh() })) }
+                    .help("Pick extra pets in the Pets tab: up to five on your desktop together")
+                if world.multiPets {
+                    row("Play together") { toggle(Binding(get: { world.playTogether }, set: { world.playTogether = $0; world.save(); m.refresh() })) }
+                        .help("They visit each other, play tag and nap side by side")
+                    row("Nap and modes for all") { toggle(Binding(get: { world.modesTogether }, set: { world.modesTogether = $0; m.refresh() })) }
+                        .help("On: nap, stay put, freeze and study apply to all your pets. Off: just to the one you're looking after")
+                }
+            }
             Button { world.openAdvanced() } label: { Label("Advanced Settings…", systemImage: "gearshape") }
                 .buttonStyle(Pill()).fixedSize().padding(.top, 4)
                 .help("Water, reminders, sleep, staying in place, following, sounds, calendar, music and the bell")
@@ -1182,8 +1188,8 @@ struct RootView: View {
         if !u.status.isEmpty { hint(u.status) }
     }
 
-    /// A group heading that folds its rows away (remembered between launches).
-    func section(_ title: String) -> some View {
+    /// A group heading that folds its rows away (remembered between launches); `note` shows while it's folded.
+    func section(_ title: String, note: String = "") -> some View {
         let isOpen = m.open.contains(title)
         return Button {
             if isOpen { m.open.remove(title) } else { m.open.insert(title) }
@@ -1192,6 +1198,7 @@ struct RootView: View {
                 Text(title.uppercased()).font(.system(size: 10, weight: .semibold))
                 Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).rotationEffect(.degrees(isOpen ? 90 : 0))
                 Spacer()
+                if !isOpen && !note.isEmpty { Text(note).font(.system(size: 11)) }     // folded: how it's set, at a glance
             }
             .foregroundStyle(.secondary).contentShape(Rectangle())
         }
